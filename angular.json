@@ -3,5 +3,31 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
+    "ngx-urlik": {
+      "projectType": "library",
+      "root": "projects/ngx-urlik",
+      "sourceRoot": "projects/ngx-urlik/src",
+      "prefix": "lib",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:ng-packagr",
+          "configurations": {
+            "production": {
+              "tsConfig": "projects/ngx-urlik/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "projects/ngx-urlik/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular/build:karma",
+          "options": {
+            "tsConfig": "projects/ngx-urlik/tsconfig.spec.json"
+          }
+        }
+      }
+    }
   }
 }
