@@ -1,10 +1,4 @@
-import {
-  enumParam,
-  initIsEnumValue,
-  numberParam,
-  resolveFallbackValue,
-  stringParam,
-} from './url-params';
+import { booleanParam, enumParam, numberParam, stringParam } from './url-params';
 
 describe('url params', () => {
   describe('stringParam', () => {
@@ -36,9 +30,69 @@ describe('url params', () => {
       expect(paramSerde.deserialize(undefined)).toBe('foo');
     });
 
-    it('should serialize value to `undefined` if equal to default value', () => {
+    it('should serialize value to `undefined` if equal to fallback value', () => {
       const paramSerde = stringParam(() => 'foo');
       expect(paramSerde.serialize('foo')).toBe(undefined);
+    });
+  });
+
+  describe('booleanParam', () => {
+    it('should fallback to undefined by default', () => {
+      const paramSerde = booleanParam();
+      expect(paramSerde.serialize(undefined)).toBe(undefined);
+      expect(paramSerde.deserialize(undefined)).toBe(undefined);
+    });
+
+    it('should serialize and deserialize `true`', () => {
+      const paramSerde = booleanParam();
+      expect(paramSerde.serialize(true)).toBe('true');
+      expect(paramSerde.deserialize('true')).toBe(true);
+    });
+
+    it('should serialize and deserialize `false`', () => {
+      const paramSerde = booleanParam();
+      expect(paramSerde.serialize(false)).toBe('false');
+      expect(paramSerde.deserialize('false')).toBe(false);
+    });
+
+    it('should serialize `undefined` to `undefined`', () => {
+      const paramSerde = booleanParam(true);
+      expect(paramSerde.serialize(undefined)).toBe(undefined);
+    });
+
+    it('should deserialize invalid value to `undefined` if no fallback', () => {
+      const paramSerde = booleanParam();
+      expect(paramSerde.deserialize('not a bool')).toBe(undefined);
+    });
+
+    it('should deserialize invalid value to `true` fallback value', () => {
+      const paramSerde = booleanParam(true);
+      expect(paramSerde.deserialize('not a bool')).toBe(true);
+    });
+
+    it('should deserialize invalid value to `false` fallback value', () => {
+      const paramSerde = booleanParam(false);
+      expect(paramSerde.deserialize('not a bool')).toBe(false);
+    });
+
+    it('should deserialize `undefined` to `true` fallback function value', () => {
+      const paramSerde = booleanParam(() => true);
+      expect(paramSerde.deserialize(undefined)).toBe(true);
+    });
+
+    it('should deserialize `undefined` to `false` fallback function value', () => {
+      const paramSerde = booleanParam(() => false);
+      expect(paramSerde.deserialize(undefined)).toBe(false);
+    });
+
+    it('should serialize value to `undefined` if equal to `true` fallback value', () => {
+      const paramSerde = booleanParam(() => true);
+      expect(paramSerde.serialize(true)).toBe(undefined);
+    });
+
+    it('should serialize value to `undefined` if equal to `false` fallback value', () => {
+      const paramSerde = booleanParam(() => false);
+      expect(paramSerde.serialize(false)).toBe(undefined);
     });
   });
 
@@ -81,7 +135,7 @@ describe('url params', () => {
       expect(paramSerde.deserialize(undefined)).toBe(5);
     });
 
-    it('should serialize value to `undefined` if equal to default value', () => {
+    it('should serialize value to `undefined` if equal to fallback value', () => {
       const paramSerde = numberParam(() => 5);
       expect(paramSerde.serialize(5)).toBe(undefined);
     });
@@ -119,70 +173,6 @@ describe('url params', () => {
 
     it('should fallback to produced string', () => {
       const paramSerde = enumParam(Test, () => Test.Fifth);
-    });
-  });
-});
-
-describe('helpers', () => {
-  describe('resolveFallbackValue', () => {
-    it('should work', () => {
-      expect(resolveFallbackValue<string>(undefined)).toBe(undefined);
-
-      expect(resolveFallbackValue<string>('')).toBe('');
-      expect(resolveFallbackValue<string>('test')).toBe('test');
-      expect(resolveFallbackValue<string>(() => 'test')).toBe('test');
-
-      expect(resolveFallbackValue<number>(0)).toBe(0);
-      expect(resolveFallbackValue<number>(() => 0)).toBe(0);
-      expect(resolveFallbackValue<number>(5)).toBe(5);
-      expect(resolveFallbackValue<number>(() => 5)).toBe(5);
-
-      expect(resolveFallbackValue<boolean>(false)).toBe(false);
-      expect(resolveFallbackValue<boolean>(() => false)).toBe(false);
-      expect(resolveFallbackValue<boolean>(true)).toBe(true);
-      expect(resolveFallbackValue<boolean>(() => true)).toBe(true);
-    });
-  });
-
-  describe('initIsEnumValue', () => {
-    it('should work', () => {
-      enum Test {
-        First, // 0
-        Second = 'Second',
-        Third = 3.14,
-        Fourth = 'fourth',
-        Fifth = 5,
-        Sixth, // 6
-      }
-
-      const isTestEnum = initIsEnumValue(Test);
-
-      expect(isTestEnum('')).toBe(false);
-      expect(isTestEnum(null)).toBe(false);
-      expect(isTestEnum(undefined)).toBe(false);
-
-      expect(isTestEnum(Test.First)).toBe(true);
-      expect(isTestEnum(Test.Second)).toBe(true);
-      expect(isTestEnum(Test.Third)).toBe(true);
-      expect(isTestEnum(Test.Fourth)).toBe(true);
-      expect(isTestEnum(Test.Fifth)).toBe(true);
-      expect(isTestEnum(Test.Sixth)).toBe(true);
-
-      expect(isTestEnum(0)).toBe(true);
-      expect(isTestEnum('Second')).toBe(true);
-      expect(isTestEnum(3.14)).toBe(true);
-      expect(isTestEnum('fourth')).toBe(true);
-      expect(isTestEnum(5)).toBe(true);
-      expect(isTestEnum(6)).toBe(true);
-
-      expect(isTestEnum('0')).toBe(false);
-      expect(isTestEnum(1)).toBe(false);
-      expect(isTestEnum('SECOND')).toBe(false);
-      expect(isTestEnum('2')).toBe(false);
-      expect(isTestEnum(3)).toBe(false);
-      expect(isTestEnum('3.14')).toBe(false);
-      expect(isTestEnum('Fourth')).toBe(false);
-      expect(isTestEnum(7)).toBe(false);
     });
   });
 });

@@ -1,3 +1,5 @@
+import { initIsEnumValue, resolveFallbackValue } from './utils';
+
 export interface UrlParamSerde<T> {
   serialize: (value: T | undefined) => string | undefined;
   deserialize: (rawValue: string | undefined) => T;
@@ -18,7 +20,7 @@ export function stringParam(fallbackValue?: string | (() => string)): UrlParamSe
       return String(value);
     },
     deserialize: (rawValue: string | undefined) => {
-      if (typeof rawValue === 'undefined') {
+      if (rawValue == undefined) {
         return resolveFallbackValue(fallbackValue);
       }
       return rawValue;
@@ -41,7 +43,7 @@ export function booleanParam(fallbackValue?: boolean | (() => boolean)): UrlPara
       return String(value);
     },
     deserialize: (rawValue: string | undefined) => {
-      if (typeof rawValue === 'undefined') {
+      if (rawValue == undefined || (rawValue !== 'true' && rawValue !== 'false')) {
         return resolveFallbackValue(fallbackValue);
       }
       return rawValue === 'true';
@@ -64,7 +66,7 @@ export function numberParam(fallbackValue?: number | (() => number)): UrlParamSe
       return String(value);
     },
     deserialize: (rawValue: string | undefined) => {
-      if (typeof rawValue === 'undefined') {
+      if (rawValue == undefined) {
         return resolveFallbackValue(fallbackValue);
       }
       const parsed = parseFloat(rawValue);
@@ -81,17 +83,17 @@ export function dateParam(fallbackValue: Date | (() => Date)): UrlParamSerde<Dat
 export function dateParam(fallbackValue?: Date | (() => Date)): UrlParamSerde<any> {
   return {
     serialize: (value: unknown) => {
-      if (!(value instanceof Date)) {
+      if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
         return undefined;
       }
       const fallback = resolveFallbackValue(fallbackValue);
-      if (value?.getTime() === fallback?.getTime()) {
+      if (value.getTime() === fallback?.getTime()) {
         return undefined;
       }
       return value.toISOString();
     },
     deserialize: (rawValue: string | undefined) => {
-      if (typeof rawValue === 'undefined') {
+      if (rawValue == undefined) {
         return resolveFallbackValue(fallbackValue);
       }
       const date = new Date(rawValue);
@@ -117,7 +119,7 @@ export function enumParam<T extends Record<any, any>>(
   const isEnumValue = initIsEnumValue(enumObject);
   return {
     serialize: (value: T[keyof T]) => {
-      if (!isEnumValue(value)) {
+      if (value == undefined || !isEnumValue(value)) {
         return undefined;
       }
       const fallback = resolveFallbackValue(fallbackValue);
@@ -127,7 +129,7 @@ export function enumParam<T extends Record<any, any>>(
       return String(value);
     },
     deserialize: (rawValue: string | undefined) => {
-      if (typeof rawValue === 'undefined') {
+      if (rawValue == undefined) {
         return resolveFallbackValue(fallbackValue);
       }
       if (!isEnumValue(rawValue)) {
@@ -135,16 +137,5 @@ export function enumParam<T extends Record<any, any>>(
       }
       return rawValue;
     },
-  };
-}
-
-export function resolveFallbackValue<T>(fallbackValue: T | (() => T) | undefined): T | undefined {
-  return typeof fallbackValue === 'function' ? (fallbackValue as Function)() : fallbackValue;
-}
-
-export function initIsEnumValue<T extends Record<any, any>>(enumObject: T) {
-  const possibleValues = Object.values(enumObject);
-  return (enumValue: unknown): enumValue is T[keyof T] => {
-    return enumValue != null && possibleValues.includes(enumValue as any);
   };
 }
