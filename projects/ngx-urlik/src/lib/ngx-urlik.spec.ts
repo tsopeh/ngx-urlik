@@ -5,11 +5,11 @@ describe('ngx-urlik', () => {
     const { routes, urlik } = initUrlik({
       routes: [
         { path: 'user', pathParam: { name: 'userId', type: 'string' }, queryParams: {} },
-        { path: 'workspace', pathParam: { name: 'workspaceId', type: 'string' }, queryParams: {} }
+        { path: 'workspace', pathParam: { name: 'workspaceId', type: 'string' }, queryParams: {} },
       ],
-    } as const);
+    });
 
-    const {router, urlParams} = urlik()
+    const { router, urlParams } = urlik();
     router;
   });
 });

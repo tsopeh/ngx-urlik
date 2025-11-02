@@ -36,7 +36,7 @@ type UrlikUrlParams<TRoutes extends UrlikRoutes> = {
   idk: TRoutes;
 };
 
-export function initUrlik<TInitParams extends InitUrlikParams>(
+export function initUrlik<const TInitParams extends InitUrlikParams>(
   params: TInitParams,
 ): InitUrlikOutput<TInitParams> {
   const urlik: InitUrlikOutput<TInitParams>['urlik'] = () => {
