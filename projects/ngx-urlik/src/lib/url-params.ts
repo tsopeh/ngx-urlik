@@ -1,11 +1,11 @@
-export interface UrlParam<T> {
+export interface UrlParamSerde<T> {
   serialize: (value: T) => string | undefined;
   deserialize: (rawValue: string | undefined) => T;
 }
 
-export function stringParam(): UrlParam<string | undefined>;
-export function stringParam(fallbackValue: string | (() => string)): UrlParam<string>;
-export function stringParam(fallbackValue?: string | (() => string)): UrlParam<any> {
+export function stringParam(): UrlParamSerde<string | undefined>;
+export function stringParam(fallbackValue: string | (() => string)): UrlParamSerde<string>;
+export function stringParam(fallbackValue?: string | (() => string)): UrlParamSerde<any> {
   return {
     serialize: (value: string) => {
       const fallback = resolveFallbackValue(fallbackValue);
@@ -23,9 +23,9 @@ export function stringParam(fallbackValue?: string | (() => string)): UrlParam<a
   };
 }
 
-export function booleanParam(): UrlParam<boolean | undefined>;
-export function booleanParam(fallbackValue: boolean | (() => boolean)): UrlParam<boolean>;
-export function booleanParam(fallbackValue?: boolean | (() => boolean)): UrlParam<any> {
+export function booleanParam(): UrlParamSerde<boolean | undefined>;
+export function booleanParam(fallbackValue: boolean | (() => boolean)): UrlParamSerde<boolean>;
+export function booleanParam(fallbackValue?: boolean | (() => boolean)): UrlParamSerde<any> {
   return {
     serialize: (value: boolean) => {
       const fallback = resolveFallbackValue(fallbackValue);
@@ -43,9 +43,9 @@ export function booleanParam(fallbackValue?: boolean | (() => boolean)): UrlPara
   };
 }
 
-export function numberParam(): UrlParam<number | undefined>;
-export function numberParam(fallbackValue: number | (() => number)): UrlParam<number>;
-export function numberParam(fallbackValue?: number | (() => number)): UrlParam<any> {
+export function numberParam(): UrlParamSerde<number | undefined>;
+export function numberParam(fallbackValue: number | (() => number)): UrlParamSerde<number>;
+export function numberParam(fallbackValue?: number | (() => number)): UrlParamSerde<any> {
   return {
     serialize: (value: number) => {
       const fallback = resolveFallbackValue(fallbackValue);
@@ -67,9 +67,9 @@ export function numberParam(fallbackValue?: number | (() => number)): UrlParam<a
   };
 }
 
-export function dateParam(): UrlParam<Date | undefined>;
-export function dateParam(fallbackValue: Date | (() => Date)): UrlParam<Date>;
-export function dateParam(fallbackValue?: Date | (() => Date)): UrlParam<any> {
+export function dateParam(): UrlParamSerde<Date | undefined>;
+export function dateParam(fallbackValue: Date | (() => Date)): UrlParamSerde<Date>;
+export function dateParam(fallbackValue?: Date | (() => Date)): UrlParamSerde<any> {
   return {
     serialize: (value: Date) => {
       const fallback = resolveFallbackValue(fallbackValue);
@@ -91,6 +91,45 @@ export function dateParam(fallbackValue?: Date | (() => Date)): UrlParam<any> {
   };
 }
 
-function resolveFallbackValue<T>(fallbackValue: T | (() => T) | undefined): T | undefined {
+export function enumParam<T extends Record<any, any>>(
+  enumObject: T,
+): UrlParamSerde<T[keyof T] | undefined>;
+export function enumParam<T extends Record<any, any>>(
+  enumObject: T,
+  fallbackValue: T[keyof T] | (() => T[keyof T]),
+): UrlParamSerde<T[keyof T]>;
+export function enumParam<T extends Record<any, any>>(
+  enumObject: T,
+  fallbackValue?: T[keyof T] | (() => T[keyof T]),
+): UrlParamSerde<any> {
+  const isEnumValue = initIsEnumValue(enumObject);
+  return {
+    serialize: (value: T[keyof T]) => {
+      const fallback = resolveFallbackValue(fallbackValue);
+      if (value === fallback) {
+        return undefined;
+      }
+      return String(value);
+    },
+    deserialize: (rawValue: string | undefined) => {
+      if (typeof rawValue === 'undefined') {
+        return resolveFallbackValue(fallbackValue);
+      }
+      if (!isEnumValue(rawValue)) {
+        return resolveFallbackValue(fallbackValue);
+      }
+      return rawValue;
+    },
+  };
+}
+
+export function resolveFallbackValue<T>(fallbackValue: T | (() => T) | undefined): T | undefined {
   return typeof fallbackValue === 'function' ? (fallbackValue as Function)() : fallbackValue;
+}
+
+export function initIsEnumValue<T extends Record<any, any>>(enumObject: T) {
+  const possibleValues = Object.values(enumObject);
+  return (enumValue: unknown): enumValue is T[keyof T] => {
+    return enumValue != null && possibleValues.includes(enumValue as any);
+  };
 }
