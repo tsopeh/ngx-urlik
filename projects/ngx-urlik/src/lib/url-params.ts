@@ -1,5 +1,5 @@
 export interface UrlParamSerde<T> {
-  serialize: (value: T) => string | undefined;
+  serialize: (value: T | undefined) => string | undefined;
   deserialize: (rawValue: string | undefined) => T;
 }
 
@@ -7,7 +7,10 @@ export function stringParam(): UrlParamSerde<string | undefined>;
 export function stringParam(fallbackValue: string | (() => string)): UrlParamSerde<string>;
 export function stringParam(fallbackValue?: string | (() => string)): UrlParamSerde<any> {
   return {
-    serialize: (value: string) => {
+    serialize: (value: unknown) => {
+      if (typeof value !== 'string') {
+        return undefined;
+      }
       const fallback = resolveFallbackValue(fallbackValue);
       if (value === fallback) {
         return undefined;
@@ -27,7 +30,10 @@ export function booleanParam(): UrlParamSerde<boolean | undefined>;
 export function booleanParam(fallbackValue: boolean | (() => boolean)): UrlParamSerde<boolean>;
 export function booleanParam(fallbackValue?: boolean | (() => boolean)): UrlParamSerde<any> {
   return {
-    serialize: (value: boolean) => {
+    serialize: (value: unknown) => {
+      if (typeof value !== 'boolean') {
+        return undefined;
+      }
       const fallback = resolveFallbackValue(fallbackValue);
       if (value === fallback) {
         return undefined;
@@ -47,7 +53,10 @@ export function numberParam(): UrlParamSerde<number | undefined>;
 export function numberParam(fallbackValue: number | (() => number)): UrlParamSerde<number>;
 export function numberParam(fallbackValue?: number | (() => number)): UrlParamSerde<any> {
   return {
-    serialize: (value: number) => {
+    serialize: (value: unknown) => {
+      if (typeof value !== 'number' || Number.isNaN(value)) {
+        return undefined;
+      }
       const fallback = resolveFallbackValue(fallbackValue);
       if (value === fallback) {
         return undefined;
@@ -71,7 +80,10 @@ export function dateParam(): UrlParamSerde<Date | undefined>;
 export function dateParam(fallbackValue: Date | (() => Date)): UrlParamSerde<Date>;
 export function dateParam(fallbackValue?: Date | (() => Date)): UrlParamSerde<any> {
   return {
-    serialize: (value: Date) => {
+    serialize: (value: unknown) => {
+      if (!(value instanceof Date)) {
+        return undefined;
+      }
       const fallback = resolveFallbackValue(fallbackValue);
       if (value?.getTime() === fallback?.getTime()) {
         return undefined;
@@ -105,6 +117,9 @@ export function enumParam<T extends Record<any, any>>(
   const isEnumValue = initIsEnumValue(enumObject);
   return {
     serialize: (value: T[keyof T]) => {
+      if (!isEnumValue(value)) {
+        return undefined;
+      }
       const fallback = resolveFallbackValue(fallbackValue);
       if (value === fallback) {
         return undefined;
