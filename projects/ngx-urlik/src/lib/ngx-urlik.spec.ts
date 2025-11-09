@@ -3,7 +3,7 @@ import { booleanParam, createPathParam, enumParam, numberParam, stringParam } fr
 
 xdescribe('ngx-urlik', () => {
   it('should create', () => {
-    const { routes, urlik } = initUrlik({
+    const { router, urlParams } = initUrlik({
       routes: [
         {
           path: 'user',
@@ -13,7 +13,7 @@ xdescribe('ngx-urlik', () => {
           },
         },
         {
-          path: 'workspace',
+          path: 'workspaces',
           pathParam: createPathParam('wsId', stringParam()),
           queryParams: {
             ...createPaginationQueryParams(),
@@ -23,17 +23,15 @@ xdescribe('ngx-urlik', () => {
       ],
     });
 
-    const { router, urlParams } = urlik();
-    router.workspace.createUrlTree({
+    router().workspaces.createUrlTree({
       path: { wsId: 'ABCD' },
       query: {
         page: 123,
       },
     });
-    router.user.navigate({ path: { userId: 123 } });
 
-    urlParams.user.urlParams().path.userId;
-    urlParams.user.updateQueryParams((prev) => {
+    const userUrlParams = urlParams.user();
+    userUrlParams.updateQueryParams((prev) => {
       return {
         ...prev,
         page: 123,

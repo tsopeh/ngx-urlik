@@ -1,5 +1,5 @@
-import { assertInInjectionContext, inject, Signal } from '@angular/core';
-import { NavigationExtras, Route, Router, Routes, UrlTree } from '@angular/router';
+import { Signal } from '@angular/core';
+import { NavigationExtras, Route, Routes, UrlTree } from '@angular/router';
 import { UrlParamSerde } from './url-params';
 
 interface UrlikRoute<
@@ -23,10 +23,10 @@ interface InitUrlikParams {
 
 interface InitUrlikOutput<TInitParams extends InitUrlikParams> {
   routes: Routes;
-  urlik: () => {
-    router: UrlikRouter<TInitParams['routes']>;
-    urlParams: UrlikUrlParams<TInitParams['routes']>;
-  };
+  providers: Array<unknown>;
+
+  router: () => UrlikRouter<TInitParams['routes']>;
+  urlParams: UrlikUrlParams<TInitParams['routes']>;
 }
 
 type UrlikLocation<TUrlParams extends Record<string, any>> = {
@@ -72,8 +72,8 @@ type UrlikRouter<TRoutes extends UrlikRoutes> = {
 };
 
 type UrlikUrlParams<TRoutes extends UrlikRoutes> = {
-  [TPath in TRoutes[number]['path']]: {
-    urlParams: Signal<
+  [TPath in TRoutes[number]['path']]: () => {
+    params: Signal<
       { path: Exclude<ExtractPathParam<TRoutes, TPath>, undefined> } & {
         query: ExtractQueryParams<TRoutes, TPath>;
       }
@@ -94,24 +94,5 @@ type UrlikUrlParams<TRoutes extends UrlikRoutes> = {
 export function initUrlik<const TInitParams extends InitUrlikParams>(
   params: TInitParams,
 ): InitUrlikOutput<TInitParams> {
-  const urlik: InitUrlikOutput<TInitParams>['urlik'] = () => {
-    assertInInjectionContext(urlik);
-
-    const appRouter = inject(Router);
-    appRouter.navigate([], {});
-
-    const router: UrlikRouter<TInitParams['routes']> = null as any;
-
-    const urlParams: UrlikUrlParams<TInitParams['routes']> = null as any;
-
-    return {
-      router,
-      urlParams,
-    };
-  };
-
-  return {
-    routes: [],
-    urlik,
-  };
+  throw new Error('Not implemented.');
 }
