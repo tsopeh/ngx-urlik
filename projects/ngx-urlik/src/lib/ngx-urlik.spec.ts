@@ -1,5 +1,5 @@
 import { initUrlik } from './ngx-urlik';
-import { createPathParam, numberParam } from './url-params';
+import { booleanParam, createPathParam, enumParam, numberParam, stringParam } from './url-params';
 
 xdescribe('ngx-urlik', () => {
   it('should create', () => {
@@ -12,10 +12,38 @@ xdescribe('ngx-urlik', () => {
             page: numberParam(0),
           },
         },
+        {
+          path: 'workspace',
+          pathParam: createPathParam('wsId', stringParam()),
+          queryParams: {
+            ...createPaginationQueryParams(),
+            activeOnly: booleanParam(false),
+          },
+        },
       ],
     });
 
     const { router, urlParams } = urlik();
-    router.user.navigate({ path: { userId: 1 }, query: { page: 1 } });
+    router.workspace.createUrlTree({
+      path: { wsId: 'ABCD' },
+      query: {
+        page: 123,
+      },
+    });
+    router.user.navigate({ path: { userId: 123 } });
   });
 });
+
+enum SortDirection {
+  Ascending = 'Ascending',
+  'Descending' = 'Descending',
+}
+
+function createPaginationQueryParams() {
+  return {
+    page: numberParam(0),
+    size: numberParam(10),
+    sortKey: stringParam(),
+    sortDirection: enumParam(SortDirection, SortDirection.Descending),
+  };
+}

@@ -50,7 +50,7 @@ type ExtractPathParam<TRoutes extends UrlikRoutes, TPath extends TRoutes[number]
     TRoutes,
     TPath
   >['pathParam']['serde'] extends UrlParamSerde<infer TPathParamType>
-    ? TPathParamType
+    ? Exclude<TPathParamType, undefined>
     : never;
 };
 
@@ -59,13 +59,15 @@ type ExtractQueryParams<TRoutes extends UrlikRoutes, TPath extends TRoutes[numbe
     TRoutes,
     TPath
   >['queryParams'][TQueryParamName] extends UrlParamSerde<infer TQueryParamType>
-    ? TQueryParamType
+    ? TQueryParamType | undefined
     : never;
 };
 
 type UrlikRouter<TRoutes extends UrlikRoutes> = {
   [TPath in TRoutes[number]['path']]: UrlikLocation<
-    { path: ExtractPathParam<TRoutes, TPath> } & { query: ExtractQueryParams<TRoutes, TPath> }
+    { path: ExtractPathParam<TRoutes, TPath> } & {
+      query?: Partial<ExtractQueryParams<TRoutes, TPath>>;
+    }
   >;
 };
 
