@@ -1,4 +1,4 @@
-import { assertInInjectionContext, inject } from '@angular/core';
+import { assertInInjectionContext, inject, Signal } from '@angular/core';
 import { NavigationExtras, Route, Router, Routes, UrlTree } from '@angular/router';
 import { UrlParamSerde } from './url-params';
 
@@ -50,7 +50,7 @@ type ExtractPathParam<TRoutes extends UrlikRoutes, TPath extends TRoutes[number]
     TRoutes,
     TPath
   >['pathParam']['serde'] extends UrlParamSerde<infer TPathParamType>
-    ? Exclude<TPathParamType, undefined>
+    ? TPathParamType
     : never;
 };
 
@@ -59,20 +59,36 @@ type ExtractQueryParams<TRoutes extends UrlikRoutes, TPath extends TRoutes[numbe
     TRoutes,
     TPath
   >['queryParams'][TQueryParamName] extends UrlParamSerde<infer TQueryParamType>
-    ? TQueryParamType | undefined
+    ? TQueryParamType
     : never;
 };
 
 type UrlikRouter<TRoutes extends UrlikRoutes> = {
   [TPath in TRoutes[number]['path']]: UrlikLocation<
-    { path: ExtractPathParam<TRoutes, TPath> } & {
-      query?: Partial<ExtractQueryParams<TRoutes, TPath>>;
+    { path: Exclude<ExtractPathParam<TRoutes, TPath>, undefined> } & {
+      query?: Partial<ExtractQueryParams<TRoutes, TPath> | undefined>;
     }
   >;
 };
 
 type UrlikUrlParams<TRoutes extends UrlikRoutes> = {
-  idk: TRoutes;
+  [TPath in TRoutes[number]['path']]: {
+    urlParams: Signal<
+      { path: Exclude<ExtractPathParam<TRoutes, TPath>, undefined> } & {
+        query: ExtractQueryParams<TRoutes, TPath>;
+      }
+    >;
+    pathParams: Signal<Exclude<ExtractPathParam<TRoutes, TPath>, undefined>>;
+    queryParams: Signal<ExtractQueryParams<TRoutes, TPath>>;
+    updateQueryParams(
+      withPrev: (prev: ExtractQueryParams<TRoutes, TPath>) => ExtractQueryParams<TRoutes, TPath>,
+      extras?: Omit<NavigationExtras, 'queryParams'>,
+    ): Promise<boolean>;
+    updateQueryParams(
+      values: ExtractQueryParams<TRoutes, TPath>,
+      extras?: Omit<NavigationExtras, 'queryParams'>,
+    ): Promise<boolean>;
+  };
 };
 
 export function initUrlik<const TInitParams extends InitUrlikParams>(

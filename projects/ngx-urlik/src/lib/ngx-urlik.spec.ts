@@ -31,6 +31,14 @@ xdescribe('ngx-urlik', () => {
       },
     });
     router.user.navigate({ path: { userId: 123 } });
+
+    urlParams.user.urlParams().path.userId;
+    urlParams.user.updateQueryParams((prev) => {
+      return {
+        ...prev,
+        page: 123,
+      };
+    });
   });
 });
 
