@@ -1,17 +1,18 @@
 import { assertInInjectionContext, inject } from '@angular/core';
-import { Router, Routes } from '@angular/router';
+import { Route, Router, Routes, UrlTree } from '@angular/router';
+import { UrlParamSerde } from './url-params';
 
 interface UrlikRoute<
-  TPath extends string,
+  TPathSlug extends string,
   TPathParamName extends string,
-  TPathParamType extends string,
-> {
-  path: TPath;
-  pathParam: {
-    name: TPathParamName;
-    type: TPathParamType;
-  };
-  queryParams: Record<string, string>;
+  TPathParamType extends UrlParamSerde<unknown>,
+> extends Route {
+  /**
+   * Do not use Angular's `'path:variable'` syntax format for defining path variables.
+   */
+  path: TPathSlug;
+  pathParam: { paramName: TPathParamName; serde: TPathParamType };
+  queryParams: unknown;
 }
 
 type UrlikRoutes = Array<UrlikRoute<any, any, any>>;
@@ -28,8 +29,25 @@ interface InitUrlikOutput<TInitParams extends InitUrlikParams> {
   };
 }
 
+type UrlikLocation<TUrlParams extends Record<string, any>> = {
+  createUrlTree: (params: TUrlParams) => UrlTree;
+  navigate: (params: TUrlParams) => Promise<boolean>;
+};
+
+type ExtractPathParam<TRoutes extends UrlikRoutes, TPath extends TRoutes[number]['path']> = Extract<
+  TRoutes[number],
+  { path: TPath }
+>['pathParam'];
+
 type UrlikRouter<TRoutes extends UrlikRoutes> = {
-  [TPath in TRoutes[number]['path']]: Extract<TRoutes[number], { path: TPath }>['pathParam'];
+  [TPath in TRoutes[number]['path']]: UrlikLocation<{
+    [TPathParamName in ExtractPathParam<TRoutes, TPath>['paramName']]: ExtractPathParam<
+      TRoutes,
+      TPath
+    >['serde'] extends UrlParamSerde<infer TPathParamType>
+      ? TPathParamType
+      : never;
+  }>;
 };
 
 type UrlikUrlParams<TRoutes extends UrlikRoutes> = {

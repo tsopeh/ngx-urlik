@@ -3,3 +3,4 @@
  */
 
 export * from './lib/ngx-urlik';
+export * from './lib/url-params';

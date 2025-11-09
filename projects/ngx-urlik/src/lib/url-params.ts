@@ -5,6 +5,16 @@ export interface UrlParamSerde<T> {
   deserialize: (rawValue: string | undefined) => T;
 }
 
+export function createPathParam<const TName extends string, const TType>(
+  paramName: TName,
+  serde: UrlParamSerde<TType>,
+): { paramName: TName; serde: UrlParamSerde<TType> } {
+  return {
+    paramName,
+    serde,
+  };
+}
+
 export function stringParam(): UrlParamSerde<string | undefined>;
 export function stringParam(fallbackValue: string | (() => string)): UrlParamSerde<string>;
 export function stringParam(fallbackValue?: string | (() => string)): UrlParamSerde<any> {

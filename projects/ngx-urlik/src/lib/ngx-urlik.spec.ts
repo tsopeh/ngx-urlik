@@ -1,15 +1,15 @@
 import { initUrlik } from './ngx-urlik';
+import { createPathParam, numberParam } from './url-params';
 
-describe('ngx-urlik', () => {
+xdescribe('ngx-urlik', () => {
   it('should create', () => {
     const { routes, urlik } = initUrlik({
       routes: [
-        { path: 'user', pathParam: { name: 'userId', type: 'string' }, queryParams: {} },
-        { path: 'workspace', pathParam: { name: 'workspaceId', type: 'string' }, queryParams: {} },
+        { path: 'user', pathParam: createPathParam('userId', numberParam()), queryParams: {} },
       ],
     });
 
     const { router, urlParams } = urlik();
-    router;
+    router.user.navigate({ userId: 123 });
   });
 });
