@@ -12,7 +12,7 @@ interface UrlikRoute<
    */
   path: TPathSlug;
   pathParam: { paramName: TPathParamName; serde: TPathParamType };
-  queryParams: unknown;
+  queryParams: Record<string, UrlParamSerde<any>>;
 }
 
 type UrlikRoutes = Array<UrlikRoute<any, any, any>>;
@@ -34,20 +34,36 @@ type UrlikLocation<TUrlParams extends Record<string, any>> = {
   navigate: (params: TUrlParams) => Promise<boolean>;
 };
 
-type ExtractPathParam<TRoutes extends UrlikRoutes, TPath extends TRoutes[number]['path']> = Extract<
-  TRoutes[number],
-  { path: TPath }
->['pathParam'];
+type ExtractRouteConfig<
+  TRoutes extends UrlikRoutes,
+  TPath extends TRoutes[number]['path'],
+> = Extract<TRoutes[number], { path: TPath }>;
+
+type ExtractPathParam<TRoutes extends UrlikRoutes, TPath extends TRoutes[number]['path']> = {
+  [TPathParamName in ExtractRouteConfig<
+    TRoutes,
+    TPath
+  >['pathParam']['paramName']]: ExtractRouteConfig<
+    TRoutes,
+    TPath
+  >['pathParam']['serde'] extends UrlParamSerde<infer TPathParamType>
+    ? TPathParamType
+    : never;
+};
+
+type ExtractQueryParams<TRoutes extends UrlikRoutes, TPath extends TRoutes[number]['path']> = {
+  [TQueryParamName in keyof ExtractRouteConfig<TRoutes, TPath>['queryParams']]: ExtractRouteConfig<
+    TRoutes,
+    TPath
+  >['queryParams'][TQueryParamName] extends UrlParamSerde<infer TQueryParamType>
+    ? TQueryParamType
+    : never;
+};
 
 type UrlikRouter<TRoutes extends UrlikRoutes> = {
-  [TPath in TRoutes[number]['path']]: UrlikLocation<{
-    [TPathParamName in ExtractPathParam<TRoutes, TPath>['paramName']]: ExtractPathParam<
-      TRoutes,
-      TPath
-    >['serde'] extends UrlParamSerde<infer TPathParamType>
-      ? TPathParamType
-      : never;
-  }>;
+  [TPath in TRoutes[number]['path']]: UrlikLocation<
+    ExtractPathParam<TRoutes, TPath> & ExtractQueryParams<TRoutes, TPath>
+  >;
 };
 
 type UrlikUrlParams<TRoutes extends UrlikRoutes> = {
