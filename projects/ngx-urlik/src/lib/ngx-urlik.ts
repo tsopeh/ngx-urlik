@@ -1,5 +1,5 @@
 import { assertInInjectionContext, inject } from '@angular/core';
-import { Route, Router, Routes, UrlTree } from '@angular/router';
+import { NavigationExtras, Route, Router, Routes, UrlTree } from '@angular/router';
 import { UrlParamSerde } from './url-params';
 
 interface UrlikRoute<
@@ -31,7 +31,10 @@ interface InitUrlikOutput<TInitParams extends InitUrlikParams> {
 
 type UrlikLocation<TUrlParams extends Record<string, any>> = {
   createUrlTree: (params: TUrlParams) => UrlTree;
-  navigate: (params: TUrlParams) => Promise<boolean>;
+  navigate: (
+    params: TUrlParams,
+    extras?: Omit<NavigationExtras, 'queryParams'>, // Query params are handled via `TUrlParams`.
+  ) => Promise<boolean>;
 };
 
 type ExtractRouteConfig<
@@ -62,7 +65,7 @@ type ExtractQueryParams<TRoutes extends UrlikRoutes, TPath extends TRoutes[numbe
 
 type UrlikRouter<TRoutes extends UrlikRoutes> = {
   [TPath in TRoutes[number]['path']]: UrlikLocation<
-    ExtractPathParam<TRoutes, TPath> & ExtractQueryParams<TRoutes, TPath>
+    { path: ExtractPathParam<TRoutes, TPath> } & { query: ExtractQueryParams<TRoutes, TPath> }
   >;
 };
 
@@ -76,7 +79,8 @@ export function initUrlik<const TInitParams extends InitUrlikParams>(
   const urlik: InitUrlikOutput<TInitParams>['urlik'] = () => {
     assertInInjectionContext(urlik);
 
-    const angularRouter = inject(Router);
+    const appRouter = inject(Router);
+    appRouter.navigate([], {});
 
     const router: UrlikRouter<TInitParams['routes']> = null as any;
 

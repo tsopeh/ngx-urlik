@@ -16,6 +16,6 @@ xdescribe('ngx-urlik', () => {
     });
 
     const { router, urlParams } = urlik();
-    router.user.navigate({ userId: 123, page: 1 });
+    router.user.navigate({ path: { userId: 1 }, query: { page: 1 } });
   });
 });
