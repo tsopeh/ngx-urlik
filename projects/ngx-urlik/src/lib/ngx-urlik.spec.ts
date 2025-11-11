@@ -7,14 +7,14 @@ xdescribe('ngx-urlik', () => {
       routes: [
         {
           path: 'workspaces',
-          pathParam: createPathParam('wsId', stringParam()),
+          pathParam: createPathParam('overview', stringParam()),
           queryParams: {
             ...createPaginationQueryParams(),
             activeOnly: booleanParam(false),
           },
           children: [
             {
-              path: 'workspaces',
+              path: 'workspace',
               pathParam: createPathParam('wsId', stringParam()),
               queryParams: {
                 ...createPaginationQueryParams(),
@@ -22,7 +22,7 @@ xdescribe('ngx-urlik', () => {
               },
               children: [
                 {
-                  path: 'workspace',
+                  path: 'settings',
                   pathParam: createPathParam('wsId', stringParam()),
                   queryParams: {
                     ...createPaginationQueryParams(),
@@ -37,21 +37,7 @@ xdescribe('ngx-urlik', () => {
       ],
     });
 
-    router().workspaces.
-    router().workspaces.createUrlTree({
-      path: { wsId: 'ABCD' },
-      query: {
-        page: 123,
-      },
-    });
-
-    const userUrlParams = urlParams.user();
-    userUrlParams.updateQueryParams((prev) => {
-      return {
-        ...prev,
-        page: 123,
-      };
-    });
+    router().workspaces.workspace.createUrlTree({ path: { wsId: 'test_id' } });
   });
 });
 

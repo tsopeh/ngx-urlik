@@ -26,7 +26,7 @@ interface InitUrlikOutput<TInitParams extends InitUrlikParams> {
   routes: Routes;
   providers: Array<unknown>;
 
-  router: () => UrlikRouter<TInitParams['routes'], undefined>;
+  router: () => UrlikRouter<TInitParams['routes']>;
   urlParams: UrlikUrlParams<TInitParams['routes']>;
 }
 
@@ -64,20 +64,14 @@ type ExtractQueryParams<TRoutes extends UrlikRoutes, TPath extends TRoutes[numbe
     : never;
 };
 
-type PathWithPrevious<
-  TPathPrefix extends string | undefined,
-  TPath extends string,
-> = TPathPrefix extends string ? `${TPathPrefix}_${TPath}` : `${TPath}`;
-
-type UrlikRouter<TRoutes extends UrlikRoutes, TPathPrefix extends string | undefined> = {
-  [TPath in TRoutes[number]['path'] as PathWithPrevious<TPathPrefix, TPath>]: UrlikLocation<
+type UrlikRouter<TRoutes extends UrlikRoutes> = {
+  [TPath in TRoutes[number]['path']]: UrlikLocation<
     { path: Exclude<ExtractPathParam<TRoutes, TPath>, undefined> } & {
       query?: Partial<ExtractQueryParams<TRoutes, TPath> | undefined>;
     }
   >;
 } & {
-  [TRoute in TRoutes[number] as PathWithPrevious<TPathPrefix, TRoute['path']>]:
-    UrlikRouter<TRoute['children'], PathWithPrevious<TPathPrefix, TRoute['path']>>;
+  [TRoute in TRoutes[number] as TRoute['path']]: UrlikRouter<TRoute['children']>;
 };
 
 type UrlikUrlParams<TRoutes extends UrlikRoutes> = {
