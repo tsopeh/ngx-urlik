@@ -6,23 +6,38 @@ xdescribe('ngx-urlik', () => {
     const { router, urlParams } = initUrlik({
       routes: [
         {
-          path: 'user',
-          pathParam: createPathParam('userId', numberParam()),
-          queryParams: {
-            page: numberParam(0),
-          },
-        },
-        {
           path: 'workspaces',
           pathParam: createPathParam('wsId', stringParam()),
           queryParams: {
             ...createPaginationQueryParams(),
             activeOnly: booleanParam(false),
           },
+          children: [
+            {
+              path: 'workspaces',
+              pathParam: createPathParam('wsId', stringParam()),
+              queryParams: {
+                ...createPaginationQueryParams(),
+                activeOnly: booleanParam(false),
+              },
+              children: [
+                {
+                  path: 'workspace',
+                  pathParam: createPathParam('wsId', stringParam()),
+                  queryParams: {
+                    ...createPaginationQueryParams(),
+                    activeOnly: booleanParam(false),
+                  },
+                  children: [],
+                },
+              ],
+            },
+          ],
         },
       ],
     });
 
+    router().workspaces.
     router().workspaces.createUrlTree({
       path: { wsId: 'ABCD' },
       query: {
