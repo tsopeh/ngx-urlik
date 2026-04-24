@@ -2,24 +2,15 @@ import { Signal } from '@angular/core';
 import { NavigationExtras, Route, Routes, UrlTree } from '@angular/router';
 import { UrlParamSerde } from './url-params';
 
-interface UrlikRoute<
-  TPathSlug extends string,
-  TPathParamName extends string,
-  TPathParamType extends UrlParamSerde<unknown>,
-> extends Route {
-  /**
-   * Do not use Angular's `'path:variable'` syntax format for defining path variables.
-   */
-  path: TPathSlug;
-  pathParam: { paramName: TPathParamName; serde: TPathParamType };
-  queryParams: Record<string, UrlParamSerde<any>>;
-  children: Array<UrlikRoute<any, any, any>>;
-}
-
-type UrlikRoutes = Array<UrlikRoute<any, any, any>>;
+type UrlikRoute = Omit<Route, 'loadChildren' | 'children'> & {
+  pathAlias?: string;
+  pathParam?: { paramName: string; serde: UrlParamSerde<any> };
+  queryParams?: Record<string, UrlParamSerde<any>>;
+  children?: Array<UrlikRoute>;
+};
 
 interface InitUrlikParams {
-  routes: UrlikRoutes;
+  routes: Array<UrlikRoute>;
 }
 
 interface InitUrlikOutput<TInitParams extends InitUrlikParams> {
@@ -38,12 +29,21 @@ type UrlikLocation<TUrlParams extends Record<string, any>> = {
   ) => Promise<boolean>;
 };
 
+type ResolveRouteName<TRoute extends UrlikRoute> = TRoute['pathAlias'] extends string
+  ? TRoute['pathAlias']
+  : TRoute['path'] extends string
+    ? TRoute['path']
+    : 'UNKNOWN_PATH_ALIAS';
+
 type ExtractRouteConfig<
-  TRoutes extends UrlikRoutes,
+  TRoutes extends Array<UrlikRoute>,
   TPath extends TRoutes[number]['path'],
 > = Extract<TRoutes[number], { path: TPath }>;
 
-type ExtractPathParam<TRoutes extends UrlikRoutes, TPath extends TRoutes[number]['path']> = {
+type ExtractPathParam<
+  TRoutes extends Array<UrlikRoute>,
+  TPath extends TRoutes[number]['pathAlias'],
+> = {
   [TPathParamName in ExtractRouteConfig<
     TRoutes,
     TPath
@@ -55,7 +55,10 @@ type ExtractPathParam<TRoutes extends UrlikRoutes, TPath extends TRoutes[number]
     : never;
 };
 
-type ExtractQueryParams<TRoutes extends UrlikRoutes, TPath extends TRoutes[number]['path']> = {
+type ExtractQueryParams<
+  TRoutes extends Array<UrlikRoute>,
+  TPath extends TRoutes[number]['pathAlias'],
+> = {
   [TQueryParamName in keyof ExtractRouteConfig<TRoutes, TPath>['queryParams']]: ExtractRouteConfig<
     TRoutes,
     TPath
@@ -64,18 +67,18 @@ type ExtractQueryParams<TRoutes extends UrlikRoutes, TPath extends TRoutes[numbe
     : never;
 };
 
-type UrlikRouter<TRoutes extends UrlikRoutes> = {
-  [TPath in TRoutes[number]['path']]: UrlikLocation<
+type UrlikRouter<TRoutes extends Array<UrlikRoute>> = {
+  [TPath in TRoutes[number]['pathAlias']]: UrlikLocation<
     { path: Exclude<ExtractPathParam<TRoutes, TPath>, undefined> } & {
       query?: Partial<ExtractQueryParams<TRoutes, TPath> | undefined>;
     }
   >;
 } & {
-  [TRoute in TRoutes[number] as TRoute['path']]: UrlikRouter<TRoute['children']>;
+  [TRoute in TRoutes[number] as TRoute['pathAlias']]: UrlikRouter<TRoute['children']>;
 };
 
-type UrlikUrlParams<TRoutes extends UrlikRoutes> = {
-  [TPath in TRoutes[number]['path']]: () => {
+type UrlikUrlParams<TRoutes extends Array<UrlikRoute>> = {
+  [TPath in TRoutes[number]['pathAlias']]: () => {
     params: Signal<
       { path: Exclude<ExtractPathParam<TRoutes, TPath>, undefined> } & {
         query: ExtractQueryParams<TRoutes, TPath>;
