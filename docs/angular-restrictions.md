@@ -24,5 +24,7 @@ The library intentionally implements a strict subset and wrapper model. Compared
 - No custom typed `RouterLink` directive is supplied; generated `UrlTree` values are used with Angular's directive.
 - `AppRouter` does not duplicate Angular's global router events, current URL, active checks, or navigation status.
 - Generated Angular `Routes` are private.
+- `paramsInheritanceStrategy` is always forced to `'always'` so accumulated ancestor parameters remain available.
+- Other `RouterConfigOptions` belong on `defineAppRouter({ routerConfig })`. `withRouterConfig()` is excluded from features forwarded to `provideAppRouter()`.
 
 Angular's native `Router` remains available as an unsupported type-safety escape hatch. The library does not enforce exclusive usage.

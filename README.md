@@ -1,61 +1,92 @@
 # ngx-urlik
 
-The current implementation is an obsolete prototype. The accepted redesign is documented in [the typed App Router design](docs/design/app-router.md), with supporting [ADRs](docs/adr), [glossary](docs/glossary.md), [Angular restrictions](docs/angular-restrictions.md), and [deferred discussions](docs/deferred-discussions.md).
+A signal-first, typed application router for Angular 22. Angular Router remains the runtime engine; `ngx-urlik` owns the route definition, URL serialization, typed construction, and reactive parameter state.
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 20.3.7.
+## Install
 
-## Development server
-
-To start a local development server, run:
-
-```bash
-ng serve
+```sh
+npm install ngx-urlik
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+Node 24.15 or newer is required for development.
 
-## Code scaffolding
+## Define and provide the router
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+```ts
+import { defineAppRouter, fallbackRoute, stringPathParam, stringQueryParam } from 'ngx-urlik';
 
-```bash
-ng generate component component-name
+export const { AppRouter, provideAppRouter } = defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      queryParams: { locale: stringQueryParam({ defaultValue: 'en' }) },
+      children: {
+        USER: {
+          path: 'users',
+          pathParam: stringPathParam({ name: 'userId' }),
+          queryParams: { search: stringQueryParam() },
+          loadComponent: () => import('./user.component').then((m) => m.UserComponent),
+        },
+        NOT_FOUND: fallbackRoute({
+          loadComponent: () => import('./not-found.component').then((m) => m.NotFoundComponent),
+        }),
+      },
+    },
+  },
+  routerConfig: { onSameUrlNavigation: 'reload' },
+});
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
+```ts
+bootstrapApplication(AppComponent, {
+  providers: [provideAppRouter(withComponentInputBinding())],
+});
 ```
 
-## Building
+`paramsInheritanceStrategy` is always `always`; configure other Router options on `defineAppRouter`. `withRouterConfig()` is intentionally not accepted by `provideAppRouter`.
 
-To build the project run:
+## Inject, navigate, and link
 
-```bash
-ng build
+```ts
+const appRouter = inject(AppRouter);
+
+await appRouter.ROOT.USER.navigate({
+  path: { userId: '42' },
+  query: { search: 'active' },
+});
+
+const userLink = appRouter.ROOT.USER.createUrlTree({
+  path: { userId: '42' },
+});
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+Use `userLink` directly with Angular's `[routerLink]`.
 
-## Running unit tests
+## Reactive URL state
 
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
+```ts
+const params = inject(AppRouter).ROOT.USER.urlParams();
+const userId = computed(() => params.value().path.userId);
 
-```bash
-ng test
+await params.updateQueryParams((query) => ({ ...query, search: null }), { replaceUrl: true });
 ```
 
-## Running end-to-end tests
+Reading state for an inactive route, or a path value that cannot be deserialized, throws a contextual error.
 
-For end-to-end (e2e) testing, run:
+## Custom serializer
 
-```bash
-ng e2e
+```ts
+const coordinates = pathParam({
+  name: 'coordinates',
+  serializer: {
+    serialize: ({ x, y }: { x: number; y: number }) => `${x},${y}`,
+    deserialize: (raw) => {
+      if (typeof raw !== 'string') return null;
+      const [x, y] = raw.split(',').map(Number);
+      return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    },
+  },
+});
 ```
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+See the accepted [App Router design](docs/design/app-router.md), [Angular restrictions](docs/angular-restrictions.md), and [deferred topics](docs/deferred-discussions.md).

@@ -1,6 +1,6 @@
 # Typed App Router design
 
-Status: accepted product design; implementation has not started.
+Status: accepted product design; implemented on a fresh Angular 22 workspace baseline.
 
 ## Vision
 
@@ -16,7 +16,7 @@ The definition produces:
 - signal-based, accumulated path and query state;
 - route-scoped query updates.
 
-Angular 22 is the target. Upgrading the current workspace is separate implementation work.
+Angular 22 is the target. The implementation uses Angular 22's generated library build and Vitest workspace configuration with Node 24.15+ and TypeScript 6.
 
 ## Canonical example
 
@@ -240,6 +240,8 @@ Precedence is call-site, current route, nearest ancestor, then library default. 
 ## Angular runtime relationship
 
 `provideAppRouter(...features)` returns opaque `EnvironmentProviders`, registers the generated Angular routes, the typed token, and internal services, and forwards standard Angular router features. The native Angular `Router` remains normally injectable; the library neither hides nor replaces its DI token nor exposes it through `AppRouter`.
+
+Router configuration is supplied as `routerConfig` to `defineAppRouter()`. The implementation creates one internal `withRouterConfig()` feature and always sets `paramsInheritanceStrategy: 'always'`. A caller cannot pass `withRouterConfig()` through `provideAppRouter()`, preventing that mandatory inheritance behavior from being disabled.
 
 Angular remains responsible for matching, component activation, guards, resolvers, browser history, location strategy, directives, URL parsing, and encoding. The typed library owns static definition, construction, serialization, parameter state, and diagnostics.
 

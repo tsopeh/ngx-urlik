@@ -3,14 +3,13 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
-    "strict": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "paths": {
       "ngx-urlik": ["./dist/ngx-urlik"]
     },
-    "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "isolatedModules": true,
     "experimentalDecorators": true,
@@ -21,9 +20,7 @@
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,
     "strictInjectionParameters": true,
-    "strictInputAccessModifiers": true,
-    "typeCheckHostBindings": true,
-    "strictTemplates": true
+    "strictInputAccessModifiers": true
   },
   "files": [],
   "references": [
