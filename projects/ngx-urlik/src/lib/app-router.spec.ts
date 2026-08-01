@@ -1,7 +1,20 @@
 import { Component, InjectionToken, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Router, withComponentInputBinding } from '@angular/router';
-import { pathParam, queryParam, stringPathParam, stringQueryParam } from './params';
+import {
+  NavigationEnd,
+  Router,
+  withComponentInputBinding,
+  withRouterConfig,
+} from '@angular/router';
+import { filter, firstValueFrom } from 'rxjs';
+import {
+  numberPathParam,
+  numberQueryParam,
+  pathParam,
+  queryParam,
+  stringPathParam,
+  stringQueryParam,
+} from './params';
 import { defineAppRouter, fallbackRoute } from './app-router';
 
 @Component({ template: '' })
@@ -9,9 +22,20 @@ class EmptyComponent {}
 
 describe('defineAppRouter', () => {
   it('makes accepted route definitions immutable after definition', () => {
+    const serializer = {
+      serialize: (value: string | null) => value,
+      deserialize: (value: unknown) => (typeof value === 'string' ? value : null),
+    };
+    const data = { nested: { labels: ['original'] } };
+    const guards = [() => true];
+    const providers = [{ provide: 'immutable-test', useValue: true }];
     const routes = {
       ROOT: {
         path: '',
+        data,
+        canActivate: guards,
+        providers,
+        queryParams: { custom: queryParam({ serializer }) },
         children: {
           USER: { path: 'users', component: EmptyComponent },
         },
@@ -20,6 +44,11 @@ describe('defineAppRouter', () => {
     const definition = defineAppRouter({ routes });
 
     expect(() => ((routes.ROOT.children.USER as { path: string }).path = 'changed')).toThrow();
+    expect(() => data.nested.labels.push('changed')).toThrow();
+    expect(() => guards.push(() => false)).toThrow();
+    expect(() => providers.push({ provide: 'other', useValue: false })).toThrow();
+    expect(() => ((providers[0] as { useValue: boolean }).useValue = false)).toThrow();
+    expect(() => (serializer.serialize = () => 'changed')).toThrow();
     TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
     const appRouter = TestBed.runInInjectionContext(() => inject(definition.AppRouter));
     const router = TestBed.inject(Router);
@@ -51,6 +80,31 @@ describe('defineAppRouter', () => {
         appRouter.ROOT.USER.createUrlTree({ path: { userId: 'a b' }, query: { search: 'x' } }),
       ),
     ).toBe('/users/a%20b?search=x');
+  });
+
+  it('rejects NaN path output and canonically omits NaN query output', () => {
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: {
+          path: 'numbers',
+          pathParam: numberPathParam({ name: 'id' }),
+          queryParams: { filter: numberQueryParam() },
+          component: EmptyComponent,
+        },
+      },
+    });
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const appRouter = TestBed.runInInjectionContext(() => inject(definition.AppRouter));
+    const router = TestBed.inject(Router);
+
+    expect(() =>
+      appRouter.ROOT.createUrlTree({ path: { id: Number.NaN }, query: { filter: 1 } }),
+    ).toThrow(/path parameter 'id' cannot serialize to an empty segment/);
+    expect(
+      router.serializeUrl(
+        appRouter.ROOT.createUrlTree({ path: { id: 1 }, query: { filter: Number.NaN } }),
+      ),
+    ).toBe('/numbers/1');
   });
 
   it('reads accumulated state and updates only owned query keys', async () => {
@@ -163,8 +217,68 @@ describe('defineAppRouter', () => {
     const appRouter = TestBed.runInInjectionContext(() => inject(definition.AppRouter));
     await TestBed.inject(Router).navigateByUrl('/items/invalid');
     expect(() => appRouter.ROOT.urlParams().value()).toThrow(
-      /expected active route 'items\/:id'.*attempted path.*'id'/,
+      /expected active route 'items\/:id'.*attempted current path '\/items\/invalid'.*'id'/,
     );
+  });
+
+  it('always inherits ancestor parameters and applies user router configuration', async () => {
+    const definition = defineAppRouter({
+      routerConfig: { onSameUrlNavigation: 'reload' },
+      routes: {
+        ROOT: {
+          path: 'accounts',
+          pathParam: stringPathParam({ name: 'accountId' }),
+          children: { SETTINGS: { path: 'settings', component: EmptyComponent } },
+        },
+      },
+    });
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/accounts/42/settings');
+    const child = router.routerState.snapshot.root.firstChild?.firstChild;
+    expect(child?.paramMap.get('accountId')).toBe('42');
+
+    const nextEnd = firstValueFrom(
+      router.events.pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd)),
+    );
+    await router.navigateByUrl('/accounts/42/settings');
+    await expect(nextEnd).resolves.toBeInstanceOf(NavigationEnd);
+  });
+
+  it('rejects router configuration features while accepting forwarded router features', async () => {
+    const definition = defineAppRouter({
+      routes: { ROOT: { path: '', component: EmptyComponent } },
+    });
+    expect(() =>
+      definition.provideAppRouter(withRouterConfig({ onSameUrlNavigation: 'reload' }) as never),
+    ).toThrow(/withRouterConfig\(\).*defineAppRouter/);
+
+    TestBed.configureTestingModule({
+      providers: [definition.provideAppRouter(withComponentInputBinding())],
+    });
+    await expect(TestBed.inject(Router).navigateByUrl('/')).resolves.toBe(true);
+  });
+
+  it('starts concurrent query updates immediately without queueing them', async () => {
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: { path: '', queryParams: { value: stringQueryParam() } },
+      },
+    });
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const appRouter = TestBed.runInInjectionContext(() => inject(definition.AppRouter));
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/?value=initial');
+    const pending: Array<(result: boolean) => void> = [];
+    vi.spyOn(router, 'navigateByUrl').mockImplementation(
+      () => new Promise<boolean>((resolve) => pending.push(resolve)),
+    );
+
+    const first = appRouter.ROOT.urlParams().updateQueryParams(() => ({ value: 'first' }));
+    const second = appRouter.ROOT.urlParams().updateQueryParams(() => ({ value: 'second' }));
+    expect(pending).toHaveLength(2);
+    pending.forEach((resolve) => resolve(true));
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
   });
 
   it('inherits ancestor path state, reads the first repeated query value, and reacts to defaults', async () => {
@@ -316,6 +430,44 @@ describe('defineAppRouter', () => {
     ).toThrow(/\n- .*path.*\n-/);
   });
 
+  it('aggregates contextual errors for null and non-object route definitions', () => {
+    expect(() =>
+      defineAppRouter({
+        routes: {
+          NULL_ROUTE: null,
+          NUMBER_ROUTE: 42,
+        } as never,
+      }),
+    ).toThrow(
+      /NULL_ROUTE: route definition must be a non-null object[\s\S]*NUMBER_ROUTE: route definition must be a non-null object/,
+    );
+  });
+
+  it.each([
+    ['null', null],
+    ['an array', []],
+    ['a number', 42],
+  ])('rejects %s as the top-level route collection with a structural diagnostic', (_, routes) => {
+    expect(() => defineAppRouter({ routes } as never)).toThrow(
+      /Invalid app router definition:\n- routes: route collection must be a non-null object/,
+    );
+  });
+
+  it('aggregates an explicitly undefined redirect with other route errors', () => {
+    expect(() =>
+      defineAppRouter({
+        routes: {
+          ROOT: {
+            path: 'bad/path',
+            redirectTo: undefined,
+          },
+        } as never,
+      }),
+    ).toThrow(
+      /ROOT: redirectTo must be a function[\s\S]*ROOT: path must be empty or one valid static segment/,
+    );
+  });
+
   it('rejects a fallback root and equivalent sibling dynamic patterns', () => {
     expect(() =>
       defineAppRouter({
@@ -462,5 +614,51 @@ describe('defineAppRouter', () => {
     expect(await TestBed.inject(Router).navigateByUrl('/lazy')).toBe(true);
     expect(matchedWith).toBe('provided');
     expect(lazyLoads).toBe(1);
+  });
+
+  it('preserves ordinary activation, deactivation, resolution, data, title, and rerun behavior', async () => {
+    const calls: string[] = [];
+    let resolutions = 0;
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: {
+          path: '',
+          canActivateChild: [() => (calls.push('activate-child'), true)],
+          children: {
+            GUARDED: {
+              path: 'guarded',
+              component: EmptyComponent,
+              canActivate: [() => (calls.push('activate'), true)],
+              canDeactivate: [() => (calls.push('deactivate'), true)],
+              resolve: {
+                resolved: () => {
+                  resolutions++;
+                  return `value-${resolutions}`;
+                },
+              },
+              data: { static: 'kept' },
+              title: 'Guarded title',
+              runGuardsAndResolvers: 'paramsOrQueryParamsChange',
+            },
+            OTHER: { path: 'other', component: EmptyComponent },
+          },
+        },
+      },
+    });
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const router = TestBed.inject(Router);
+
+    await router.navigateByUrl('/guarded?version=1');
+    const guarded = router.routerState.snapshot.root.firstChild?.firstChild;
+    expect(calls).toEqual(['activate-child', 'activate']);
+    expect(guarded?.data).toMatchObject({ static: 'kept', resolved: 'value-1' });
+    expect(guarded?.title).toBe('Guarded title');
+
+    await router.navigateByUrl('/guarded?version=2');
+    expect(resolutions).toBe(2);
+    expect(calls).toEqual(['activate-child', 'activate', 'activate-child', 'activate']);
+
+    await router.navigateByUrl('/other');
+    expect(calls).toContain('deactivate');
   });
 });

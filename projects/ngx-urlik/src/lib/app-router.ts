@@ -109,6 +109,39 @@ interface FallbackDefinition {
 
 type FallbackInput = Omit<FallbackDefinition, typeof fallbackBrand>;
 
+const angularRouteFields = [
+  'component',
+  'loadComponent',
+  'canMatch',
+  'canActivate',
+  'canActivateChild',
+  'canDeactivate',
+  'resolve',
+  'data',
+  'title',
+  'providers',
+  'runGuardsAndResolvers',
+] as const satisfies readonly (keyof Route)[];
+const ordinaryRouteFields = [
+  'path',
+  'pathParam',
+  'queryParams',
+  'children',
+  ...angularRouteFields,
+  'isEqual',
+  'redirectTo',
+] as const;
+const redirectRouteFields = [
+  'path',
+  'pathParam',
+  'queryParams',
+  'redirectTo',
+  'canMatch',
+  'providers',
+  'data',
+] as const;
+const fallbackRouteFields = ['queryParams', ...angularRouteFields, 'isEqual'] as const;
+
 export function fallbackRoute<const D extends FallbackInput>(
   definition: D & Record<Exclude<keyof D, keyof FallbackInput>, never>,
 ): D & FallbackDefinition {
@@ -136,11 +169,15 @@ interface OrdinaryRouteDefinition {
 }
 type RouteDefinition = OrdinaryRouteDefinition | FallbackDefinition;
 
-type OrdinaryKey = keyof OrdinaryRouteDefinition;
-type RedirectKey =
-  'path' | 'pathParam' | 'queryParams' | 'redirectTo' | 'canMatch' | 'providers' | 'data';
-type FallbackKey = keyof FallbackDefinition;
-type ContextualRoute<D, AP, AQ> =
+type OrdinaryKey = (typeof ordinaryRouteFields)[number];
+type RedirectKey = (typeof redirectRouteFields)[number];
+type FallbackKey = (typeof fallbackRouteFields)[number] | typeof fallbackBrand;
+type ContextualRoute<D, AP, AQ> = 'redirectTo' extends keyof D
+  ? D extends { readonly redirectTo: (...args: never[]) => unknown }
+    ? ContextualRouteShape<D, AP, AQ>
+    : never
+  : ContextualRouteShape<D, AP, AQ>;
+type ContextualRouteShape<D, AP, AQ> =
   Simplify<Merge<AP, OwnPath<D>>> extends infer P
     ? Simplify<Merge<AQ, OwnQuery<D>>> extends infer Q
       ? D &
@@ -211,53 +248,17 @@ interface CompiledRoute {
   children: CompiledRoute[];
 }
 
-const ordinaryKeys = new Set([
-  'path',
-  'pathParam',
-  'queryParams',
-  'children',
-  'component',
-  'loadComponent',
-  'canMatch',
-  'canActivate',
-  'canActivateChild',
-  'canDeactivate',
-  'resolve',
-  'data',
-  'title',
-  'providers',
-  'runGuardsAndResolvers',
-  'isEqual',
-  'redirectTo',
-]);
-const redirectKeys = new Set([
-  'path',
-  'pathParam',
-  'queryParams',
-  'redirectTo',
-  'canMatch',
-  'providers',
-  'data',
-]);
-const fallbackKeys = new Set([
-  'queryParams',
-  'component',
-  'loadComponent',
-  'canMatch',
-  'canActivate',
-  'canActivateChild',
-  'canDeactivate',
-  'resolve',
-  'data',
-  'title',
-  'providers',
-  'runGuardsAndResolvers',
-  'isEqual',
-]);
+const ordinaryKeys = new Set<string>(ordinaryRouteFields);
+const redirectKeys = new Set<string>(redirectRouteFields);
+const fallbackKeys = new Set<string>(fallbackRouteFields);
 const forbiddenPath = /[\/:?#;()*]/;
 
 function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
   const errors: string[] = [];
+  if (routes === null || typeof routes !== 'object' || Array.isArray(routes)) {
+    errors.push('routes: route collection must be a non-null object');
+    return errors;
+  }
   if (Object.keys(routes).length !== 1)
     errors.push('routes must contain exactly one named root route');
   const visit = (
@@ -273,10 +274,16 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
       if (!identity) errors.push(`${at}: route identity must be non-empty`);
       if (['navigate', 'createUrlTree', 'urlParams'].includes(identity))
         errors.push(`${at}: '${identity}' is a reserved router method name`);
+      if (definition === null || typeof definition !== 'object' || Array.isArray(definition)) {
+        errors.push(`${at}: route definition must be a non-null object`);
+        continue;
+      }
       const fallback = fallbackBrand in definition;
-      const redirect = 'redirectTo' in definition;
+      const hasRedirect = 'redirectTo' in definition;
+      const redirect = 'redirectTo' in definition && typeof definition.redirectTo === 'function';
+      if (hasRedirect && !redirect) errors.push(`${at}: redirectTo must be a function`);
       if (root && fallback) errors.push(`${at}: the root route cannot be a fallback`);
-      const allowed = fallback ? fallbackKeys : redirect ? redirectKeys : ordinaryKeys;
+      const allowed = fallback ? fallbackKeys : hasRedirect ? redirectKeys : ordinaryKeys;
       for (const key of Object.keys(definition))
         if (!allowed.has(key) && key !== String(fallbackBrand))
           errors.push(`${at}: unknown route property '${key}'`);
@@ -318,7 +325,11 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
           );
         names.add(name);
       }
-      if (!fallback && definition.children) visit(definition.children, names, at, false);
+      if (!fallback && definition.children) {
+        if (typeof definition.children !== 'object' || Array.isArray(definition.children))
+          errors.push(`${at}.children: route collection must be a non-null object`);
+        else visit(definition.children, names, at, false);
+      }
     }
   };
   visit(routes, new Set(), '', true);
@@ -327,19 +338,7 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
 
 function angularFields(definition: RouteDefinition): Route {
   const route: Route = {};
-  for (const key of [
-    'component',
-    'loadComponent',
-    'canMatch',
-    'canActivate',
-    'canActivateChild',
-    'canDeactivate',
-    'resolve',
-    'data',
-    'title',
-    'providers',
-    'runGuardsAndResolvers',
-  ] as const) {
+  for (const key of angularRouteFields) {
     const value = definition[key as keyof typeof definition];
     if (value !== undefined) (route as Record<string, unknown>)[key] = value;
   }
@@ -361,17 +360,41 @@ function findActive(root: ActivatedRouteSnapshot, target: Route): ActivatedRoute
   return null;
 }
 
-function freezeDeep<T>(value: T): T {
-  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-    for (const child of Object.values(value)) freezeDeep(child);
-    Object.freeze(value);
-  }
+function freezeRecursively<T>(
+  value: T,
+  owns: (candidate: object) => boolean = () => true,
+  seen = new WeakSet<object>(),
+): T {
+  if (!value || typeof value !== 'object' || seen.has(value) || !owns(value)) return value;
+  seen.add(value);
+  for (const child of Object.values(value)) freezeRecursively(child, owns, seen);
+  if (!Object.isFrozen(value)) Object.freeze(value);
   return value;
 }
 
+const ownsDefinitionContainer = (value: object) => {
+  if (Array.isArray(value)) return true;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
 function freezeRouteDefinitions(routes: Readonly<Record<string, RouteDefinition>>): void {
   for (const definition of Object.values(routes)) {
-    if (definition.queryParams) Object.freeze(definition.queryParams);
+    if (definition.queryParams) {
+      for (const parameter of Object.values(definition.queryParams)) {
+        freezeRecursively(parameter.serializer, ownsDefinitionContainer);
+        Object.freeze(parameter);
+      }
+      Object.freeze(definition.queryParams);
+    }
+    if ('pathParam' in definition && definition.pathParam) {
+      freezeRecursively(definition.pathParam.serializer, ownsDefinitionContainer);
+      Object.freeze(definition.pathParam);
+    }
+    for (const field of angularRouteFields) {
+      const value = definition[field as keyof typeof definition];
+      if (value && typeof value === 'object') freezeRecursively(value, ownsDefinitionContainer);
+    }
     if (!('redirectTo' in definition) && 'children' in definition && definition.children) {
       freezeRouteDefinitions(definition.children);
       Object.freeze(definition.children);
@@ -379,6 +402,47 @@ function freezeRouteDefinitions(routes: Readonly<Record<string, RouteDefinition>
     Object.freeze(definition);
   }
   Object.freeze(routes);
+}
+
+function freezeCompiledMetadata(infos: readonly CompiledRoute[]): void {
+  for (const info of infos) {
+    for (const parameter of [...info.pathParams, ...info.queryParams]) Object.freeze(parameter);
+    Object.freeze(info.pathParams);
+    Object.freeze(info.queryParams);
+    Object.freeze(info.children);
+    Object.freeze(info);
+  }
+}
+
+// Angular exposes the discriminator on RouterFeature but does not export RouterFeatureKind.
+// This is RouterFeatureKind.RouterConfigurationFeature (5); isolate the private-runtime
+// dependency here so it cannot leak into provider logic.
+const routerConfigurationFeatureKind = 5;
+function isRouterConfigurationFeature(feature: RouterFeatures): boolean {
+  return (feature.ɵkind as number) === routerConfigurationFeatureKind;
+}
+
+function createProviderFunction<T>(
+  token: InjectionToken<T>,
+  routes: Routes,
+  routerConfig: Omit<RouterConfigOptions, 'paramsInheritanceStrategy'> | undefined,
+  factory: () => T,
+): (...features: ForwardedRouterFeature[]) => EnvironmentProviders {
+  return (...features) => {
+    if (features.some(isRouterConfigurationFeature))
+      throw new Error(
+        'withRouterConfig() is not accepted by provideAppRouter(); use defineAppRouter({ routerConfig })',
+      );
+    const tokenProvider: Provider = { provide: token, useFactory: factory };
+    return makeEnvironmentProviders([
+      provideRouter(
+        routes,
+        withRouterConfig({ ...routerConfig, paramsInheritanceStrategy: 'always' }),
+        ...features,
+      ),
+      tokenProvider,
+    ]);
+  };
 }
 
 export function defineAppRouter<
@@ -390,9 +454,9 @@ export function defineAppRouter<
   AppRouter: InjectionToken<RouterTree<R>>;
   provideAppRouter: (...features: ForwardedRouterFeature[]) => EnvironmentProviders;
 } {
-  freezeRouteDefinitions(options.routes);
   const errors = validate(options.routes);
   if (errors.length) throw new Error(`Invalid app router definition:\n- ${errors.join('\n- ')}`);
+  freezeRouteDefinitions(options.routes);
   let token!: InjectionToken<RouterTree<R>>;
   const roots: CompiledRoute[] = [];
 
@@ -406,7 +470,7 @@ export function defineAppRouter<
     );
     for (const [identity, definition] of ordered) {
       const fallback = fallbackBrand in definition;
-      const redirect = 'redirectTo' in definition;
+      const redirect = 'redirectTo' in definition && typeof definition.redirectTo === 'function';
       const ownPath =
         !fallback && definition.pathParam
           ? [
@@ -455,8 +519,14 @@ export function defineAppRouter<
         route.pathMatch = 'full';
         route.redirectTo = (snapshot) => {
           const injector = inject(EnvironmentInjector);
-          const state = readState(info, snapshot.paramMap, snapshot.queryParamMap, injector);
-          const result = definition.redirectTo!(state);
+          const state = readState(
+            info,
+            snapshot.paramMap,
+            snapshot.queryParamMap,
+            injector,
+            `/${snapshot.url.map((segment) => segment.path).join('/')}`,
+          );
+          const result = (definition as OrdinaryRouteDefinition).redirectTo!(state);
           if (!(result instanceof UrlTree))
             throw new Error(`${info.pattern}: redirectTo must synchronously return a UrlTree`);
           return result;
@@ -469,6 +539,13 @@ export function defineAppRouter<
     return compiled;
   };
   const routes = compile(options.routes);
+  const collect = (info: CompiledRoute): CompiledRoute[] => [
+    info,
+    ...info.children.flatMap(collect),
+  ];
+  // Angular stores private lazy-loading and injector state on its Route objects at runtime.
+  // Those objects stay mutable; only application-owned metadata is frozen.
+  freezeCompiledMetadata(roots.flatMap(collect));
 
   function deserialize(param: RuntimeParam, raw: unknown, injector: EnvironmentInjector): unknown {
     try {
@@ -484,6 +561,7 @@ export function defineAppRouter<
     params: ParamMap,
     query: ParamMap,
     injector: EnvironmentInjector,
+    attemptedPath: string,
   ): State<AnyRecord, AnyRecord> {
     const path: Record<string, unknown> = {};
     for (const param of info.pathParams) {
@@ -491,14 +569,14 @@ export function defineAppRouter<
       const value = deserialize(param, raw, injector);
       if (raw === null || value === null || value === undefined)
         throw new Error(
-          `${info.identity}: expected active route '${info.pattern}', attempted path could not resolve '${param.name}'`,
+          `${info.identity}: expected active route '${info.pattern}', attempted current path '${attemptedPath}' could not resolve '${param.name}'`,
         );
       path[param.name] = value;
     }
     const queryState: Record<string, unknown> = {};
     for (const param of info.queryParams)
       queryState[param.name] = deserialize(param, query.get(param.name), injector);
-    return freezeDeep({ path, query: queryState });
+    return freezeRecursively({ path, query: queryState });
   }
 
   function factory(): RouterTree<R> {
@@ -565,7 +643,13 @@ export function defineAppRouter<
                 throw new Error(
                   `${info.identity}: expected active route '${info.pattern}', but the current primary route is inactive`,
                 );
-              return readState(info, active.paramMap, active.queryParamMap, injector);
+              return readState(
+                info,
+                active.paramMap,
+                active.queryParamMap,
+                injector,
+                router.url.split(/[?#]/, 1)[0] || '/',
+              );
             },
             { equal: urlOptions?.isEqual ?? (info.comparator as never) },
           );
@@ -588,28 +672,14 @@ export function defineAppRouter<
         };
       }
       for (const child of info.children) node[child.identity] = makeNode(child);
-      return freezeDeep(node);
+      return freezeRecursively(node);
     };
     const tree: Record<string, unknown> = {};
     for (const root of roots) tree[root.identity] = makeNode(root);
-    return freezeDeep(tree) as RouterTree<R>;
+    return freezeRecursively(tree) as RouterTree<R>;
   }
 
   token = new InjectionToken<RouterTree<R>>('AppRouter');
-  const provideAppRouter = (...features: ForwardedRouterFeature[]): EnvironmentProviders => {
-    if (features.some((feature) => (feature.ɵkind as number) === 5))
-      throw new Error(
-        'withRouterConfig() is not accepted by provideAppRouter(); use defineAppRouter({ routerConfig })',
-      );
-    const tokenProvider: Provider = { provide: token, useFactory: factory };
-    return makeEnvironmentProviders([
-      provideRouter(
-        routes,
-        withRouterConfig({ ...options.routerConfig, paramsInheritanceStrategy: 'always' }),
-        ...features,
-      ),
-      tokenProvider,
-    ]);
-  };
+  const provideAppRouter = createProviderFunction(token, routes, options.routerConfig, factory);
   return Object.freeze({ AppRouter: token, provideAppRouter });
 }

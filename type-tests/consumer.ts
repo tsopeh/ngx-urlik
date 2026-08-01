@@ -79,6 +79,16 @@ defineAppRouter({
 
 defineAppRouter({
   routes: {
+    // @ts-expect-error redirects must be functional; explicit undefined is not accepted
+    ROOT: {
+      path: '',
+      redirectTo: undefined,
+    },
+  },
+});
+
+defineAppRouter({
+  routes: {
     ROOT: {
       path: '',
       // @ts-expect-error unsupported Angular route property

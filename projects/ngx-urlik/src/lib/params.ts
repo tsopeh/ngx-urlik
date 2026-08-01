@@ -42,6 +42,7 @@ type Options<T, R extends boolean> = { required?: R; defaultValue?: Default<T> }
 function query<T, R extends boolean>(
   parse: (raw: unknown) => T | null,
   options: Options<T, R>,
+  format: (value: T) => string | null = String,
 ): QueryParamDefinition<T | null, R> {
   const defaultValue = (): T | null => {
     const value = options.defaultValue;
@@ -53,7 +54,7 @@ function query<T, R extends boolean>(
     serializer: {
       deserialize: (raw: unknown) => parse(raw) ?? defaultValue(),
       serialize(value: T | null) {
-        return value === null || Object.is(value, defaultValue()) ? null : String(value);
+        return value === null || Object.is(value, defaultValue()) ? null : format(value);
       },
     },
   }) as QueryParamDefinition<T | null, R>;
@@ -62,6 +63,7 @@ function query<T, R extends boolean>(
 function path<T, const N extends string>(
   name: N,
   parse: (raw: unknown) => T | null,
+  format: (value: T) => string | null = String,
 ): PathParamDefinition<T, N> {
   return Object.freeze({
     kind: 'path' as const,
@@ -70,7 +72,7 @@ function path<T, const N extends string>(
       deserialize(raw: unknown) {
         return parse(raw) as T;
       },
-      serialize: (value: T) => String(value),
+      serialize: format,
     },
   });
 }
@@ -92,7 +94,7 @@ const parseBoolean = (raw: unknown) => (raw === 'true' ? true : raw === 'false' 
 export const stringPathParam = <const N extends string>(options: { name: N }) =>
   path(options.name, parsePathString);
 export const numberPathParam = <const N extends string>(options: { name: N }) =>
-  path(options.name, parseNumber);
+  path(options.name, parseNumber, (value) => (Number.isNaN(value) ? null : String(value)));
 export const booleanPathParam = <const N extends string>(options: { name: N }) =>
   path(options.name, parseBoolean);
 
@@ -116,7 +118,7 @@ export function numberQueryParam<const R extends boolean = false>(
 export function numberQueryParam<const R extends boolean = false>(
   options: Options<number, R> = {},
 ): QueryParamDefinition<number | null, R> {
-  return query(parseNumber, options);
+  return query(parseNumber, options, (value) => (Number.isNaN(value) ? null : String(value)));
 }
 export function booleanQueryParam<const R extends boolean = false>(
   options: Options<boolean, R> & { defaultValue: Default<boolean> },
