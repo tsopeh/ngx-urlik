@@ -27,12 +27,17 @@ import {
 } from '@angular/router';
 import { filter } from 'rxjs';
 import { isEqual as defaultIsEqual } from './is-equal';
-import {
-  ParamValue,
-  PathParamDefinition,
-  QueryParamDefinition,
-  UrlParamSerializer,
-} from './params';
+import { UrlParamSerializer } from './params';
+import type { pathParam, queryParam } from './params';
+
+type PathParamDefinition<T, Name extends string = string> = ReturnType<typeof pathParam<T, Name>>;
+type QueryParamDefinition<T, Required extends boolean = false> = ReturnType<
+  typeof queryParam<T, Required>
+>;
+type ParamValue<D> = D extends
+  PathParamDefinition<infer T, string> | QueryParamDefinition<infer T, boolean>
+  ? T
+  : never;
 
 type ForwardedRouterFeature = Exclude<RouterFeatures, RouterConfigurationFeature>;
 
@@ -85,22 +90,32 @@ type StatefulNode<P, Q> = {
 
 const fallbackBrand: unique symbol = Symbol('ngx-urlik fallback route');
 const routeConfigBrand: unique symbol = Symbol('ngx-urlik route config identity');
-export type FallbackDefinition = Omit<
-  Route,
-  'path' | 'pathMatch' | 'redirectTo' | 'children' | 'loadChildren'
-> & {
+interface FallbackDefinition {
   readonly [fallbackBrand]: true;
   readonly queryParams?: QueryDefinitions;
+  readonly component?: Route['component'];
+  readonly loadComponent?: Route['loadComponent'];
+  readonly canMatch?: Route['canMatch'];
+  readonly canActivate?: Route['canActivate'];
+  readonly canActivateChild?: Route['canActivateChild'];
+  readonly canDeactivate?: Route['canDeactivate'];
+  readonly resolve?: Route['resolve'];
+  readonly data?: Route['data'];
+  readonly title?: Route['title'];
+  readonly providers?: Route['providers'];
+  readonly runGuardsAndResolvers?: Route['runGuardsAndResolvers'];
   readonly isEqual?: (a: unknown, b: unknown) => boolean;
-};
+}
 
-export function fallbackRoute<const D extends Omit<FallbackDefinition, typeof fallbackBrand>>(
-  definition: D,
+type FallbackInput = Omit<FallbackDefinition, typeof fallbackBrand>;
+
+export function fallbackRoute<const D extends FallbackInput>(
+  definition: D & Record<Exclude<keyof D, keyof FallbackInput>, never>,
 ): D & FallbackDefinition {
   return Object.freeze({ ...definition, [fallbackBrand]: true }) as D & FallbackDefinition;
 }
 
-export interface OrdinaryRouteDefinition {
+interface OrdinaryRouteDefinition {
   readonly path: string;
   readonly pathParam?: PathParamDefinition<unknown>;
   readonly queryParams?: QueryDefinitions;
@@ -119,16 +134,25 @@ export interface OrdinaryRouteDefinition {
   readonly isEqual?: (a: unknown, b: unknown) => boolean;
   readonly redirectTo?: (values: any) => UrlTree;
 }
-export type RouteDefinition = OrdinaryRouteDefinition | FallbackDefinition;
+type RouteDefinition = OrdinaryRouteDefinition | FallbackDefinition;
 
 type OrdinaryKey = keyof OrdinaryRouteDefinition;
+type RedirectKey =
+  'path' | 'pathParam' | 'queryParams' | 'redirectTo' | 'canMatch' | 'providers' | 'data';
 type FallbackKey = keyof FallbackDefinition;
 type ContextualRoute<D, AP, AQ> =
   Simplify<Merge<AP, OwnPath<D>>> extends infer P
     ? Simplify<Merge<AQ, OwnQuery<D>>> extends infer Q
       ? D &
           Record<
-            Exclude<keyof D, D extends FallbackDefinition ? FallbackKey : OrdinaryKey>,
+            Exclude<
+              keyof D,
+              D extends FallbackDefinition
+                ? FallbackKey
+                : D extends { redirectTo: (...args: never[]) => unknown }
+                  ? RedirectKey
+                  : OrdinaryKey
+            >,
             never
           > &
           (D extends FallbackDefinition
@@ -141,9 +165,12 @@ type ContextualRoute<D, AP, AQ> =
               })
       : never
     : never;
+type ReservedIdentity = 'navigate' | 'createUrlTree' | 'urlParams';
 type ContextualRoutes<R, AP = object, AQ = object> =
   R extends Readonly<Record<string, unknown>>
-    ? { readonly [K in keyof R]: ContextualRoute<R[K], AP, AQ> }
+    ? {
+        readonly [K in keyof R]: K extends ReservedIdentity ? never : ContextualRoute<R[K], AP, AQ>;
+      }
     : never;
 
 type ChildrenOf<D> = D extends { children: infer C extends Readonly<Record<string, unknown>> }
@@ -161,7 +188,7 @@ type NodeFor<D, AP, AQ, Required extends PropertyKey> =
           RouterTree<ChildrenOf<D>, P, Q, Required | RequiredQueryKeys<D>>
       : never
     : never;
-export type RouterTree<R, AP = object, AQ = object, Required extends PropertyKey = never> = {
+type RouterTree<R, AP = object, AQ = object, Required extends PropertyKey = never> = {
   readonly [K in keyof R]: NodeFor<R[K], AP, AQ, Required>;
 };
 
@@ -248,6 +275,7 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
         errors.push(`${at}: '${identity}' is a reserved router method name`);
       const fallback = fallbackBrand in definition;
       const redirect = 'redirectTo' in definition;
+      if (root && fallback) errors.push(`${at}: the root route cannot be a fallback`);
       const allowed = fallback ? fallbackKeys : redirect ? redirectKeys : ordinaryKeys;
       for (const key of Object.keys(definition))
         if (!allowed.has(key) && key !== String(fallbackBrand))
@@ -261,7 +289,7 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
         const path = definition.path;
         if (typeof path !== 'string' || (!root && path === '') || forbiddenPath.test(path))
           errors.push(`${at}: path must be ${root ? 'empty or ' : ''}one valid static segment`);
-        const pattern = `${path}${definition.pathParam ? '/:' + definition.pathParam.name : ''}`;
+        const pattern = `${path}${definition.pathParam ? '/:param' : ''}`;
         const previous = patterns.get(pattern);
         if (previous)
           errors.push(`${at}: duplicates sibling URL pattern '${pattern}' from ${previous}`);
@@ -326,6 +354,7 @@ function findActive(root: ActivatedRouteSnapshot, target: Route): ActivatedRoute
   )
     return root;
   for (const child of root.children) {
+    if (child.outlet !== 'primary') continue;
     const found = findActive(child, target);
     if (found) return found;
   }
@@ -340,6 +369,18 @@ function freezeDeep<T>(value: T): T {
   return value;
 }
 
+function freezeRouteDefinitions(routes: Readonly<Record<string, RouteDefinition>>): void {
+  for (const definition of Object.values(routes)) {
+    if (definition.queryParams) Object.freeze(definition.queryParams);
+    if (!('redirectTo' in definition) && 'children' in definition && definition.children) {
+      freezeRouteDefinitions(definition.children);
+      Object.freeze(definition.children);
+    }
+    Object.freeze(definition);
+  }
+  Object.freeze(routes);
+}
+
 export function defineAppRouter<
   const R extends Readonly<Record<string, RouteDefinition>>,
 >(options: {
@@ -349,6 +390,7 @@ export function defineAppRouter<
   AppRouter: InjectionToken<RouterTree<R>>;
   provideAppRouter: (...features: ForwardedRouterFeature[]) => EnvironmentProviders;
 } {
+  freezeRouteDefinitions(options.routes);
   const errors = validate(options.routes);
   if (errors.length) throw new Error(`Invalid app router definition:\n- ${errors.join('\n- ')}`);
   let token!: InjectionToken<RouterTree<R>>;
@@ -421,6 +463,7 @@ export function defineAppRouter<
         };
       } else if (!fallback && definition.children)
         route.children = compile(definition.children, info);
+      else if (!fallback && !definition.component && !definition.loadComponent) route.children = [];
       compiled.push(route);
     }
     return compiled;

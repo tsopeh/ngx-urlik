@@ -3,12 +3,12 @@ export interface UrlParamSerializer<T> {
   deserialize(value: unknown): T;
 }
 
-export interface PathParamDefinition<T, Name extends string = string> {
+interface PathParamDefinition<T, Name extends string = string> {
   readonly kind: 'path';
   readonly name: Name;
   readonly serializer: UrlParamSerializer<T>;
 }
-export interface QueryParamDefinition<T, Required extends boolean = false> {
+interface QueryParamDefinition<T, Required extends boolean = false> {
   readonly kind: 'query';
   readonly serializer: UrlParamSerializer<T>;
   readonly required: Required;
@@ -158,7 +158,7 @@ export function enumQueryParam<const E extends StringRecord, const R extends boo
   return query(enumParser(values), options);
 }
 
-export type ParamValue<D> = D extends
+type ParamValue<D> = D extends
   PathParamDefinition<infer T, string> | QueryParamDefinition<infer T, boolean>
   ? T
   : never;
