@@ -2,8 +2,8 @@
 
 These topics were deliberately left for later rather than implicitly rejected forever:
 
-- Angular 22 workspace/package upgrade and supported Angular version range.
-- A phased implementation plan, migration/removal of the two existing prototype APIs, and release compatibility policy.
+- Supported Angular version range beyond the current Angular 22 target.
+- Migration and release compatibility policy for future releases.
 - Comparator-specific `urlParams()` reference caching.
 - Expanding `isEqual()` for cycles, `Map`, `Set`, and other specialized values.
 - Broader runtime validation of custom serializer return values.
@@ -17,6 +17,6 @@ These topics were deliberately left for later rather than implicitly rejected fo
 - More navigation/update behavior options if concrete use cases require them.
 - Managed queuing or conflict semantics for concurrent query updates.
 - Compile-time diagnostics for parameter shadowing and structural conflicts beyond runtime aggregation.
-- Development-only freezing and diagnostic/tracing facilities.
+- Development diagnostic and tracing facilities beyond the current validation errors.
 - Optional ESLint rules warning when application code bypasses the typed API through Angular `Router` or raw route constructs.
 - Whether route-level equality callbacks can receive perfectly inferred accumulated state in all recursive TypeScript contexts; the desired public contract remains fully typed.
