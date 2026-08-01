@@ -1,6 +1,6 @@
 import {
-  EnvironmentInjector,
   EnvironmentProviders,
+  EnvironmentInjector,
   InjectionToken,
   Provider,
   Signal,
@@ -27,34 +27,39 @@ import {
 } from '@angular/router';
 import { filter } from 'rxjs';
 import { isEqual as defaultIsEqual } from './is-equal';
-import { UrlParamSerializer } from './params';
-import type { pathParam, queryParam } from './params';
-
-type PathParamDefinition<T, Name extends string = string> = ReturnType<typeof pathParam<T, Name>>;
-type QueryParamDefinition<T, Required extends boolean = false> = ReturnType<
-  typeof queryParam<T, Required>
->;
-type ParamValue<D> = D extends
-  PathParamDefinition<infer T, string> | QueryParamDefinition<infer T, boolean>
-  ? T
-  : never;
+import {
+  AnyQueryParamDefinition,
+  ArrayQueryParamDefinition,
+  DefaultValue,
+  PathParamDefinition,
+  QueryParamDefinition,
+  UrlParamCodec,
+} from './params';
 
 type ForwardedRouterFeature = Exclude<RouterFeatures, RouterConfigurationFeature>;
-
 type AnyRecord = Readonly<Record<string, unknown>>;
-type QueryDefinitions = Readonly<Record<string, QueryParamDefinition<unknown, boolean>>>;
+type QueryDefinitions = Readonly<Record<string, AnyQueryParamDefinition>>;
 type Merge<A, B> = Omit<A, keyof B> & B;
 type Simplify<T> = { [K in keyof T]: T[K] };
-type OwnPath<D> = D extends { pathParam: PathParamDefinition<infer T, infer N> }
-  ? Record<N, Exclude<T, null>>
+type OwnPath<D> = D extends { pathParam: PathParamDefinition<infer T, infer Name> }
+  ? Record<Name, T>
   : object;
+type QueryValue<D> =
+  D extends QueryParamDefinition<infer T, boolean, infer Defaulted>
+    ? Defaulted extends true
+      ? T
+      : T | null
+    : D extends ArrayQueryParamDefinition<infer T, boolean>
+      ? readonly T[]
+      : never;
 type OwnQuery<D> = D extends { queryParams: infer Q extends QueryDefinitions }
-  ? { [K in keyof Q]: ParamValue<Q[K]> }
+  ? { [K in keyof Q]: QueryValue<Q[K]> }
   : object;
 type RequiredQueryKeys<D> = D extends { queryParams: infer Q extends QueryDefinitions }
-  ? { [K in keyof Q]: Q[K] extends QueryParamDefinition<unknown, true> ? K : never }[keyof Q]
+  ? { [K in keyof Q]: Q[K] extends { required: true } ? K : never }[keyof Q]
   : never;
 type State<P, Q> = Readonly<{ path: Readonly<Simplify<P>>; query: Readonly<Simplify<Q>> }>;
+type UrlStateEquality<P = unknown, Q = unknown> = (a: State<P, Q>, b: State<P, Q>) => boolean;
 
 export interface UrlParamsRef<P, Q> {
   readonly value: Signal<State<P, Q>>;
@@ -75,39 +80,17 @@ type MethodArgs<P, Q, Required extends PropertyKey> = keyof P extends never
     ? [values?: ConstructionArgs<P, Q, Required>]
     : [values: ConstructionArgs<P, Q, Required>]
   : [values: ConstructionArgs<P, Q, Required>];
-
 type BaseNode<P, Q, Required extends PropertyKey> = {
-  createUrlTree(...args: MethodArgs<P, Q, Required>): UrlTree;
+  createUrlTree(...args: MethodArgs<P, Q, Required>): UrlTree | null;
   navigate(
     ...args: [...MethodArgs<P, Q, Required>, options?: NavigationBehaviorOptions]
   ): Promise<boolean>;
 };
 type StatefulNode<P, Q> = {
-  urlParams(options?: {
-    isEqual?: (a: State<P, Q>, b: State<P, Q>) => boolean;
-  }): UrlParamsRef<P, Q>;
+  urlParams(options?: { isEqual?: UrlStateEquality<P, Q> }): UrlParamsRef<P, Q>;
 };
 
-const fallbackBrand: unique symbol = Symbol('ngx-urlik fallback route');
 const routeConfigBrand: unique symbol = Symbol('ngx-urlik route config identity');
-interface FallbackDefinition {
-  readonly [fallbackBrand]: true;
-  readonly queryParams?: QueryDefinitions;
-  readonly component?: Route['component'];
-  readonly loadComponent?: Route['loadComponent'];
-  readonly canMatch?: Route['canMatch'];
-  readonly canActivate?: Route['canActivate'];
-  readonly canActivateChild?: Route['canActivateChild'];
-  readonly canDeactivate?: Route['canDeactivate'];
-  readonly resolve?: Route['resolve'];
-  readonly data?: Route['data'];
-  readonly title?: Route['title'];
-  readonly providers?: Route['providers'];
-  readonly runGuardsAndResolvers?: Route['runGuardsAndResolvers'];
-  readonly isEqual?: (a: unknown, b: unknown) => boolean;
-}
-
-type FallbackInput = Omit<FallbackDefinition, typeof fallbackBrand>;
 
 const angularRouteFields = [
   'component',
@@ -122,56 +105,29 @@ const angularRouteFields = [
   'providers',
   'runGuardsAndResolvers',
 ] as const satisfies readonly (keyof Route)[];
-const ordinaryRouteFields = [
-  'path',
-  'pathParam',
-  'queryParams',
-  'children',
-  ...angularRouteFields,
-  'isEqual',
-  'redirectTo',
-] as const;
-const redirectRouteFields = [
-  'path',
-  'pathParam',
-  'queryParams',
-  'redirectTo',
+const redirectAngularFields = [
   'canMatch',
   'providers',
   'data',
-] as const;
-const fallbackRouteFields = ['queryParams', ...angularRouteFields, 'isEqual'] as const;
+] as const satisfies readonly (keyof Route)[];
 
-export function fallbackRoute<const D extends FallbackInput>(
-  definition: D & Record<Exclude<keyof D, keyof FallbackInput>, never>,
-): D & FallbackDefinition {
-  return Object.freeze({ ...definition, [fallbackBrand]: true }) as D & FallbackDefinition;
-}
+export type AngularRouteOptions = Pick<Route, (typeof angularRouteFields)[number]>;
+export type AngularRedirectOptions = Pick<Route, (typeof redirectAngularFields)[number]>;
 
 interface OrdinaryRouteDefinition {
   readonly path: string;
   readonly pathParam?: PathParamDefinition<unknown>;
   readonly queryParams?: QueryDefinitions;
   readonly children?: Readonly<Record<string, RouteDefinition>>;
-  readonly component?: Route['component'];
-  readonly loadComponent?: Route['loadComponent'];
-  readonly canMatch?: Route['canMatch'];
-  readonly canActivate?: Route['canActivate'];
-  readonly canActivateChild?: Route['canActivateChild'];
-  readonly canDeactivate?: Route['canDeactivate'];
-  readonly resolve?: Route['resolve'];
-  readonly data?: Route['data'];
-  readonly title?: Route['title'];
-  readonly providers?: Route['providers'];
-  readonly runGuardsAndResolvers?: Route['runGuardsAndResolvers'];
+  readonly angular?: AngularRouteOptions;
   readonly isEqual?: (a: unknown, b: unknown) => boolean;
   readonly redirectTo?: (values: any) => UrlTree;
 }
-type RouteDefinition = OrdinaryRouteDefinition | FallbackDefinition;
+type RouteDefinition = OrdinaryRouteDefinition;
 
-type OrdinaryKey = (typeof ordinaryRouteFields)[number];
-type RedirectKey = (typeof redirectRouteFields)[number];
-type FallbackKey = (typeof fallbackRouteFields)[number] | typeof fallbackBrand;
+type OrdinaryKey = 'path' | 'pathParam' | 'queryParams' | 'children' | 'angular' | 'isEqual';
+type RedirectKey = 'path' | 'pathParam' | 'queryParams' | 'redirectTo' | 'angular';
+type FallbackKey = 'path' | 'queryParams' | 'angular' | 'isEqual';
 type ContextualRoute<D, AP, AQ> = 'redirectTo' extends keyof D
   ? D extends { readonly redirectTo: (...args: never[]) => unknown }
     ? ContextualRouteShape<D, AP, AQ>
@@ -184,7 +140,7 @@ type ContextualRouteShape<D, AP, AQ> =
           Record<
             Exclude<
               keyof D,
-              D extends FallbackDefinition
+              D extends { path: '**' }
                 ? FallbackKey
                 : D extends { redirectTo: (...args: never[]) => unknown }
                   ? RedirectKey
@@ -192,14 +148,21 @@ type ContextualRouteShape<D, AP, AQ> =
             >,
             never
           > &
-          (D extends FallbackDefinition
-            ? object
-            : {
-                readonly redirectTo?: (values: State<P, Q>) => UrlTree;
-                readonly children?: D extends { children: infer C }
-                  ? ContextualRoutes<C, P, Q>
-                  : never;
-              })
+          (D extends { path: '**' }
+            ? { readonly pathParam?: never; readonly children?: never; readonly redirectTo?: never }
+            : D extends { redirectTo: (...args: never[]) => unknown }
+              ? {
+                  readonly redirectTo: (values: State<P, Q>) => UrlTree;
+                  readonly children?: never;
+                  readonly isEqual?: never;
+                  readonly angular?: AngularRedirectOptions;
+                }
+              : {
+                  readonly redirectTo?: never;
+                  readonly children?: D extends { children: infer C }
+                    ? ContextualRoutes<C, P, Q>
+                    : never;
+                })
       : never
     : never;
 type ReservedIdentity = 'navigate' | 'createUrlTree' | 'urlParams';
@@ -213,7 +176,7 @@ type ContextualRoutes<R, AP = object, AQ = object> =
 type ChildrenOf<D> = D extends { children: infer C extends Readonly<Record<string, unknown>> }
   ? C
   : object;
-type IsFallback<D> = D extends FallbackDefinition ? true : false;
+type IsFallback<D> = D extends { path: '**' } ? true : false;
 type IsRedirect<D> = D extends { redirectTo: (...args: never[]) => unknown } ? true : false;
 type NodeFor<D, AP, AQ, Required extends PropertyKey> =
   Simplify<Merge<AP, OwnPath<D>>> extends infer P
@@ -229,16 +192,37 @@ type RouterTree<R, AP = object, AQ = object, Required extends PropertyKey = neve
   readonly [K in keyof R]: NodeFor<R[K], AP, AQ, Required>;
 };
 
+export type AppRouterDiagnosticCode =
+  | 'PARAM_DESERIALIZE_FAILED'
+  | 'PARAM_SERIALIZE_FAILED'
+  | 'PARAM_CODEC_THROWN'
+  | 'INVALID_ARRAY_REPRESENTATION';
+
+export interface AppRouterDiagnostic {
+  readonly code: AppRouterDiagnosticCode;
+  readonly message: string;
+  readonly route: string;
+  readonly parameter: string;
+  readonly operation: 'serialize' | 'deserialize';
+  readonly index?: number;
+  readonly cause?: unknown;
+}
+
+export interface AppRouterDiagnostics {
+  warn(diagnostic: AppRouterDiagnostic): void;
+}
+
 interface RuntimeParam {
   name: string;
-  serializer: UrlParamSerializer<unknown>;
+  definition: PathParamDefinition<unknown> | AnyQueryParamDefinition;
   owner: CompiledRoute;
 }
 interface CompiledRoute {
   identity: string;
   definition: RouteDefinition;
-  angular?: Route;
+  angular: Route;
   parent?: CompiledRoute;
+  ownPath?: RuntimeParam;
   pathParams: RuntimeParam[];
   queryParams: RuntimeParam[];
   pattern: string;
@@ -248,16 +232,13 @@ interface CompiledRoute {
   children: CompiledRoute[];
 }
 
-const ordinaryKeys = new Set<string>(ordinaryRouteFields);
-const redirectKeys = new Set<string>(redirectRouteFields);
-const fallbackKeys = new Set<string>(fallbackRouteFields);
-const forbiddenPath = /[\/:?#;()*]/;
+const forbiddenPath = /[\/:?#;()]/;
+const encodedOutputCharacter = /^[A-Za-z0-9\-_.!~*'()%]$/;
 
 function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
   const errors: string[] = [];
   if (routes === null || typeof routes !== 'object' || Array.isArray(routes)) {
-    errors.push('routes: route collection must be a non-null object');
-    return errors;
+    return ['routes: route collection must be a non-null object'];
   }
   if (Object.keys(routes).length !== 1)
     errors.push('routes must contain exactly one named root route');
@@ -278,15 +259,20 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
         errors.push(`${at}: route definition must be a non-null object`);
         continue;
       }
-      const fallback = fallbackBrand in definition;
+      const fallback = definition.path === '**';
       const hasRedirect = 'redirectTo' in definition;
-      const redirect = 'redirectTo' in definition && typeof definition.redirectTo === 'function';
+      const redirect = hasRedirect && typeof definition.redirectTo === 'function';
       if (hasRedirect && !redirect) errors.push(`${at}: redirectTo must be a function`);
       if (root && fallback) errors.push(`${at}: the root route cannot be a fallback`);
-      const allowed = fallback ? fallbackKeys : hasRedirect ? redirectKeys : ordinaryKeys;
+      const allowed = new Set(
+        fallback
+          ? ['path', 'queryParams', 'angular', 'isEqual']
+          : redirect
+            ? ['path', 'pathParam', 'queryParams', 'redirectTo', 'angular']
+            : ['path', 'pathParam', 'queryParams', 'children', 'angular', 'isEqual'],
+      );
       for (const key of Object.keys(definition))
-        if (!allowed.has(key) && key !== String(fallbackBrand))
-          errors.push(`${at}: unknown route property '${key}'`);
+        if (!allowed.has(key)) errors.push(`${at}: unknown route property '${key}'`);
       if (fallback) {
         if (fallbackSeen)
           errors.push(`${at}: only one fallback route is allowed per sibling branch`);
@@ -294,7 +280,12 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
       } else if (fallbackSeen) errors.push(`${at}: fallback routes must be declared last`);
       if (!fallback) {
         const path = definition.path;
-        if (typeof path !== 'string' || (!root && path === '') || forbiddenPath.test(path))
+        if (
+          typeof path !== 'string' ||
+          (!root && path === '') ||
+          path === '**' ||
+          forbiddenPath.test(path)
+        )
           errors.push(`${at}: path must be ${root ? 'empty or ' : ''}one valid static segment`);
         const pattern = `${path}${definition.pathParam ? '/:param' : ''}`;
         const previous = patterns.get(pattern);
@@ -302,13 +293,22 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
           errors.push(`${at}: duplicates sibling URL pattern '${pattern}' from ${previous}`);
         else patterns.set(pattern, at);
       }
+      const angular = definition.angular;
       if (
-        'component' in definition &&
-        definition.component &&
-        'loadComponent' in definition &&
-        definition.loadComponent
+        angular !== undefined &&
+        (angular === null || typeof angular !== 'object' || Array.isArray(angular))
       )
-        errors.push(`${at}: component and loadComponent are mutually exclusive`);
+        errors.push(`${at}.angular: Angular options must be a non-null object`);
+      else if (angular) {
+        const allowedAngular = new Set<string>(
+          redirect ? redirectAngularFields : angularRouteFields,
+        );
+        for (const key of Object.keys(angular))
+          if (!allowedAngular.has(key))
+            errors.push(`${at}.angular: unknown Angular route property '${key}'`);
+        if (angular.component && angular.loadComponent)
+          errors.push(`${at}.angular: component and loadComponent are mutually exclusive`);
+      }
       const names = new Set(ancestry);
       if (!fallback && definition.pathParam) {
         if (!definition.pathParam.name) errors.push(`${at}: path parameter name must be non-empty`);
@@ -318,15 +318,26 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
           );
         names.add(definition.pathParam.name);
       }
-      for (const name of Object.keys(definition.queryParams ?? {})) {
+      for (const [name, param] of Object.entries(definition.queryParams ?? {})) {
         if (names.has(name))
           errors.push(
             `${at}: parameter '${name}' shadows another path or query parameter in this ancestry`,
           );
         names.add(name);
+        if (param.mode === 'delimited') {
+          const separator = param.separator ?? '';
+          if (Array.from(separator).length !== 1 || encodedOutputCharacter.test(separator))
+            errors.push(
+              `${at}: query parameter '${name}' separator must be one character escaped by encodeURIComponent`,
+            );
+        }
       }
-      if (!fallback && definition.children) {
-        if (typeof definition.children !== 'object' || Array.isArray(definition.children))
+      if (!fallback && !redirect && definition.children) {
+        if (
+          typeof definition.children !== 'object' ||
+          definition.children === null ||
+          Array.isArray(definition.children)
+        )
           errors.push(`${at}.children: route collection must be a non-null object`);
         else visit(definition.children, names, at, false);
       }
@@ -334,15 +345,6 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
   };
   visit(routes, new Set(), '', true);
   return errors;
-}
-
-function angularFields(definition: RouteDefinition): Route {
-  const route: Route = {};
-  for (const key of angularRouteFields) {
-    const value = definition[key as keyof typeof definition];
-    if (value !== undefined) (route as Record<string, unknown>)[key] = value;
-  }
-  return route;
 }
 
 function findActive(root: ActivatedRouteSnapshot, target: Route): ActivatedRouteSnapshot | null {
@@ -360,67 +362,9 @@ function findActive(root: ActivatedRouteSnapshot, target: Route): ActivatedRoute
   return null;
 }
 
-function freezeRecursively<T>(
-  value: T,
-  owns: (candidate: object) => boolean = () => true,
-  seen = new WeakSet<object>(),
-): T {
-  if (!value || typeof value !== 'object' || seen.has(value) || !owns(value)) return value;
-  seen.add(value);
-  for (const child of Object.values(value)) freezeRecursively(child, owns, seen);
-  if (!Object.isFrozen(value)) Object.freeze(value);
-  return value;
-}
-
-const ownsDefinitionContainer = (value: object) => {
-  if (Array.isArray(value)) return true;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-};
-
-function freezeRouteDefinitions(routes: Readonly<Record<string, RouteDefinition>>): void {
-  for (const definition of Object.values(routes)) {
-    if (definition.queryParams) {
-      for (const parameter of Object.values(definition.queryParams)) {
-        freezeRecursively(parameter.serializer, ownsDefinitionContainer);
-        Object.freeze(parameter);
-      }
-      Object.freeze(definition.queryParams);
-    }
-    if ('pathParam' in definition && definition.pathParam) {
-      freezeRecursively(definition.pathParam.serializer, ownsDefinitionContainer);
-      Object.freeze(definition.pathParam);
-    }
-    for (const field of angularRouteFields) {
-      const value = definition[field as keyof typeof definition];
-      if (value && typeof value === 'object') freezeRecursively(value, ownsDefinitionContainer);
-    }
-    if (!('redirectTo' in definition) && 'children' in definition && definition.children) {
-      freezeRouteDefinitions(definition.children);
-      Object.freeze(definition.children);
-    }
-    Object.freeze(definition);
-  }
-  Object.freeze(routes);
-}
-
-function freezeCompiledMetadata(infos: readonly CompiledRoute[]): void {
-  for (const info of infos) {
-    for (const parameter of [...info.pathParams, ...info.queryParams]) Object.freeze(parameter);
-    Object.freeze(info.pathParams);
-    Object.freeze(info.queryParams);
-    Object.freeze(info.children);
-    Object.freeze(info);
-  }
-}
-
-// Angular exposes the discriminator on RouterFeature but does not export RouterFeatureKind.
-// This is RouterFeatureKind.RouterConfigurationFeature (5); isolate the private-runtime
-// dependency here so it cannot leak into provider logic.
 const routerConfigurationFeatureKind = 5;
-function isRouterConfigurationFeature(feature: RouterFeatures): boolean {
-  return (feature.ɵkind as number) === routerConfigurationFeatureKind;
-}
+const isRouterConfigurationFeature = (feature: RouterFeatures) =>
+  (feature.ɵkind as number) === routerConfigurationFeatureKind;
 
 function createProviderFunction<T>(
   token: InjectionToken<T>,
@@ -445,50 +389,64 @@ function createProviderFunction<T>(
   };
 }
 
+function resolveDefault<T>(value: DefaultValue<T> | undefined): T | undefined {
+  return typeof value === 'function' ? (value as () => T)() : value;
+}
+
 export function defineAppRouter<
   const R extends Readonly<Record<string, RouteDefinition>>,
 >(options: {
   routes: R & ContextualRoutes<R>;
   routerConfig?: Omit<RouterConfigOptions, 'paramsInheritanceStrategy'>;
+  diagnostics?: AppRouterDiagnostics;
 }): {
   AppRouter: InjectionToken<RouterTree<R>>;
   provideAppRouter: (...features: ForwardedRouterFeature[]) => EnvironmentProviders;
 } {
   const errors = validate(options.routes);
   if (errors.length) throw new Error(`Invalid app router definition:\n- ${errors.join('\n- ')}`);
-  freezeRouteDefinitions(options.routes);
   let token!: InjectionToken<RouterTree<R>>;
   const roots: CompiledRoute[] = [];
+  const warn =
+    options.diagnostics?.warn ??
+    ((diagnostic: AppRouterDiagnostic) => console.warn(diagnostic.message));
+  const report = (partial: Omit<AppRouterDiagnostic, 'message'>, detail: string) => {
+    const index = partial.index === undefined ? '' : ` at index ${partial.index}`;
+    const runtime = [...roots]
+      .flatMap(function walk(route): CompiledRoute[] {
+        return [route, ...route.children.flatMap(walk)];
+      })
+      .find((route) =>
+        [...route.pathParams, ...route.queryParams].some(
+          (param) => param.name === partial.parameter && param.owner.identity === partial.route,
+        ),
+      );
+    const placement = runtime?.pathParams.some(
+      (param) => param.name === partial.parameter && param.owner.identity === partial.route,
+    )
+      ? 'path'
+      : 'query';
+    warn({
+      ...partial,
+      message: `${partial.route}: ${partial.operation} ${placement} parameter '${partial.parameter}'${index} ${detail}`,
+    });
+  };
 
   const compile = (
     definitions: Readonly<Record<string, RouteDefinition>>,
     parent?: CompiledRoute,
   ): Routes => {
     const compiled: Route[] = [];
-    const ordered = Object.entries(definitions).sort(
-      ([, a], [, b]) => Number(fallbackBrand in a) - Number(fallbackBrand in b),
-    );
-    for (const [identity, definition] of ordered) {
-      const fallback = fallbackBrand in definition;
-      const redirect = 'redirectTo' in definition && typeof definition.redirectTo === 'function';
-      const ownPath =
-        !fallback && definition.pathParam
-          ? [
-              {
-                name: definition.pathParam.name,
-                serializer: definition.pathParam.serializer,
-              } as RuntimeParam,
-            ]
-          : [];
-      const ownQuery = Object.entries(definition.queryParams ?? {}).map(
-        ([name, param]) => ({ name, serializer: param.serializer }) as RuntimeParam,
-      );
-      const info: CompiledRoute = {
+    for (const [identity, definition] of Object.entries(definitions)) {
+      const fallback = definition.path === '**';
+      const redirect = typeof definition.redirectTo === 'function';
+      const info = {
         identity,
         definition,
         parent,
-        pathParams: [...(parent?.pathParams ?? []), ...ownPath],
-        queryParams: [...(parent?.queryParams ?? []), ...ownQuery],
+        angular: { ...(definition.angular ?? {}) },
+        pathParams: [...(parent?.pathParams ?? [])],
+        queryParams: [...(parent?.queryParams ?? [])],
         pattern: [
           ...(parent ? [parent.pattern] : []),
           fallback
@@ -499,74 +457,142 @@ export function defineAppRouter<
           .join('/'),
         fallback,
         redirect,
-        comparator:
-          (definition.isEqual as (a: unknown, b: unknown) => boolean) ??
-          parent?.comparator ??
-          defaultIsEqual,
+        comparator: definition.isEqual ?? parent?.comparator ?? defaultIsEqual,
         children: [],
-      };
-      ownPath.forEach((param) => (param.owner = info));
-      ownQuery.forEach((param) => (param.owner = info));
+      } as CompiledRoute;
+      if (!fallback && definition.pathParam) {
+        info.ownPath = {
+          name: definition.pathParam.name,
+          definition: definition.pathParam,
+          owner: info,
+        };
+        info.pathParams.push(info.ownPath);
+      }
+      for (const [name, param] of Object.entries(definition.queryParams ?? {}))
+        info.queryParams.push({ name, definition: param, owner: info });
       if (parent) parent.children.push(info);
       else roots.push(info);
-      const route = angularFields(definition);
+      const route = info.angular;
       (route as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
       route.path = fallback
         ? '**'
         : definition.path + (definition.pathParam ? `/:${definition.pathParam.name}` : '');
-      info.angular = route;
       if (redirect) {
         route.pathMatch = 'full';
         route.redirectTo = (snapshot) => {
-          const injector = inject(EnvironmentInjector);
           const state = readState(
             info,
             snapshot.paramMap,
             snapshot.queryParamMap,
-            injector,
             `/${snapshot.url.map((segment) => segment.path).join('/')}`,
           );
-          const result = (definition as OrdinaryRouteDefinition).redirectTo!(state);
-          if (!(result instanceof UrlTree))
-            throw new Error(`${info.pattern}: redirectTo must synchronously return a UrlTree`);
-          return result;
+          return definition.redirectTo!(state);
         };
       } else if (!fallback && definition.children)
         route.children = compile(definition.children, info);
-      else if (!fallback && !definition.component && !definition.loadComponent) route.children = [];
+      else if (!fallback && !route.component && !route.loadComponent) route.children = [];
       compiled.push(route);
     }
     return compiled;
   };
-  const routes = compile(options.routes);
-  const collect = (info: CompiledRoute): CompiledRoute[] => [
-    info,
-    ...info.children.flatMap(collect),
-  ];
-  // Angular stores private lazy-loading and injector state on its Route objects at runtime.
-  // Those objects stay mutable; only application-owned metadata is frozen.
-  freezeCompiledMetadata(roots.flatMap(collect));
 
-  function deserialize(param: RuntimeParam, raw: unknown, injector: EnvironmentInjector): unknown {
+  const decode = (param: RuntimeParam, raw: string, index?: number): unknown | null => {
     try {
-      return runInInjectionContext(injector, () => param.serializer.deserialize(raw));
-    } catch (error) {
-      throw new Error(`${param.owner.identity}: failed to deserialize parameter '${param.name}'`, {
-        cause: error,
-      });
+      const value = (param.definition.codec as UrlParamCodec<unknown>).deserialize(raw);
+      if (value === null || value === undefined)
+        report(
+          {
+            code: 'PARAM_DESERIALIZE_FAILED',
+            route: param.owner.identity,
+            parameter: param.name,
+            operation: 'deserialize',
+            index,
+          },
+          'was invalid',
+        );
+      return value;
+    } catch (cause) {
+      report(
+        {
+          code: 'PARAM_CODEC_THROWN',
+          route: param.owner.identity,
+          parameter: param.name,
+          operation: 'deserialize',
+          index,
+          cause,
+        },
+        'threw in its codec',
+      );
+      return null;
     }
-  }
-  function readState(
+  };
+
+  const queryFallback = (definition: AnyQueryParamDefinition) => {
+    const fallback = resolveDefault(definition.defaultValue as DefaultValue<unknown> | undefined);
+    return fallback ?? (definition.mode === 'scalar' ? null : []);
+  };
+
+  const readQuery = (param: RuntimeParam, query: ParamMap): unknown => {
+    const definition = param.definition as AnyQueryParamDefinition;
+    const raws = query.getAll(param.name);
+    if (raws.length === 0) return queryFallback(definition);
+    if (definition.mode === 'scalar') {
+      const value = decode(param, raws.at(-1)!);
+      return value ?? queryFallback(definition);
+    }
+    if (definition.mode === 'delimited' && raws.length !== 1) {
+      report(
+        {
+          code: 'INVALID_ARRAY_REPRESENTATION',
+          route: param.owner.identity,
+          parameter: param.name,
+          operation: 'deserialize',
+        },
+        'used repeated keys for a delimited value',
+      );
+      return queryFallback(definition);
+    }
+    const encoded = definition.mode === 'repeated' ? raws : raws[0].split(definition.separator!);
+    const values: unknown[] = [];
+    let invalid = false;
+    encoded.forEach((item, index) => {
+      let raw = item;
+      if (definition.mode === 'delimited') {
+        try {
+          raw = decodeURIComponent(item);
+        } catch (cause) {
+          report(
+            {
+              code: 'PARAM_DESERIALIZE_FAILED',
+              route: param.owner.identity,
+              parameter: param.name,
+              operation: 'deserialize',
+              index,
+              cause,
+            },
+            'had malformed item encoding',
+          );
+          invalid = true;
+          return;
+        }
+      }
+      const value = decode(param, raw, index);
+      if (value === null || value === undefined) invalid = true;
+      else values.push(value);
+    });
+    return invalid ? queryFallback(definition) : values;
+  };
+
+  const readState = (
     info: CompiledRoute,
     params: ParamMap,
     query: ParamMap,
-    injector: EnvironmentInjector,
     attemptedPath: string,
-  ): State<AnyRecord, AnyRecord> {
+  ): State<AnyRecord, AnyRecord> => {
     const path: Record<string, unknown> = {};
     for (const param of info.pathParams) {
       const raw = params.get(param.name);
-      const value = deserialize(param, raw, injector);
+      const value = raw === null ? null : decode(param, raw);
       if (raw === null || value === null || value === undefined)
         throw new Error(
           `${info.identity}: expected active route '${info.pattern}', attempted current path '${attemptedPath}' could not resolve '${param.name}'`,
@@ -574,10 +600,11 @@ export function defineAppRouter<
       path[param.name] = value;
     }
     const queryState: Record<string, unknown> = {};
-    for (const param of info.queryParams)
-      queryState[param.name] = deserialize(param, query.get(param.name), injector);
-    return freezeRecursively({ path, query: queryState });
-  }
+    for (const param of info.queryParams) queryState[param.name] = readQuery(param, query);
+    return { path, query: queryState };
+  };
+
+  const routes = compile(options.routes);
 
   function factory(): RouterTree<R> {
     const router = inject(Router);
@@ -586,10 +613,78 @@ export function defineAppRouter<
     router.events
       .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
       .subscribe(() => navigation.update((value) => value + 1));
+
+    const encode = (param: RuntimeParam, value: unknown, index?: number): string | null => {
+      try {
+        const output = (param.definition.codec as UrlParamCodec<unknown>).serialize(value);
+        if (typeof output !== 'string') {
+          report(
+            {
+              code: 'PARAM_SERIALIZE_FAILED',
+              route: param.owner.identity,
+              parameter: param.name,
+              operation: 'serialize',
+              index,
+            },
+            'was invalid',
+          );
+          return null;
+        }
+        return output;
+      } catch (cause) {
+        report(
+          {
+            code: 'PARAM_CODEC_THROWN',
+            route: param.owner.identity,
+            parameter: param.name,
+            operation: 'serialize',
+            index,
+            cause,
+          },
+          'threw in its codec',
+        );
+        return null;
+      }
+    };
+
+    const serializeQuery = (
+      param: RuntimeParam,
+      value: unknown,
+    ): string | readonly string[] | null => {
+      const definition = param.definition as AnyQueryParamDefinition;
+      const fallback = runInInjectionContext(injector, () =>
+        resolveDefault(definition.defaultValue as DefaultValue<unknown> | undefined),
+      );
+      if (fallback !== undefined && defaultIsEqual(value, fallback)) return null;
+      if (definition.mode === 'scalar') return value === null ? null : encode(param, value);
+      if (!Array.isArray(value)) {
+        report(
+          {
+            code: 'PARAM_SERIALIZE_FAILED',
+            route: param.owner.identity,
+            parameter: param.name,
+            operation: 'serialize',
+          },
+          'expected an array',
+        );
+        return null;
+      }
+      if (value.length === 0) return null;
+      const items: string[] = [];
+      let invalid = false;
+      value.forEach((item, index) => {
+        const output = encode(param, item, index);
+        if (output === null) invalid = true;
+        else items.push(output);
+      });
+      if (invalid) return null;
+      return definition.mode === 'repeated'
+        ? items
+        : items.map((item) => encodeURIComponent(item)).join(definition.separator!);
+    };
+
     const makeNode = (info: CompiledRoute): Record<string, unknown> => {
       const node: Record<string, unknown> = {};
-      const serialize = (param: RuntimeParam, value: unknown) =>
-        runInInjectionContext(injector, () => param.serializer.serialize(value));
       if (!info.fallback) {
         node['createUrlTree'] = (values: { path?: AnyRecord; query?: AnyRecord } = {}) => {
           const chain: CompiledRoute[] = [];
@@ -597,25 +692,29 @@ export function defineAppRouter<
             chain.unshift(current);
           const commands: unknown[] = ['/'];
           for (const part of chain) {
-            const definition = part.definition as OrdinaryRouteDefinition;
-            if (definition.path) commands.push(definition.path);
-            if (definition.pathParam) {
-              const value = values.path?.[definition.pathParam.name];
-              const output = serialize(
-                part.pathParams.find((param) => param.owner === part)!,
-                value,
-              );
-              if (output === null || output === '')
-                throw new Error(
-                  `${part.identity}: path parameter '${definition.pathParam.name}' cannot serialize to an empty segment`,
+            if (part.definition.path) commands.push(part.definition.path);
+            if (part.ownPath) {
+              const output = encode(part.ownPath, values.path?.[part.ownPath.name]);
+              if (output === null) return null;
+              if (output === '') {
+                report(
+                  {
+                    code: 'PARAM_SERIALIZE_FAILED',
+                    route: part.ownPath.owner.identity,
+                    parameter: part.ownPath.name,
+                    operation: 'serialize',
+                  },
+                  'produced an empty path segment',
                 );
+                return null;
+              }
               commands.push(output);
             }
           }
-          const queryParams: Record<string, string> = {};
+          const queryParams: Record<string, string | readonly string[]> = {};
           for (const param of info.queryParams) {
             if (!(param.name in (values.query ?? {}))) continue;
-            const output = serialize(param, values.query?.[param.name]);
+            const output = serializeQuery(param, values.query?.[param.name]);
             if (output !== null) queryParams[param.name] = output;
           }
           return router.createUrlTree(commands, { queryParams });
@@ -623,32 +722,32 @@ export function defineAppRouter<
         node['navigate'] = (
           values?: { path?: AnyRecord; query?: AnyRecord },
           navigationOptions?: NavigationBehaviorOptions,
-        ) =>
-          router.navigateByUrl(
-            (node['createUrlTree'] as (value?: unknown) => UrlTree)(values),
-            navigationOptions,
-          );
+        ) => {
+          const tree = (node['createUrlTree'] as (value?: unknown) => UrlTree | null)(values);
+          return tree === null
+            ? Promise.resolve(false)
+            : router.navigateByUrl(tree, navigationOptions);
+        };
       }
       if (!info.redirect) {
         let stable: UrlParamsRef<AnyRecord, AnyRecord> | undefined;
-        node['urlParams'] = (urlOptions?: {
-          isEqual?: (a: State<AnyRecord, AnyRecord>, b: State<AnyRecord, AnyRecord>) => boolean;
-        }) => {
+        node['urlParams'] = (urlOptions?: { isEqual?: UrlStateEquality<AnyRecord, AnyRecord> }) => {
           if (!urlOptions && stable) return stable;
           const value = computed(
             () => {
               navigation();
-              const active = findActive(router.routerState.snapshot.root, info.angular!);
+              const active = findActive(router.routerState.snapshot.root, info.angular);
               if (!active)
                 throw new Error(
                   `${info.identity}: expected active route '${info.pattern}', but the current primary route is inactive`,
                 );
-              return readState(
-                info,
-                active.paramMap,
-                active.queryParamMap,
-                injector,
-                router.url.split(/[?#]/, 1)[0] || '/',
+              return runInInjectionContext(injector, () =>
+                readState(
+                  info,
+                  active.paramMap,
+                  active.queryParamMap,
+                  router.url.split(/[?#]/, 1)[0] || '/',
+                ),
               );
             },
             { equal: urlOptions?.isEqual ?? (info.comparator as never) },
@@ -656,11 +755,10 @@ export function defineAppRouter<
           const ref: UrlParamsRef<AnyRecord, AnyRecord> = {
             value,
             updateQueryParams: (updater, updateOptions) => {
-              const previous = value().query;
-              const next = updater(previous);
+              const next = updater(value().query);
               const tree = router.parseUrl(router.url);
               for (const param of info.queryParams) {
-                const output = serialize(param, next[param.name]);
+                const output = serializeQuery(param, next[param.name]);
                 if (output === null) delete tree.queryParams[param.name];
                 else tree.queryParams[param.name] = output;
               }
@@ -672,14 +770,14 @@ export function defineAppRouter<
         };
       }
       for (const child of info.children) node[child.identity] = makeNode(child);
-      return freezeRecursively(node);
+      return node;
     };
     const tree: Record<string, unknown> = {};
     for (const root of roots) tree[root.identity] = makeNode(root);
-    return freezeRecursively(tree) as RouterTree<R>;
+    return tree as RouterTree<R>;
   }
 
   token = new InjectionToken<RouterTree<R>>('AppRouter');
   const provideAppRouter = createProviderFunction(token, routes, options.routerConfig, factory);
-  return Object.freeze({ AppRouter: token, provideAppRouter });
+  return { AppRouter: token, provideAppRouter };
 }

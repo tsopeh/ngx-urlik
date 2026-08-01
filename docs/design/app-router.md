@@ -1,207 +1,193 @@
 # Typed App Router design
 
-Status: accepted product design; implemented on a fresh Angular 22 workspace baseline.
+Status: accepted product design for Angular 22.
 
 ## Vision
 
-The library is intended to feel like a natural, signal-first improvement to Angular routing. It replaces Angular's `Routes` configuration as the application's routing source of truth and provides a fully typed application-specific router. Angular's router remains the runtime engine.
+`ngx-urlik` is a signal-first typed layer over Angular Router. The application declares one complete static tree and receives an application-specific injectable router. Angular remains responsible for matching, activation, navigation, browser history, parsing, and encoding.
 
-The complete route tree is declared statically at application startup. Components may be lazy-loaded, but route definitions may not be contributed or lazy-loaded later.
+The library owns:
 
-The definition produces:
-
-- `AppRouter`, an application-specific injection token for the typed route tree;
-- `provideAppRouter(...features)`, an Angular provider function;
-- typed, absolute `navigate()` and `createUrlTree()` methods on route nodes;
-- signal-based, accumulated path and query state;
-- route-scoped query updates.
-
-Angular 22 is the target. The implementation uses Angular 22's generated library build and Vitest workspace configuration with Node 24.15+ and TypeScript 6.
+- static route identity and structural validation;
+- deterministic absolute URL construction;
+- pure reusable parameter codecs and placement policy;
+- typed accumulated path/query state;
+- route-scoped query updates;
+- contextual equality and parameter diagnostics.
 
 ## Canonical example
 
 ```ts
 const { AppRouter, provideAppRouter } = defineAppRouter({
+  diagnostics: {
+    warn: (diagnostic) => telemetry.record('router-warning', diagnostic),
+  },
   routes: {
     ROOT: {
       path: '',
       queryParams: {
-        locale: stringQueryParam({ defaultValue: 'en' }),
+        locale: queryParam({
+          codec: stringCodec(),
+          defaultValue: () => inject(LocaleSettings).defaultLocale(),
+        }),
       },
       children: {
-        WORKSPACES: {
-          path: 'workspaces',
-          component: WorkspacesComponent,
+        WORKSPACE: {
+          path: 'workspace',
+          pathParam: pathParam({
+            name: 'workspaceId',
+            codec: stringCodec(),
+          }),
           queryParams: {
-            search: stringQueryParam(),
+            tab: queryParam({
+              codec: enumCodec(WorkspaceTab),
+              required: true,
+            }),
+            members: repeatedQueryParam({ codec: stringCodec() }),
           },
-          children: {
-            WORKSPACE: {
-              path: 'workspace',
-              pathParam: stringPathParam({ name: 'workspaceId' }),
-              loadComponent: () =>
-                import('./workspace.component').then((m) => m.WorkspaceComponent),
-              queryParams: {
-                tab: enumQueryParam(WorkspaceTab, { required: true }),
-              },
-            },
+          angular: {
+            loadComponent: () =>
+              import('./workspace.component').then((module) => module.WorkspaceComponent),
           },
         },
-        LEGACY_WORKSPACE: {
-          path: 'legacy-workspace',
-          pathParam: stringPathParam({ name: 'workspaceId' }),
+        LEGACY: {
+          path: 'legacy',
+          pathParam: pathParam({ name: 'workspaceId', codec: stringCodec() }),
           redirectTo: ({ path }) =>
-            inject(AppRouter).ROOT.WORKSPACES.WORKSPACE.createUrlTree({
+            inject(AppRouter).ROOT.WORKSPACE.createUrlTree({
               path: { workspaceId: path.workspaceId },
               query: { tab: null },
-            }),
+            }) ?? inject(Router).parseUrl('/'),
         },
-        NOT_FOUND: fallbackRoute({
-          loadComponent: () => import('./not-found.component').then((m) => m.NotFoundComponent),
-        }),
+        NOT_FOUND: {
+          path: '**',
+          angular: {
+            loadComponent: () =>
+              import('./not-found.component').then((module) => module.NotFoundComponent),
+          },
+        },
       },
     },
   },
 });
 ```
 
-```ts
-bootstrapApplication(AppComponent, {
-  providers: [provideAppRouter(withComponentInputBinding(), withViewTransitions())],
-});
-```
-
-Ordinary routes are plain objects. `ROOT` and uppercase route identities are conventions, not enforced spellings.
-
 ## Route tree and identity
 
-- `defineAppRouter()` accepts `{ routes: ... }`, leaving room for global options.
-- There is exactly one root route with a non-empty string identity.
-- The root path may be empty or one static segment. Only the root may use `path: ''`.
-- The root may declare a path parameter.
-- Children are keyed objects, not arrays. Keys are stable application identities and need not match URL segments.
-- Identities must be non-empty strings. `navigate`, `createUrlTree`, and `urlParams` are reserved at every node.
-- Each ordinary route contributes exactly one static segment and optionally one dynamic segment immediately after it.
-- A static path may not contain `/`, `:`, `?`, `#`, `;`, `(`, `)`, or `*`. Multiple static segments require nested route definitions.
-- Route definitions and the generated router API are immutable after definition.
+- There is exactly one named root.
+- Children are keyed objects; keys are stable application identities independent of URL segments.
+- `navigate`, `createUrlTree`, and `urlParams` are reserved identities.
+- Only the root may use `path: ''`.
+- Ordinary routes contribute one static segment and optionally one dynamic segment immediately after it.
+- Static paths may not contain Angular path syntax; multiple segments require nested definitions.
+- Components may be lazy, but route definitions may not be lazy or contributed later.
 - Generated Angular `Routes` remain private.
 
-The route identity chain mirrors application hierarchy, while `path` controls URL representation:
+## Route kinds
+
+Ordinary routes may have `pathParam`, `queryParams`, children, equality configuration, and an `angular` options object. Componentless leaves remain valid.
+
+Redirect routes are discriminated by `redirectTo`. Their callback receives typed accumulated source state and must synchronously return a definite `UrlTree`. Because typed construction can return `null`, redirect code must choose an explicit fallback. Redirects support only `canMatch`, `providers`, and `data` under `angular`; they have construction methods but no `urlParams()`.
+
+Fallback routes use the literal `path: '**'`. There may be at most one per sibling branch and it must be declared last. A fallback has state but no canonical construction/navigation methods. It cannot have a path parameter, redirect, or children.
+
+## Angular options
+
+Framework-owned route fields live under `angular`:
 
 ```ts
-router.ROOT.WORKSPACES.WORKSPACE;
-```
-
-## Supported route kinds
-
-### Ordinary routes
-
-Ordinary routes may use `component`, `loadComponent`, or neither. They may have children whether or not they render a component. Componentless leaf routes are valid. `component` and `loadComponent` are mutually exclusive.
-
-The supported Angular-compatible hooks are:
-
-- `canMatch`, `canActivate`, `canActivateChild`, and `canDeactivate`;
-- `resolve`, `data`, `title`, `providers`, and `runGuardsAndResolvers`.
-
-Guards and resolvers use Angular's functional contracts. Route definitions cannot use `loadChildren`.
-
-### Redirect routes
-
-Only functional redirects returning `UrlTree` are supported. The callback runs in an Angular injection context, may inject `AppRouter`, and receives typed accumulated `{ path, query }` source values. Raw redirect strings are unsupported.
-
-Redirect nodes expose `navigate()` and `createUrlTree()`, but not `urlParams()`. They allow only `path`, `pathParam`, `queryParams`, `redirectTo`, `canMatch`, `providers`, and `data`. They cannot have a component, children, activation guards, resolvers, titles, equality configuration, or guard/resolver rerun policy. Redirect matching is exact (`pathMatch: 'full'`) and `pathMatch` is not public configuration.
-
-### Fallback routes
-
-`fallbackRoute()` represents Angular's `**`. It has no canonical path, so it exposes `urlParams()` but not navigation construction methods. It may use query parameters and the ordinary non-path capabilities. It cannot define `path`, `pathParam`, children, or a redirect.
-
-There may be at most one fallback per sibling branch and it is compiled last. Fallbacks are branch-scoped: a fallback under a non-empty root only catches URLs after that root prefix matches.
-
-## Parameter accumulation and ownership
-
-Path and query definitions accumulate from root to the selected route. Construction and reactive state use the accumulated schema.
-
-Parameter names form one namespace along a chain. A descendant may not shadow any ancestor parameter, including cross-kind path/query collisions. A route may not give its own path and query parameters the same name. Sibling branches may reuse names.
-
-`defineAppRouter()` also rejects duplicate generated path patterns among siblings. Structural validation aggregates all discovered errors into one contextual exception, including unknown route properties and suggested fixes where possible.
-
-## Serialization
-
-```ts
-interface UrlParamSerializer<T> {
-  serialize(value: T): string | null;
-  deserialize(value: unknown): T;
+angular: {
+  component,
+  loadComponent,
+  canMatch,
+  canActivate,
+  canActivateChild,
+  canDeactivate,
+  resolve,
+  data,
+  title,
+  providers,
+  runGuardsAndResolvers,
 }
 ```
 
-`null` means absent or unresolvable URL state. `undefined` is forbidden in serializer value types at the `pathParam()` and `queryParam()` boundaries. This gives reactive values a stable object shape compatible with Angular Signal Forms, where `undefined` means a field does not exist.
+`component` and `loadComponent` are mutually exclusive. ngx-urlik forwards these values without reproducing Angular runtime behavior.
 
-This distinction applies to reactive state, not to the separate construction-input type. Optional query construction properties may be omitted, but every key is present after deserialization in `urlParams.value().query` and in the complete state passed to `updateQueryParams()`.
-
-Serializers operate on decoded values; Angular owns URL encoding. They are synchronous. Every serializer call and default-value factory runs inside the application `EnvironmentInjector`, so synchronous `inject()` is supported. Static validation never executes serializers.
-
-Custom adapters are:
+## Codecs and placement
 
 ```ts
-pathParam({ name: 'coordinates', serializer });
-queryParam({ serializer, required: true });
+interface UrlParamCodec<T> {
+  serialize(value: T): string | null;
+  deserialize(raw: string): T | null;
+}
 ```
 
-Initial built-ins provide string, number, boolean, and readonly string-record enum families for both path and query placement. Dates and collections require custom serializers.
+Codecs handle one decoded scalar string. `T` cannot contain `null` or `undefined`; `null` means conversion failed. Codecs are pure and calling Angular `inject()` inside them is unsupported. Built-ins cover strings, numbers, booleans, and readonly string-valued enums/records.
 
-Built-in details:
+Placement wrappers add URL policy:
 
-- String query parameters distinguish absent (`null`) from present empty (`''`). Empty path strings are invalid.
-- Numbers require whole-value parsing. Finite numbers, `Infinity`, and `-Infinity` are valid; `NaN`, empty strings, and partial forms such as `12px` are invalid.
+```ts
+pathParam({ name, codec });
+queryParam({ codec, required, defaultValue });
+repeatedQueryParam({ codec, required, defaultValue });
+delimitedQueryParam({ codec, separator, required, defaultValue });
+```
+
+Codec calls are guarded by the library. A thrown codec error becomes a diagnostic and invalid data. Default factories are consumer callbacks, execute in the application injection context, and propagate their own exceptions.
+
+### Built-in scalar semantics
+
+- Strings preserve a present empty query value; empty path segments remain invalid.
+- Numbers require whole-value parsing. Finite numbers and signed infinities are valid; `NaN`, empty strings, and partial forms are invalid.
 - Booleans accept only lowercase `true` and `false`.
-- Enums accept native string enums and readonly string-valued records; numeric and heterogeneous enums are invalid.
-- Query reads use Angular `ParamMap.get()`. For repeated keys, the first value wins.
-- Malformed built-in query values deserialize to `null` or their configured default.
-- A thrown custom deserializer error is rethrown with route and parameter context.
-- Broader runtime validation of custom serializer return types is deferred. Path construction must still reject `null` and empty output because no segment can be constructed.
+- Enums accept only declared string values; numeric and heterogeneous enums are invalid.
 
-### Defaults
+### Query cardinality
 
-Query helpers have overloads based on `defaultValue`:
+Scalar queries use the final value when a physical key repeats.
 
-```ts
-stringQueryParam(); // string | null
-stringQueryParam({ defaultValue: 'all' }); // string
+Repeated arrays map physical values directly:
+
+```text
+?tag=a&tag=b → ['a', 'b']
 ```
 
-A missing or malformed value resolves to the default. A value equal to the current default serializes to `null`, producing a compact canonical URL. Defaults may be values or synchronous factories. Factories are evaluated when needed, not once; signal reads inside them participate in reactive dependency tracking.
+Delimited arrays require exactly one physical key:
 
-Path parameters do not use defaults. Their values are required for construction. When a route's path state is read, every accumulated path value must be present and deserialize non-null; otherwise the library throws an error showing the expected route pattern and attempted current path. An ancestor route is considered resolvable while one of its descendants is active. Invalid path deserialization is checked when typed state is read, not during Angular matching.
-
-## Construction API
-
-Each ordinary route node exposes absolute, deterministic construction:
-
-```ts
-createUrlTree(values): UrlTree
-navigate(values, options?: NavigationBehaviorOptions): Promise<boolean>
+```text
+?tag=a,b → ['a', 'b']
 ```
 
-The values argument has explicit `{ path, query }` groups and is conditionally optional:
+Each delimited element is encoded with `encodeURIComponent` before joining. A comma inside an item therefore appears as `%252C` in the physical URL after Angular applies the outer query encoding. Separators must be exactly one character that `encodeURIComponent` always escapes. Repeated physical keys invalidate a delimited value; representations are never mixed.
 
-- `path` is required if the accumulated route has any path parameters; every path key is required and non-null.
-- Query helpers are optional construction inputs by default.
-- `{ required: true }` makes that query property required in construction input, but the value may still be nullable. `null` explicitly omits the physical key.
-- `query` is required if it contains a required property; otherwise it is optional.
-- The entire argument is optional only when no construction input is required.
+Absent arrays resolve to `[]`. Empty elements are retained when their codec accepts the empty string. One invalid element invalidates the complete collection and selects its current default or `[]`.
 
-Construction never inherits current URL state. Omitted optional query inputs and unknown current query parameters are absent from the target. `navigate()` and `createUrlTree()` construct the same URL. Navigation accepts Angular's `NavigationBehaviorOptions`; fragments and relative navigation are unsupported.
+## Defaults and required construction
 
-Query output order is deterministic: ancestor declarations precede descendants, and keys retain declaration order within each level.
+Query defaults may be values or synchronous injection-aware factories. Missing and malformed reads resolve to the current default. A value deeply equal to the current default is omitted from canonical construction.
 
-Angular's normal `[routerLink]` consumes generated `UrlTree` values; no custom link directive is planned initially.
+`required: true` requires the construction property to be present but does not demand a physical key. `null` remains a valid explicit scalar decision and `[]` remains a valid explicit array decision.
 
-## Reactive state and query updates
+Path values are always required and non-null. Parameter names share one namespace along a route chain; descendants may not shadow ancestor path or query names.
+
+## Deterministic construction
+
+Ordinary and redirect nodes expose:
+
+```ts
+createUrlTree(values): UrlTree | null;
+navigate(values, options?): Promise<boolean>;
+```
+
+Construction is absolute and never inherits current query state. Invalid query values are diagnosed and omitted while the remaining URL is constructed. Invalid path construction returns `null`; `navigate()` then resolves `false` without invoking Angular.
+
+Query declaration order is deterministic: ancestors precede descendants, with source order retained at each level.
+
+## Reactive state and updates
 
 ```ts
 interface UrlParamsRef<Path, Query> {
-  readonly value: Signal<{ path: Path; query: Query }>;
-
+  readonly value: Signal<Readonly<{ path: Path; query: Query }>>;
   updateQueryParams(
     updater: (previous: Readonly<Query>) => Query,
     options?: { replaceUrl?: boolean },
@@ -209,46 +195,22 @@ interface UrlParamsRef<Path, Query> {
 }
 ```
 
-The API is signal-only and readonly. Consumers may use Angular interop for observables. Direct writable Signal Forms integration is deferred.
+Every declared query property exists in state. Optional scalar values use `null`; arrays use `[]`. Reading an inactive node or an invalid accumulated active path throws a semantic error.
 
-`urlParams()` resolves the selected active branch. Unresolvable accumulated path state throws rather than returning a nullable whole object. The query object always contains every declared accumulated key after deserialization.
-
-`updateQueryParams()`:
-
-- accepts only the functional, complete-state form; there is no patch or direct-value overload;
-- never changes the path;
-- serializes the complete query schema owned by the selected node;
-- merges owned results into the current URL;
-- removes owned keys that serialize to `null`;
-- preserves descendant-owned and unknown query keys;
-- supports `{ replaceUrl?: boolean }`, defaulting to normal history insertion;
-- reads previous state once and invokes the updater once;
-- does not queue concurrent calls—callers must await when ordering matters.
+Updates preserve the current path, descendant-owned query keys, and unknown keys. The updater is invoked once with complete owned state. Calls are not queued.
 
 ## Equality
 
-The exported deep `isEqual<T>(a, b)` compares the complete `{ path, query }` signal value and is the default equality function. It currently supports primitives (`Object.is`), arrays, dates, prototypes, and recursively enumerable object/symbol properties. Cycles and specialized collections such as `Map` and `Set` are not guaranteed.
+Exported `isEqual()` is the default complete-state comparator. It supports `Object.is` primitives, nested arrays, dates, matching prototypes, and recursively enumerable string/symbol properties. Cycles and specialized collections such as `Map`, `Set`, and typed arrays are outside its contract.
 
-Routes may define `isEqual`; it is inherited by descendants and may be overridden there. A consumer may override it again:
+Routes inherit `isEqual` from ancestors and may override it. `urlParams({ isEqual })` has highest precedence. Default references are cached; comparator-specific references are not.
 
-```ts
-route.urlParams({ isEqual: customEquality });
-```
+## Diagnostics and errors
 
-Precedence is call-site, current route, nearest ancestor, then library default. Comparator-specific `UrlParamsRef` caching is deferred; callers passing options should retain the returned reference.
+Recoverable parameter failures emit structured `AppRouterDiagnostic` values through `diagnostics.warn`, which defaults to `console.warn`. Codes distinguish serialization, deserialization, thrown codecs, and invalid array representation. Diagnostics include complete route, parameter, operation, optional array index, and original cause.
+
+Library-owned parameter handling throws only for inactive route state or invalid active path state. Structural definition validation also throws at startup and aggregates every detected invariant violation with complete contextual text.
 
 ## Angular runtime relationship
 
-`provideAppRouter(...features)` returns opaque `EnvironmentProviders`, registers the generated Angular routes, the typed token, and internal services, and forwards standard Angular router features. The native Angular `Router` remains normally injectable; the library neither hides nor replaces its DI token nor exposes it through `AppRouter`.
-
-Router configuration is supplied as `routerConfig` to `defineAppRouter()`. The implementation creates one internal `withRouterConfig()` feature and always sets `paramsInheritanceStrategy: 'always'`. A caller cannot pass `withRouterConfig()` through `provideAppRouter()`, preventing that mandatory inheritance behavior from being disabled.
-
-Angular remains responsible for matching, component activation, guards, resolvers, browser history, location strategy, directives, URL parsing, and encoding. The typed library owns static definition, construction, serialization, parameter state, and diagnostics.
-
-## External design references
-
-The `null`/`undefined` decision follows Angular Signal Forms' current model-shape guidance:
-
-- [Form model design](https://angular.dev/guide/forms/signals/model-design)
-- [Form models](https://angular.dev/guide/forms/signals/models)
-- [Custom controls](https://angular.dev/guide/forms/signals/custom-controls)
+`provideAppRouter(...features)` returns opaque `EnvironmentProviders`, registers generated routes and the typed token, and forwards Angular router features. `paramsInheritanceStrategy` is forced to `always`; other configuration belongs to `defineAppRouter({ routerConfig })`. The native Angular `Router` remains injectable as an explicit type-safety escape hatch.

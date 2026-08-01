@@ -1,15 +1,19 @@
-# ADR 0004: Wrap Angular routing without replacing its runtime
+# ADR 0004: Keep a clear Angular runtime boundary
 
 Status: accepted.
 
 ## Decision
 
-Angular's Router remains the matching and navigation engine. `provideAppRouter(...features)` supplies generated routes and forwards Angular router features. The native `Router` remains injectable. The typed API owns definition, URL construction, serialization, reactive parameter state, and diagnostics.
+Angular Router remains the matching and navigation engine. `provideAppRouter(...features)` supplies generated routes and forwards supported Angular router features. The native `Router` remains injectable.
+
+Angular-owned per-route fields are grouped under an `angular` object. ngx-urlik owns `path`, `pathParam`, `queryParams`, `children`, `redirectTo`, fallback semantics, and equality. The supported Angular subset includes components, guards, resolvers, data, title, providers, and guard/resolver rerun behavior. Redirects receive the narrower `canMatch`, `providers`, and `data` subset.
+
+Router configuration belongs on `defineAppRouter({ routerConfig })`. The library forces `paramsInheritanceStrategy: 'always'` and rejects `withRouterConfig()` passed to `provideAppRouter`.
 
 ## Rationale
 
-Reusing Angular preserves framework integration, directives, guards, resolvers, SSR configuration, and browser behavior. A strict definition subset makes stronger typing possible without reimplementing routing.
+The nested object makes framework ownership visible and lets the compiler forward Angular capabilities as one unit. Reusing Angular preserves directives, SSR behavior, activation, history, location strategy, parsing, and encoding without recreating a second runtime router.
 
 ## Consequences
 
-Consumers can bypass type safety by injecting Angular's Router. Runtime enforcement is intentionally absent; optional lint rules may be considered later.
+Route definitions have one additional nesting level for component and guard configuration. Consumers can still bypass typed safety by injecting Angular Router; runtime exclusivity is intentionally unenforced.

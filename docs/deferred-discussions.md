@@ -6,8 +6,8 @@ These topics were deliberately left for later rather than implicitly rejected fo
 - Migration and release compatibility policy for future releases.
 - Comparator-specific `urlParams()` reference caching.
 - Expanding `isEqual()` for cycles, `Map`, `Set`, and other specialized values.
-- Broader runtime validation of custom serializer return values.
-- Built-in date, array, repeated-query, and other composite serializers.
+- Broader runtime validation of custom codec domain values beyond checking serialized output.
+- Built-in date and other structured codecs beyond repeated and delimited arrays.
 - Query-key aliases distinct from logical TypeScript property names.
 - A writable signal or explicit Angular Signal Forms synchronization adapter.
 - Global router state/events on `AppRouter`, including active-state helpers.

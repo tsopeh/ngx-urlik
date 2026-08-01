@@ -1,17 +1,26 @@
-# ADR 0002: Separate placement, presence, nullability, and serialization
+# ADR 0002: Separate codecs, placement, presence, and cardinality
 
 Status: accepted.
 
 ## Decision
 
-One generic `UrlParamSerializer<T>` contract underlies separate path/query adapters and built-in helpers. Nullability belongs to `T`; `undefined` is forbidden. Path construction is always required and non-null. Query construction properties are optional by default and may be marked required independently of nullable values.
+Pure `UrlParamCodec<T>` values convert one decoded string to or from a non-null domain value. Codecs are reusable and do not support Angular injection. The built-ins are `stringCodec()`, `numberCodec()`, `booleanCodec()`, and `enumCodec()`.
 
-Path and query definitions accumulate along a route chain and share a no-shadowing namespace.
+Placement wrappers own URL policy:
+
+- `pathParam({ name, codec })` defines a required dynamic segment.
+- `queryParam({ codec, ... })` defines a scalar query property.
+- `repeatedQueryParam({ codec, ... })` defines an array using repeated physical keys.
+- `delimitedQueryParam({ codec, separator, ... })` defines an array using one delimited physical key.
+
+`null` and `undefined` are forbidden in codec value types. Optional scalar query state introduces `null`; array state uses `[]` for absence. Required query input controls construction-property presence independently from physical URL presence. Defaults may be values or injection-aware synchronous factories and are canonically omitted.
 
 ## Rationale
 
-Path segments are structurally required, while query properties have caller-controlled explicitness. Treating these as independent axes avoids conflating a nullable domain value with whether a construction property must be listed. Stable, defined reactive fields align with Angular Signal Forms.
+The earlier path/query-specific helper families duplicated scalar parsing and prevented natural composition into collections. Orthogonal codecs and placement wrappers reduce the conceptual surface while making custom values reusable. Stable defined state aligns with Angular Signal Forms, where `undefined` means a field is absent.
+
+Repeated and delimited arrays remain separate because they are materially different wire contracts. Delimited values URI-encode each item before joining so separator collisions are unambiguous.
 
 ## Consequences
 
-Path helpers and query helpers are separate convenience families, but serialization logic remains extensible through the generic contract. Defaults apply to query values and are canonically omitted from URLs.
+The previous `stringPathParam`, `stringQueryParam`, and corresponding number, boolean, and enum families are removed. Array defaults resolve to `readonly T[]`; one malformed item invalidates the entire collection. Scalar duplicate keys use the last physical value. Delimited parameters reject repeated physical keys.

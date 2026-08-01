@@ -1,35 +1,20 @@
 import {
-  booleanPathParam,
-  booleanQueryParam,
-  enumPathParam,
-  enumQueryParam,
-  numberPathParam,
-  numberQueryParam,
-  stringPathParam,
-  stringQueryParam,
+  booleanCodec,
+  delimitedQueryParam,
+  enumCodec,
+  numberCodec,
+  pathParam,
+  queryParam,
+  repeatedQueryParam,
+  stringCodec,
 } from './params';
 
-describe('built-in serializers', () => {
-  it('strictly parses scalar values', () => {
-    expect(stringQueryParam().serializer.deserialize('')).toBe('');
-    expect(numberQueryParam().serializer.deserialize('12px')).toBeNull();
-    expect(numberQueryParam().serializer.deserialize('Infinity')).toBe(Infinity);
-    expect(booleanQueryParam().serializer.deserialize('TRUE')).toBeNull();
-  });
-
-  it('uses and canonically omits defaults', () => {
-    const definition = enumQueryParam({ All: 'all', Open: 'open' } as const, {
-      defaultValue: 'all',
-    });
-    expect(definition.serializer.deserialize(null)).toBe('all');
-    expect(definition.serializer.serialize('all')).toBeNull();
-    expect(definition.serializer.serialize('open')).toBe('open');
-  });
-
-  it('distinguishes empty query strings from invalid empty path strings', () => {
-    expect(stringQueryParam().serializer.deserialize('')).toBe('');
-    expect(stringPathParam({ name: 'value' }).serializer.deserialize('')).toBeNull();
-    expect(stringQueryParam().serializer.deserialize(null)).toBeNull();
+describe('parameter codecs and definitions', () => {
+  it('creates pure reusable scalar codecs', () => {
+    expect(stringCodec().deserialize('')).toBe('');
+    expect(booleanCodec().deserialize('true')).toBe(true);
+    expect(booleanCodec().deserialize('TRUE')).toBeNull();
+    expect(stringCodec().serialize(42 as never)).toBeNull();
   });
 
   it.each([
@@ -39,42 +24,43 @@ describe('built-in serializers', () => {
     ['Infinity', Infinity],
     ['-Infinity', -Infinity],
   ])('parses the complete numeric value %s', (raw, expected) => {
-    expect(numberPathParam({ name: 'number' }).serializer.deserialize(raw)).toBe(expected);
+    expect(numberCodec().deserialize(raw)).toBe(expected);
   });
 
-  it.each(['', ' ', '12px', 'NaN', '--1', null, undefined, 12])(
-    'rejects malformed numeric input %j',
-    (raw) => {
-      expect(numberQueryParam().serializer.deserialize(raw)).toBeNull();
-    },
-  );
+  it.each(['', ' ', '12px', 'NaN', '--1'])('rejects malformed numeric input %j', (raw) => {
+    expect(numberCodec().deserialize(raw)).toBeNull();
+  });
 
-  it('accepts only lowercase boolean spellings', () => {
-    const query = booleanQueryParam();
-    expect(query.serializer.deserialize('true')).toBe(true);
-    expect(query.serializer.deserialize('false')).toBe(false);
-    expect(query.serializer.deserialize('TRUE')).toBeNull();
-    expect(query.serializer.deserialize('1')).toBeNull();
-    expect(booleanPathParam({ name: 'flag' }).serializer.deserialize(null)).toBeNull();
+  it('rejects NaN serialization while retaining infinities', () => {
+    expect(numberCodec().serialize(Number.NaN)).toBeNull();
+    expect(numberCodec().serialize(Infinity)).toBe('Infinity');
+    expect(numberCodec().serialize(-Infinity)).toBe('-Infinity');
   });
 
   it('accepts only declared string enum values', () => {
-    const values = { Open: 'open', Closed: 'closed' } as const;
-    expect(enumPathParam(values, { name: 'state' }).serializer.deserialize('open')).toBe('open');
-    expect(enumQueryParam(values).serializer.deserialize('Open')).toBeNull();
-    expect(() => enumQueryParam({ String: 'ok', Numeric: 1 } as never)).toThrow(
-      /must all be strings/,
+    const codec = enumCodec({ Open: 'open', Closed: 'closed' } as const);
+    expect(codec.deserialize('open')).toBe('open');
+    expect(codec.deserialize('Open')).toBeNull();
+    expect(codec.serialize('closed')).toBe('closed');
+    expect(() => enumCodec({ String: 'ok', Numeric: 1 } as never)).toThrow(
+      'enum codec values must all be strings',
     );
   });
 
-  it('uses a default for both missing and malformed values and reevaluates it when needed', () => {
-    let current = 1;
-    const definition = numberQueryParam({ defaultValue: () => current });
-    expect(definition.serializer.deserialize(null)).toBe(1);
-    expect(definition.serializer.deserialize('bad')).toBe(1);
-    expect(definition.serializer.serialize(1)).toBeNull();
-    current = 2;
-    expect(definition.serializer.deserialize(null)).toBe(2);
-    expect(definition.serializer.serialize(1)).toBe('1');
+  it('keeps placement, defaults, and collection representation outside codecs', () => {
+    const codec = stringCodec();
+    expect(pathParam({ name: 'id', codec })).toEqual({ kind: 'path', name: 'id', codec });
+    expect(queryParam({ codec, required: true, defaultValue: 'all' })).toMatchObject({
+      kind: 'query',
+      mode: 'scalar',
+      required: true,
+      defaultValue: 'all',
+    });
+    expect(repeatedQueryParam({ codec })).toMatchObject({ mode: 'repeated', required: false });
+    expect(delimitedQueryParam({ codec, separator: ',' })).toMatchObject({
+      mode: 'delimited',
+      separator: ',',
+      required: false,
+    });
   });
 });
