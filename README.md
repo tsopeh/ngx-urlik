@@ -1,5 +1,7 @@
 # ngx-urlik
 
+The current implementation is an obsolete prototype. The accepted redesign is documented in [the typed App Router design](docs/design/app-router.md), with supporting [ADRs](docs/adr), [glossary](docs/glossary.md), [Angular restrictions](docs/angular-restrictions.md), and [deferred discussions](docs/deferred-discussions.md).
+
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 20.3.7.
 
 ## Development server

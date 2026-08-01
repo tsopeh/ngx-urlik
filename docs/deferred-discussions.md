@@ -1,0 +1,22 @@
+# Deferred discussions
+
+These topics were deliberately left for later rather than implicitly rejected forever:
+
+- Angular 22 workspace/package upgrade and supported Angular version range.
+- A phased implementation plan, migration/removal of the two existing prototype APIs, and release compatibility policy.
+- Comparator-specific `urlParams()` reference caching.
+- Expanding `isEqual()` for cycles, `Map`, `Set`, and other specialized values.
+- Broader runtime validation of custom serializer return values.
+- Built-in date, array, repeated-query, and other composite serializers.
+- Query-key aliases distinct from logical TypeScript property names.
+- A writable signal or explicit Angular Signal Forms synchronization adapter.
+- Global router state/events on `AppRouter`, including active-state helpers.
+- Typed declarative navigation beyond passing `createUrlTree()` to Angular `RouterLink`.
+- Relative navigation and URL fragment modeling.
+- Named outlets, custom matchers, matrix parameters, empty child routes, and lazy route definitions.
+- More navigation/update behavior options if concrete use cases require them.
+- Managed queuing or conflict semantics for concurrent query updates.
+- Compile-time diagnostics for parameter shadowing and structural conflicts beyond runtime aggregation.
+- Development-only freezing and diagnostic/tracing facilities.
+- Optional ESLint rules warning when application code bypasses the typed API through Angular `Router` or raw route constructs.
+- Whether route-level equality callbacks can receive perfectly inferred accumulated state in all recursive TypeScript contexts; the desired public contract remains fully typed.
