@@ -4,7 +4,7 @@ Status: accepted.
 
 ## Decision
 
-Angular Router remains the matching and navigation engine. `provideAppRouter(...features)` supplies generated routes and forwards supported Angular router features. The native `Router` remains injectable.
+Angular Router remains the matching and navigation engine. `provideAppRouter(...features)` supplies generated routes and forwards supported Angular router features. The native `Router` remains technically injectable, but application code is expected to use `AppRouter`; selected native operations are provided through its bounded `escapeHatch`.
 
 Angular-owned per-route fields are grouped under an `angular` object. ngx-urlik owns `path`, `pathParam`, `queryParams`, `children`, `redirectTo`, fallback semantics, and equality. The supported Angular subset includes components, guards, resolvers, data, title, providers, and guard/resolver rerun behavior. Redirects receive the narrower `canMatch`, `providers`, and `data` subset.
 
@@ -16,4 +16,4 @@ The nested object makes framework ownership visible and lets the compiler forwar
 
 ## Consequences
 
-Route definitions have one additional nesting level for component and guard configuration. Consumers can still bypass typed safety by injecting Angular Router; runtime exclusivity is intentionally unenforced.
+Route definitions have one additional nesting level for component and guard configuration. Consumers can still bypass typed safety by injecting Angular Router; runtime exclusivity is intentionally unenforced. A future ESLint rule may enforce the application boundary statically.

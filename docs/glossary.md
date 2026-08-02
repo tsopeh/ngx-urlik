@@ -42,6 +42,10 @@
 
 **Deterministic construction** — Creating an absolute target solely from the selected route and supplied values, without inheriting the current URL.
 
+**Construction fragment** — An optional untyped `string | null` anchor supplied when constructing or navigating to a typed route. It is not part of declared parameter state and does not appear in `urlParams()`.
+
+**Escape hatch** — The bounded `AppRouter.escapeHatch` object exposing selected native Angular route-addressing operations and readonly observations. It marks an intentional departure from typed route construction without exposing the complete native `Router`.
+
 **Recoverable parameter failure** — Invalid query input, failed query serialization, or a codec exception. It emits an `AppRouterDiagnostic` and uses absence/default semantics rather than throwing.
 
 **Semantic state error** — An attempt to read an inactive route or an invalid active path parameter. These are the only library-owned runtime parameter-state errors that throw.

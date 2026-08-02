@@ -175,11 +175,13 @@ Path values are always required and non-null. Parameter names share one namespac
 Ordinary and redirect nodes expose:
 
 ```ts
-createUrlTree(values): UrlTree | null;
+createUrlTree({ path, query, fragment }): UrlTree | null;
 navigate(values, options?): Promise<boolean>;
 ```
 
 Construction is absolute and never inherits current query state. Invalid query values are diagnosed and omitted while the remaining URL is constructed. Invalid path construction returns `null`; `navigate()` then resolves `false` without invoking Angular.
+
+Construction accepts an optional `fragment?: string | null`. Fragments are not declared or codec-backed and do not appear in `urlParams()` state. First-party navigation supports Angular's navigation behavior options except `browserUrl`; an arbitrary display URL would contradict deterministic typed construction.
 
 Query declaration order is deterministic: ancestors precede descendants, with source order retained at each level.
 
@@ -213,4 +215,21 @@ Library-owned parameter handling throws only for inactive route state or invalid
 
 ## Angular runtime relationship
 
-`provideAppRouter(...features)` returns opaque `EnvironmentProviders`, registers generated routes and the typed token, and forwards Angular router features. `paramsInheritanceStrategy` is forced to `always`; other configuration belongs to `defineAppRouter({ routerConfig })`. The native Angular `Router` remains injectable as an explicit type-safety escape hatch.
+`provideAppRouter(...features)` returns opaque `EnvironmentProviders`, registers generated routes and the typed token, and forwards Angular router features. `paramsInheritanceStrategy` is forced to `always`; other configuration belongs to `defineAppRouter({ routerConfig })`. The native Angular `Router` remains the underlying injectable runtime service, but it is not the supported application escape-hatch API.
+
+Application code should use `AppRouter`; a future ESLint rule may forbid direct native `Router` injection. Every generated router provides a bounded `escapeHatch` for native route-addressing operations:
+
+```ts
+router.escapeHatch.createUrlTree(commands, options);
+router.escapeHatch.navigate(commands, options);
+router.escapeHatch.navigateByUrl(url, options);
+router.escapeHatch.parseUrl(url);
+router.escapeHatch.serializeUrl(tree);
+router.escapeHatch.isActive(url, matchOptions);
+```
+
+These methods preserve Angular's native types and semantics. The object also provides readonly `url`, `events`, `currentNavigation`, `lastSuccessfulNavigation`, `navigated`, and `componentInputBindingEnabled`. This observational subset must be revisited in a later design review.
+
+The escape hatch does not expose raw `routerState`, route configuration or mutation, router lifecycle controls, or deprecated mutable configuration properties. Typed `navigate()` excludes `browserUrl`, while escape-hatch navigation retains it. Query updates remain limited to `replaceUrl`.
+
+No custom declarative-link API is supplied. A `UrlTree | null` returned by typed construction can be passed to Angular's `RouterLink`, and `RouterLinkActive` continues to provide declarative active-link behavior.

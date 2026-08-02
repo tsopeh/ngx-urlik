@@ -10,9 +10,8 @@ These topics were deliberately left for later rather than implicitly rejected fo
 - Built-in date and other structured codecs beyond repeated and delimited arrays.
 - Query-key aliases distinct from logical TypeScript property names.
 - A writable signal or explicit Angular Signal Forms synchronization adapter.
-- Global router state/events on `AppRouter`, including active-state helpers.
-- Typed declarative navigation beyond passing `createUrlTree()` to Angular `RouterLink`.
-- Relative navigation and URL fragment modeling.
+- Revisit whether `escapeHatch.events`, `currentNavigation`, `lastSuccessfulNavigation`, `navigated`, and related observations should remain native-shaped or receive a smaller first-party model.
+- Relative navigation remains confined to the escape hatch; fragments are supported only as untyped construction values unless concrete state-modeling needs emerge.
 - Named outlets, custom matchers, matrix parameters, empty child routes, and lazy route definitions.
 - More navigation/update behavior options if concrete use cases require them.
 - Managed queuing or conflict semantics for concurrent query updates.

@@ -9,7 +9,7 @@ The library intentionally implements a strict subset and wrapper model. Compared
 - Empty paths are root-only. Angular permits empty child routes.
 - Named/auxiliary outlets are unsupported; only the primary outlet is modeled.
 - Custom `matcher` functions are unsupported.
-- Matrix parameters and URL fragments are unsupported.
+- Matrix parameters are unsupported. URL fragments are accepted as untyped, construction-only values and are not exposed through `urlParams()`.
 - Navigation construction is always absolute and deterministic; relative navigation and implicit current-query preservation are unsupported.
 - Raw string redirects are unsupported. Redirects must be functions returning a definite `UrlTree` and have a restricted property set.
 - Wildcards use the literal `path: '**'` and have no navigation-construction API.
@@ -22,11 +22,12 @@ The library intentionally implements a strict subset and wrapper model. Compared
 - Built-in date and structured-object codecs are not supplied.
 - Typed URL state is signal-only and readonly; no built-in observable, writable signal, or Signal Forms adapter is supplied.
 - Query mutation has only a complete functional updater, not patch or direct-value overloads.
-- No custom typed `RouterLink` directive is supplied; generated `UrlTree` values are used with Angular's directive.
-- `AppRouter` does not duplicate Angular's global router events, current URL, active checks, or navigation status.
+- No custom typed `RouterLink` directive is supplied; generated `UrlTree` values are used with Angular's directive. Raw strings and command arrays are intended targets for future lint enforcement.
+- Native route-addressing methods and selected readonly observations are available only through the explicitly unsafe `AppRouter.escapeHatch` boundary.
+- Raw `routerState`, route configuration mutation, and router lifecycle controls are unavailable, including through the escape hatch.
 - Generated Angular `Routes` are private.
 - Angular-owned route fields live under the `angular` property rather than at the route-definition top level.
 - `paramsInheritanceStrategy` is always forced to `'always'` so accumulated ancestor parameters remain available.
 - Other `RouterConfigOptions` belong on `defineAppRouter({ routerConfig })`. `withRouterConfig()` is excluded from features forwarded to `provideAppRouter()`.
 
-Angular's native `Router` remains available as an unsupported type-safety escape hatch. The library does not enforce exclusive usage.
+Angular's native `Router` remains technically injectable because it is the runtime engine, but application code is expected to use `AppRouter`. A future ESLint rule may enforce that policy.
