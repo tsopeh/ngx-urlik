@@ -71,6 +71,111 @@ describe('defineAppRouter', () => {
     expect('createUrlTree' in appRouter.ROOT.NOT_FOUND).toBe(false);
   });
 
+  it('constructs and navigates with fragments without adding them to URL parameter state', async () => {
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: {
+          path: '',
+          queryParams: { search: queryParam({ codec: stringCodec() }) },
+          angular: { component: EmptyComponent },
+        },
+      },
+    });
+    const { appRouter, router } = setup(definition);
+
+    expect(router.serializeUrl(appRouter.ROOT.createUrlTree({ fragment: 'section' })!)).toBe(
+      '/#section',
+    );
+    expect(router.serializeUrl(appRouter.ROOT.createUrlTree({ fragment: '' })!)).toBe('/#');
+    expect(router.serializeUrl(appRouter.ROOT.createUrlTree({ fragment: null })!)).toBe('/');
+    expect(router.serializeUrl(appRouter.ROOT.createUrlTree()!)).toBe('/');
+
+    const navigateByUrl = vi.spyOn(router, 'navigateByUrl');
+    await appRouter.ROOT.navigate(
+      { query: { search: 'term' }, fragment: 'results' },
+      { replaceUrl: true },
+    );
+    const [tree, options] = navigateByUrl.mock.calls.at(-1)!;
+    expect(router.serializeUrl(tree as UrlTree)).toBe('/?search=term#results');
+    expect(options).toEqual({ replaceUrl: true });
+    expect(appRouter.ROOT.urlParams().value()).toEqual({ path: {}, query: { search: 'term' } });
+  });
+
+  it('provides one bounded escape hatch with bound methods and live observations', async () => {
+    const definition = defineAppRouter({
+      routes: { ROOT: { path: '', angular: { component: EmptyComponent } } },
+    });
+    const { appRouter, router } = setup(definition);
+    const again = TestBed.runInInjectionContext(() => inject(definition.AppRouter));
+    const escapeHatch = appRouter.escapeHatch;
+    expect(again.escapeHatch).toBe(escapeHatch);
+
+    const parsed = router.parseUrl('/target');
+    const created = router.parseUrl('/created');
+    const createUrlTree = vi.spyOn(router, 'createUrlTree').mockReturnValue(created);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    const navigateByUrl = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(false);
+    const parseUrl = vi.spyOn(router, 'parseUrl').mockReturnValue(parsed);
+    const serializeUrl = vi.spyOn(router, 'serializeUrl').mockReturnValue('/serialized');
+    const isActive = vi.spyOn(router, 'isActive').mockReturnValue(true);
+
+    expect(escapeHatch.createUrlTree(['/created'], { fragment: 'part' })).toBe(created);
+    await expect(escapeHatch.navigate(['/target'], { browserUrl: '/shown' })).resolves.toBe(true);
+    await expect(escapeHatch.navigateByUrl(parsed, { replaceUrl: true })).resolves.toBe(false);
+    expect(escapeHatch.parseUrl('/target')).toBe(parsed);
+    expect(escapeHatch.serializeUrl(parsed)).toBe('/serialized');
+    expect(escapeHatch.isActive('/target', true)).toBe(true);
+    expect(escapeHatch.isActive(parsed, { paths: 'exact' })).toBe(true);
+    expect(createUrlTree).toHaveBeenCalledWith(['/created'], { fragment: 'part' });
+    expect(navigate).toHaveBeenCalledWith(['/target'], { browserUrl: '/shown' });
+    expect(navigateByUrl).toHaveBeenCalledWith(parsed, { replaceUrl: true });
+    expect(parseUrl).toHaveBeenCalledWith('/target');
+    expect(serializeUrl).toHaveBeenCalledWith(parsed);
+    expect(isActive.mock.calls).toEqual([
+      ['/target', true],
+      [parsed, { paths: 'exact' }],
+    ]);
+
+    expect(escapeHatch.events).toBe(router.events);
+    expect(escapeHatch.currentNavigation).toBe(router.currentNavigation);
+    expect(escapeHatch.lastSuccessfulNavigation).toBe(router.lastSuccessfulNavigation);
+    expect(escapeHatch.componentInputBindingEnabled).toBe(router.componentInputBindingEnabled);
+    router.navigated = false;
+    expect(escapeHatch.navigated).toBe(false);
+    router.navigated = true;
+    expect(escapeHatch.navigated).toBe(true);
+    expect(escapeHatch.url).toBe(router.url);
+
+    expect(Object.keys(escapeHatch).sort()).toEqual(
+      [
+        'componentInputBindingEnabled',
+        'createUrlTree',
+        'currentNavigation',
+        'events',
+        'isActive',
+        'lastSuccessfulNavigation',
+        'navigate',
+        'navigateByUrl',
+        'navigated',
+        'parseUrl',
+        'serializeUrl',
+        'url',
+      ].sort(),
+    );
+    for (const observation of [
+      'url',
+      'events',
+      'currentNavigation',
+      'lastSuccessfulNavigation',
+      'navigated',
+      'componentInputBindingEnabled',
+    ]) {
+      const descriptor = Object.getOwnPropertyDescriptor(escapeHatch, observation)!;
+      expect(descriptor.get).toBeTypeOf('function');
+      expect(descriptor.set).toBeUndefined();
+    }
+  });
+
   it('uses the last scalar value and keeps repeated and delimited arrays distinct', async () => {
     const definition = defineAppRouter({
       routes: {
@@ -623,6 +728,19 @@ describe('route validation', () => {
     expectInvalid({ ROOT: { path: '', children: { navigate: { path: 'reserved' } } } }, [
       "ROOT.navigate: 'navigate' is a reserved router method name",
     ]);
+  });
+
+  it('reserves escapeHatch only at the router root', () => {
+    expectInvalid({ escapeHatch: { path: '' } }, [
+      "escapeHatch: 'escapeHatch' is reserved at the router root",
+    ]);
+    expect(() =>
+      defineAppRouter({
+        routes: {
+          ROOT: { path: '', children: { escapeHatch: { path: 'allowed' } } },
+        },
+      }),
+    ).not.toThrow();
   });
 
   it('rejects mutually exclusive Angular component loaders', () => {

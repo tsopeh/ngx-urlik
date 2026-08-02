@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import {
   ActivatedRouteSnapshot,
+  IsActiveMatchOptions,
   NavigationBehaviorOptions,
   NavigationEnd,
   ParamMap,
@@ -60,6 +61,22 @@ type RequiredQueryKeys<D> = D extends { queryParams: infer Q extends QueryDefini
   : never;
 type State<P, Q> = Readonly<{ path: Readonly<Simplify<P>>; query: Readonly<Simplify<Q>> }>;
 type UrlStateEquality<P = unknown, Q = unknown> = (a: State<P, Q>, b: State<P, Q>) => boolean;
+type TypedNavigationBehaviorOptions = Omit<NavigationBehaviorOptions, 'browserUrl'>;
+
+interface AppRouterEscapeHatch {
+  readonly createUrlTree: Router['createUrlTree'];
+  readonly navigate: Router['navigate'];
+  readonly navigateByUrl: Router['navigateByUrl'];
+  readonly parseUrl: Router['parseUrl'];
+  readonly serializeUrl: Router['serializeUrl'];
+  readonly isActive: Router['isActive'];
+  readonly url: Router['url'];
+  readonly events: Router['events'];
+  readonly currentNavigation: Router['currentNavigation'];
+  readonly lastSuccessfulNavigation: Router['lastSuccessfulNavigation'];
+  readonly navigated: Router['navigated'];
+  readonly componentInputBindingEnabled: Router['componentInputBindingEnabled'];
+}
 
 export interface UrlParamsRef<P, Q> {
   readonly value: Signal<State<P, Q>>;
@@ -74,7 +91,9 @@ type ConstructionArgs<P, Q, Required extends PropertyKey> = (keyof P extends nev
   : { path: Simplify<P> }) &
   ([Required] extends [never]
     ? { query?: Partial<Simplify<Q>> }
-    : { query: Partial<Simplify<Q>> & Pick<Simplify<Q>, Extract<Required, keyof Q>> });
+    : { query: Partial<Simplify<Q>> & Pick<Simplify<Q>, Extract<Required, keyof Q>> }) & {
+    fragment?: string | null;
+  };
 type MethodArgs<P, Q, Required extends PropertyKey> = keyof P extends never
   ? [Required] extends [never]
     ? [values?: ConstructionArgs<P, Q, Required>]
@@ -83,7 +102,7 @@ type MethodArgs<P, Q, Required extends PropertyKey> = keyof P extends never
 type BaseNode<P, Q, Required extends PropertyKey> = {
   createUrlTree(...args: MethodArgs<P, Q, Required>): UrlTree | null;
   navigate(
-    ...args: [...MethodArgs<P, Q, Required>, options?: NavigationBehaviorOptions]
+    ...args: [...MethodArgs<P, Q, Required>, options?: TypedNavigationBehaviorOptions]
   ): Promise<boolean>;
 };
 type StatefulNode<P, Q> = {
@@ -160,16 +179,19 @@ type ContextualRouteShape<D, AP, AQ> =
               : {
                   readonly redirectTo?: never;
                   readonly children?: D extends { children: infer C }
-                    ? ContextualRoutes<C, P, Q>
+                    ? ContextualRoutes<C, P, Q, false>
                     : never;
                 })
       : never
     : never;
 type ReservedIdentity = 'navigate' | 'createUrlTree' | 'urlParams';
-type ContextualRoutes<R, AP = object, AQ = object> =
+type ContextualRoutes<R, AP = object, AQ = object, Root extends boolean = true> =
   R extends Readonly<Record<string, unknown>>
     ? {
-        readonly [K in keyof R]: K extends ReservedIdentity ? never : ContextualRoute<R[K], AP, AQ>;
+        readonly [K in keyof R]: K extends
+          ReservedIdentity | (Root extends true ? 'escapeHatch' : never)
+          ? never
+          : ContextualRoute<R[K], AP, AQ>;
       }
     : never;
 
@@ -191,6 +213,7 @@ type NodeFor<D, AP, AQ, Required extends PropertyKey> =
 type RouterTree<R, AP = object, AQ = object, Required extends PropertyKey = never> = {
   readonly [K in keyof R]: NodeFor<R[K], AP, AQ, Required>;
 };
+type GeneratedAppRouter<R> = RouterTree<R> & { readonly escapeHatch: AppRouterEscapeHatch };
 
 export type AppRouterDiagnosticCode =
   | 'PARAM_DESERIALIZE_FAILED'
@@ -255,6 +278,8 @@ function validate(routes: Readonly<Record<string, RouteDefinition>>): string[] {
       if (!identity) errors.push(`${at}: route identity must be non-empty`);
       if (['navigate', 'createUrlTree', 'urlParams'].includes(identity))
         errors.push(`${at}: '${identity}' is a reserved router method name`);
+      if (root && identity === 'escapeHatch')
+        errors.push(`${at}: 'escapeHatch' is reserved at the router root`);
       if (definition === null || typeof definition !== 'object' || Array.isArray(definition)) {
         errors.push(`${at}: route definition must be a non-null object`);
         continue;
@@ -400,12 +425,12 @@ export function defineAppRouter<
   routerConfig?: Omit<RouterConfigOptions, 'paramsInheritanceStrategy'>;
   diagnostics?: AppRouterDiagnostics;
 }): {
-  AppRouter: InjectionToken<RouterTree<R>>;
+  AppRouter: InjectionToken<GeneratedAppRouter<R>>;
   provideAppRouter: (...features: ForwardedRouterFeature[]) => EnvironmentProviders;
 } {
   const errors = validate(options.routes);
   if (errors.length) throw new Error(`Invalid app router definition:\n- ${errors.join('\n- ')}`);
-  let token!: InjectionToken<RouterTree<R>>;
+  let token!: InjectionToken<GeneratedAppRouter<R>>;
   const roots: CompiledRoute[] = [];
   const warn =
     options.diagnostics?.warn ??
@@ -606,7 +631,7 @@ export function defineAppRouter<
 
   const routes = compile(options.routes);
 
-  function factory(): RouterTree<R> {
+  function factory(): GeneratedAppRouter<R> {
     const router = inject(Router);
     const injector = inject(EnvironmentInjector);
     const navigation = signal(0);
@@ -686,7 +711,9 @@ export function defineAppRouter<
     const makeNode = (info: CompiledRoute): Record<string, unknown> => {
       const node: Record<string, unknown> = {};
       if (!info.fallback) {
-        node['createUrlTree'] = (values: { path?: AnyRecord; query?: AnyRecord } = {}) => {
+        node['createUrlTree'] = (
+          values: { path?: AnyRecord; query?: AnyRecord; fragment?: string | null } = {},
+        ) => {
           const chain: CompiledRoute[] = [];
           for (let current: CompiledRoute | undefined = info; current; current = current.parent)
             chain.unshift(current);
@@ -717,11 +744,14 @@ export function defineAppRouter<
             const output = serializeQuery(param, values.query?.[param.name]);
             if (output !== null) queryParams[param.name] = output;
           }
-          return router.createUrlTree(commands, { queryParams });
+          return router.createUrlTree(commands, {
+            queryParams,
+            fragment: values.fragment ?? undefined,
+          });
         };
         node['navigate'] = (
-          values?: { path?: AnyRecord; query?: AnyRecord },
-          navigationOptions?: NavigationBehaviorOptions,
+          values?: { path?: AnyRecord; query?: AnyRecord; fragment?: string | null },
+          navigationOptions?: TypedNavigationBehaviorOptions,
         ) => {
           const tree = (node['createUrlTree'] as (value?: unknown) => UrlTree | null)(values);
           return tree === null
@@ -774,10 +804,47 @@ export function defineAppRouter<
     };
     const tree: Record<string, unknown> = {};
     for (const root of roots) tree[root.identity] = makeNode(root);
-    return tree as RouterTree<R>;
+    function isActive(url: string | UrlTree, exact: boolean): boolean;
+    function isActive(url: string | UrlTree, matchOptions: Partial<IsActiveMatchOptions>): boolean;
+    function isActive(
+      url: string | UrlTree,
+      options: boolean | Partial<IsActiveMatchOptions>,
+    ): boolean {
+      return typeof options === 'boolean'
+        ? router.isActive(url, options)
+        : router.isActive(url, options);
+    }
+    const escapeHatch: AppRouterEscapeHatch = {
+      createUrlTree: (...args) => router.createUrlTree(...args),
+      navigate: (...args) => router.navigate(...args),
+      navigateByUrl: (...args) => router.navigateByUrl(...args),
+      parseUrl: (...args) => router.parseUrl(...args),
+      serializeUrl: (...args) => router.serializeUrl(...args),
+      isActive,
+      get url() {
+        return router.url;
+      },
+      get events() {
+        return router.events;
+      },
+      get currentNavigation() {
+        return router.currentNavigation;
+      },
+      get lastSuccessfulNavigation() {
+        return router.lastSuccessfulNavigation;
+      },
+      get navigated() {
+        return router.navigated;
+      },
+      get componentInputBindingEnabled() {
+        return router.componentInputBindingEnabled;
+      },
+    };
+    tree['escapeHatch'] = escapeHatch;
+    return tree as GeneratedAppRouter<R>;
   }
 
-  token = new InjectionToken<RouterTree<R>>('AppRouter');
+  token = new InjectionToken<GeneratedAppRouter<R>>('AppRouter');
   const provideAppRouter = createProviderFunction(token, routes, options.routerConfig, factory);
   return { AppRouter: token, provideAppRouter };
 }

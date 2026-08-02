@@ -1,6 +1,6 @@
 # ngx-urlik
 
-A signal-first, typed application router for Angular 22. Angular Router remains the runtime engine; `ngx-urlik` owns route definition, typed URL construction, parameter codecs, reactive parameter state, and diagnostics.
+A signal-first, typed application router for Angular 22. Angular Router remains the runtime engine; `ngx-urlik` owns route definition, typed URL construction (including fragments), parameter codecs, reactive parameter state, and diagnostics. A bounded escape hatch covers native addressing needs outside the typed route tree.
 
 ## Install
 
@@ -70,14 +70,28 @@ const routes = inject(AppRouter);
 await routes.ROOT.USER.navigate({
   path: { userId: '42' },
   query: { search: 'active', roles: ['admin', 'editor'] },
+  fragment: 'permissions',
 });
 
 const userLink = routes.ROOT.USER.createUrlTree({
   path: { userId: '42' },
+  fragment: 'profile',
 });
 ```
 
-`createUrlTree()` returns `null` when a path value cannot be serialized. `navigate()` then resolves `false` without invoking Angular navigation. Invalid query values are diagnosed and omitted while navigation continues. A generated `UrlTree | null` can be passed directly to Angular's `[routerLink]`.
+`fragment` accepts a string or `null` for URL construction and navigation. It is construction-only: fragments never appear in `urlParams()` state. First-party `navigate()` accepts Angular navigation behavior options except `browserUrl`, which could make the displayed URL disagree with typed construction.
+
+`createUrlTree()` returns `null` when a path value cannot be serialized. `navigate()` then resolves `false` without invoking Angular navigation. Invalid query values are diagnosed and omitted while navigation continues. A generated tree works directly with Angular's existing directive; no custom link abstraction is needed:
+
+```html
+<a [routerLink]="userLink">View user</a>
+```
+
+## Bounded native escape hatch
+
+Use `routes.escapeHatch` when an integration needs native URL commands, matrix parameters, outlets, parsing, or active checks. It forwards Angular's native `createUrlTree`, `navigate`, `navigateByUrl`, `parseUrl`, `serializeUrl`, and `isActive` methods with their native types. Escape-hatch navigation retains `browserUrl` support.
+
+The escape hatch also provides readonly, live access to `url`, `events`, `currentNavigation`, `lastSuccessfulNavigation`, `navigated`, and `componentInputBindingEnabled`. It intentionally excludes router configuration, raw `routerState`, lifecycle controls, disposal, and deprecated mutable or navigation-observation members. Application code should continue to use typed route nodes for normal construction and navigation.
 
 ## Reactive URL state
 

@@ -1,6 +1,6 @@
 # Implementation plan: router-addressing parity
 
-Status: ready for implementation.
+Status: implemented.
 
 Source decision: [ADR 0005](../adr/0005-router-addressing-parity.md).
 
