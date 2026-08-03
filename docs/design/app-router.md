@@ -209,7 +209,9 @@ Routes inherit `isEqual` from ancestors and may override it. `urlParams({ isEqua
 
 ## Diagnostics and errors
 
-Recoverable parameter failures emit structured `AppRouterDiagnostic` values through `diagnostics.warn`, which defaults to `console.warn`. Codes distinguish serialization, deserialization, thrown codecs, and invalid array representation. Diagnostics include complete route, parameter, operation, optional array index, and original cause.
+Recoverable parameter failures emit structured `AppRouterDiagnostic` values through `diagnostics.warn`, which defaults to `console.warn`. Codes distinguish serialization, deserialization, thrown codecs, and invalid array representation. The diagnostic `route` is the dot-separated complete route identity from the generated router root to the parameter owner, such as `ROOT.ADMIN.DETAIL`; it is not a URL path or a sibling-local leaf identity. Diagnostics also include parameter, operation, optional array index, and original cause.
+
+Implementation files are organized as private model-oriented modules with acyclic imports, as recorded by [ADR 0006](../adr/0006-acyclic-model-modules.md). `app-router.ts` is the composition root rather than the owner of every runtime concern.
 
 Library-owned parameter handling throws only for inactive route state or invalid active path state. Structural definition validation also throws at startup and aggregates every detected invariant violation with complete contextual text.
 

@@ -12,6 +12,7 @@ These documents describe the accepted Typed App Router design on the Angular 22 
 - [ADR 0003: deterministic routing and state](adr/0003-deterministic-routing-and-state.md)
 - [ADR 0004: Angular runtime boundary](adr/0004-angular-runtime-boundary.md)
 - [ADR 0005: typed route addressing and bounded escape hatch](adr/0005-router-addressing-parity.md)
+- [ADR 0006: acyclic model modules](adr/0006-acyclic-model-modules.md)
 
 ## Document authority
 

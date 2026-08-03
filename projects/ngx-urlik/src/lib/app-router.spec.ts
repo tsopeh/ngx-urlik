@@ -323,6 +323,57 @@ describe('defineAppRouter', () => {
     ]);
   });
 
+  it('reports complete route identities and owned parameter placement', () => {
+    const diagnostics: AppRouterDiagnostic[] = [];
+    const definition = defineAppRouter({
+      diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
+      routes: {
+        ROOT: {
+          path: '',
+          children: {
+            LEFT: {
+              path: 'left',
+              children: {
+                DETAIL: {
+                  path: 'detail',
+                  pathParam: pathParam({ name: 'id', codec: numberCodec() }),
+                  angular: { component: EmptyComponent },
+                },
+              },
+            },
+            RIGHT: {
+              path: 'right',
+              children: {
+                DETAIL: {
+                  path: 'detail',
+                  queryParams: { id: queryParam({ codec: numberCodec() }) },
+                  angular: { component: EmptyComponent },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const { appRouter } = setup(definition);
+
+    expect(appRouter.ROOT.LEFT.DETAIL.createUrlTree({ path: { id: Number.NaN } })).toBeNull();
+    expect(appRouter.ROOT.RIGHT.DETAIL.createUrlTree({ query: { id: Number.NaN } })).not.toBeNull();
+
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        route: 'ROOT.LEFT.DETAIL',
+        parameter: 'id',
+        message: "ROOT.LEFT.DETAIL: serialize path parameter 'id' was invalid",
+      }),
+      expect.objectContaining({
+        route: 'ROOT.RIGHT.DETAIL',
+        parameter: 'id',
+        message: "ROOT.RIGHT.DETAIL: serialize query parameter 'id' was invalid",
+      }),
+    ]);
+  });
+
   it('returns null and resolves false when a path cannot serialize', async () => {
     const diagnostics: AppRouterDiagnostic[] = [];
     const definition = defineAppRouter({
@@ -582,8 +633,8 @@ describe('defineAppRouter', () => {
     await setupResult.router.navigateByUrl('/legacy?id=bad');
     expect(setupResult.router.url).toBe('/safe');
     expect(diagnostics.map((item) => item.message)).toEqual([
-      "LEGACY: deserialize query parameter 'id' was invalid",
-      "TARGET: serialize path parameter 'id' was invalid",
+      "ROOT.LEGACY: deserialize query parameter 'id' was invalid",
+      "ROOT.TARGET: serialize path parameter 'id' was invalid",
     ]);
   });
 

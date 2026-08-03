@@ -6,6 +6,8 @@
 
 **Route identity** — The stable object key used in a chain such as `ROOT.WORKSPACE`. It is independent of the URL path; uppercase is only a convention.
 
+**Complete route identity** — The dot-separated chain of route identities from the generated router root to a node, such as `ROOT.ADMIN.DETAIL`. Diagnostics use the complete identity so repeated leaf identities in different branches remain unambiguous.
+
 **Route node** — One property in the generated typed router tree. Ordinary nodes expose construction, navigation, and state; redirect and fallback nodes expose reduced capabilities.
 
 **Route chain** — The ordered root-to-node ancestry. Parameter definitions and equality configuration accumulate along it.
@@ -42,7 +44,7 @@
 
 **Deterministic construction** — Creating an absolute target solely from the selected route and supplied values, without inheriting the current URL.
 
-**Construction fragment** — An optional untyped `string | null` anchor supplied when constructing or navigating to a typed route. It is not part of declared parameter state and does not appear in `urlParams()`.
+**Construction fragment** — An optional typed `string | null` anchor supplied when constructing or navigating to a typed route. It is construction-only: it is not part of declared parameter state and does not appear in `urlParams()`.
 
 **Escape hatch** — The bounded `AppRouter.escapeHatch` object exposing selected native Angular route-addressing operations and readonly observations. It marks an intentional departure from typed route construction without exposing the complete native `Router`.
 
