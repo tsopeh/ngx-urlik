@@ -21,12 +21,18 @@ export const routeNodeInfo: unique symbol = Symbol('ngx-urlik route node');
 
 type AnyRecord = Readonly<Record<string, unknown>>;
 type Simplify<T> = { [K in keyof T]: T[K] };
-type State<P, Q> = Readonly<{ path: Readonly<Simplify<P>>; query: Readonly<Simplify<Q>> }>;
-type UrlStateEquality<P = unknown, Q = unknown> = (a: State<P, Q>, b: State<P, Q>) => boolean;
-type TypedNavigationBehaviorOptions = Omit<NavigationBehaviorOptions, 'browserUrl'>;
+export type UrlParamsState<P, Q> = Readonly<{
+  path: Readonly<Simplify<P>>;
+  query: Readonly<Simplify<Q>>;
+}>;
+export type UrlStateEquality<P = unknown, Q = unknown> = (
+  a: UrlParamsState<P, Q>,
+  b: UrlParamsState<P, Q>,
+) => boolean;
+export type TypedNavigationBehaviorOptions = Omit<NavigationBehaviorOptions, 'browserUrl'>;
 
 export interface UrlParamsRef<P, Q> {
-  readonly value: Signal<State<P, Q>>;
+  readonly value: Signal<UrlParamsState<P, Q>>;
   updateQueryParams(
     updater: (previous: Readonly<Simplify<Q>>) => Simplify<Q>,
     options?: { replaceUrl?: boolean },

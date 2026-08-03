@@ -7,7 +7,6 @@ import {
   makeEnvironmentProviders,
 } from '@angular/core';
 import {
-  NavigationBehaviorOptions,
   Router,
   RouterConfigOptions,
   RouterConfigurationFeature,
@@ -34,7 +33,14 @@ import {
 } from './route-definition';
 import { AppRouterEscapeHatch, createRouterEscapeHatch } from './router-escape-hatch';
 import { createParameterReader } from './route-params-runtime';
-import { UrlParamsRef, createRouteTree, routeNodeInfo } from './route-node';
+import {
+  TypedNavigationBehaviorOptions,
+  UrlParamsRef,
+  UrlParamsState,
+  UrlStateEquality,
+  createRouteTree,
+  routeNodeInfo,
+} from './route-node';
 
 export type {
   AppRouterDiagnostic,
@@ -64,10 +70,6 @@ type OwnQuery<D> = D extends { queryParams: infer Q extends QueryDefinitions }
 type RequiredQueryKeys<D> = D extends { queryParams: infer Q extends QueryDefinitions }
   ? { [K in keyof Q]: Q[K] extends { required: true } ? K : never }[keyof Q]
   : never;
-type State<P, Q> = Readonly<{ path: Readonly<Simplify<P>>; query: Readonly<Simplify<Q>> }>;
-type UrlStateEquality<P = unknown, Q = unknown> = (a: State<P, Q>, b: State<P, Q>) => boolean;
-type TypedNavigationBehaviorOptions = Omit<NavigationBehaviorOptions, 'browserUrl'>;
-
 type ConstructionArgs<P, Q, Required extends PropertyKey> = (keyof P extends never
   ? { path?: never }
   : { path: Simplify<P> }) &
@@ -93,7 +95,7 @@ type StatefulNode<P, Q> = {
 };
 
 type AnyStatefulNode = StatefulNode<any, any>;
-type StateOfNode<N> = N extends StatefulNode<infer P, infer Q> ? State<P, Q> : never;
+type StateOfNode<N> = N extends StatefulNode<infer P, infer Q> ? UrlParamsState<P, Q> : never;
 export interface ActiveRouteRef<C extends Readonly<Record<PropertyKey, AnyStatefulNode>>> {
   readonly value: import('@angular/core').Signal<
     {
@@ -133,7 +135,7 @@ type ContextualRouteShape<D, AP, AQ> =
             ? { readonly pathParam?: never; readonly children?: never; readonly redirectTo?: never }
             : D extends { redirectTo: (...args: never[]) => unknown }
               ? {
-                  readonly redirectTo: (values: State<P, Q>) => UrlTree;
+                  readonly redirectTo: (values: UrlParamsState<P, Q>) => UrlTree;
                   readonly children?: never;
                   readonly isEqual?: never;
                   readonly angular?: AngularRedirectOptions;
