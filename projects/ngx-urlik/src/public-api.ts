@@ -18,5 +18,6 @@ export {
   type AppRouterDiagnostic,
   type AppRouterDiagnosticCode,
   type AppRouterDiagnostics,
+  type ActiveRouteRef,
   type UrlParamsRef,
 } from './lib/app-router';

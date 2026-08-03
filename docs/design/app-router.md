@@ -201,6 +201,21 @@ Every declared query property exists in state. Optional scalar values use `null`
 
 Updates preserve the current path, descendant-owned query keys, and unknown keys. The updater is invoked once with complete owned state. Calls are not queued.
 
+## Typed activation context
+
+A component shared by several route nodes can select the finite set of activation contexts it supports:
+
+```ts
+const detail = router.activeRoute({
+  left: router.ROOT.LEFT.DETAIL,
+  right: router.ROOT.RIGHT.DETAIL,
+});
+```
+
+`detail.value` is a signal whose value is a discriminated union keyed by the supplied aliases. Each member contains `route`, the exact generated `node`, and that node's typed accumulated `params`. Navigation between candidates updates the signal. Reading it while none of the candidates is active throws a semantic state error.
+
+Candidates must be stateful generated nodes; redirects are excluded. The explicit candidate set keeps shared-component contracts local and avoids an application-wide union. Angular remains the matching and activation engine; ngx-urlik maps the active Angular snapshot back to the selected static route identity.
+
 ## Equality
 
 Exported `isEqual()` is the default complete-state comparator. It supports `Object.is` primitives, nested arrays, dates, matching prototypes, and recursively enumerable string/symbol properties. Cycles and specialized collections such as `Map`, `Set`, and typed arrays are outside its contract.

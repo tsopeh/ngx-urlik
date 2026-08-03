@@ -77,6 +77,26 @@ router.ROOT.ITEM.urlParams().value().query.ids satisfies readonly number[];
 // @ts-expect-error fragments are construction-only URL state
 router.ROOT.ITEM.urlParams().value().fragment;
 
+const active = router
+  .activeRoute({
+    item: router.ROOT.ITEM,
+    fallback: router.ROOT.FALLBACK,
+  })
+  .value();
+if (active.route === 'item') {
+  active.node satisfies typeof router.ROOT.ITEM;
+  active.params.path.itemId satisfies string;
+  active.params.query.required satisfies string | null;
+} else {
+  active.node satisfies typeof router.ROOT.FALLBACK;
+  active.params.path satisfies Readonly<{}>;
+  active.params.query.locale satisfies string;
+  // @ts-expect-error fallback state does not contain item parameters
+  active.params.path.itemId;
+}
+// @ts-expect-error candidates must be generated stateful route nodes
+router.activeRoute({ invalid: {} });
+
 router.ROOT.ITEM.createUrlTree({
   path: { itemId: '1' },
   query: { required: null, tags: [] },
@@ -164,6 +184,8 @@ const redirectDefinition = defineAppRouter({
 declare const redirectRouter: TokenValue<typeof redirectDefinition.AppRouter>;
 redirectRouter.ROOT.REDIRECT.createUrlTree({ fragment: 'legacy' });
 redirectRouter.ROOT.REDIRECT.navigate({ fragment: null });
+// @ts-expect-error redirects do not expose active parameter state
+redirectRouter.activeRoute({ redirect: redirectRouter.ROOT.REDIRECT });
 
 declare const nullableTree: UrlTree | null;
 defineAppRouter({

@@ -13,6 +13,7 @@ These documents describe the accepted Typed App Router design on the Angular 22 
 - [ADR 0004: Angular runtime boundary](adr/0004-angular-runtime-boundary.md)
 - [ADR 0005: typed route addressing and bounded escape hatch](adr/0005-router-addressing-parity.md)
 - [ADR 0006: acyclic model modules](adr/0006-acyclic-model-modules.md)
+- [ADR 0007: explicit typed activation context](adr/0007-typed-activation-context.md)
 
 ## Document authority
 

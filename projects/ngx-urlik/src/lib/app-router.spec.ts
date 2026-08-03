@@ -101,6 +101,67 @@ describe('defineAppRouter', () => {
     expect(appRouter.ROOT.urlParams().value()).toEqual({ path: {}, query: { search: 'term' } });
   });
 
+  it('identifies the active candidate route and returns its decoded parameters', async () => {
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: {
+          path: '',
+          children: {
+            LEFT: {
+              path: 'left',
+              children: {
+                DETAIL: {
+                  path: 'detail',
+                  pathParam: pathParam({ name: 'id', codec: numberCodec() }),
+                  angular: { component: EmptyComponent },
+                },
+              },
+            },
+            RIGHT: {
+              path: 'right',
+              children: {
+                DETAIL: {
+                  path: 'detail',
+                  queryParams: { id: queryParam({ codec: numberCodec(), required: true }) },
+                  angular: { component: EmptyComponent },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const { appRouter } = setup(definition);
+
+    await appRouter.ROOT.LEFT.DETAIL.navigate({ path: { id: 42 } });
+
+    const activeRoute = appRouter.activeRoute({
+      left: appRouter.ROOT.LEFT.DETAIL,
+      right: appRouter.ROOT.RIGHT.DETAIL,
+    });
+    const active = activeRoute.value();
+
+    expect(active).toEqual({
+      route: 'left',
+      node: appRouter.ROOT.LEFT.DETAIL,
+      params: { path: { id: 42 }, query: {} },
+    });
+
+    await appRouter.ROOT.RIGHT.DETAIL.navigate({ query: { id: 7 } });
+
+    expect(activeRoute.value()).toEqual({
+      route: 'right',
+      node: appRouter.ROOT.RIGHT.DETAIL,
+      params: { path: {}, query: { id: 7 } },
+    });
+
+    await appRouter.ROOT.navigate();
+
+    expect(() => activeRoute.value()).toThrowError(
+      'activeRoute(): none of the candidate routes [left, right] is active',
+    );
+  });
+
   it('provides one bounded escape hatch with bound methods and live observations', async () => {
     const definition = defineAppRouter({
       routes: { ROOT: { path: '', angular: { component: EmptyComponent } } },
@@ -781,14 +842,23 @@ describe('route validation', () => {
     ]);
   });
 
-  it('reserves escapeHatch only at the router root', () => {
+  it('reserves application-wide router methods only at the router root', () => {
     expectInvalid({ escapeHatch: { path: '' } }, [
       "escapeHatch: 'escapeHatch' is reserved at the router root",
+    ]);
+    expectInvalid({ activeRoute: { path: '' } }, [
+      "activeRoute: 'activeRoute' is reserved at the router root",
     ]);
     expect(() =>
       defineAppRouter({
         routes: {
-          ROOT: { path: '', children: { escapeHatch: { path: 'allowed' } } },
+          ROOT: {
+            path: '',
+            children: {
+              escapeHatch: { path: 'allowed-escape' },
+              activeRoute: { path: 'allowed-active' },
+            },
+          },
         },
       }),
     ).not.toThrow();

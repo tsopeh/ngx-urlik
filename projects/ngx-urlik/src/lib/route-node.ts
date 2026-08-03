@@ -17,6 +17,8 @@ import { CompiledRoute, findActiveRoute } from './compiled-route';
 import { ReportParameterFailure } from './route-diagnostics';
 import { RuntimeState, createParameterSerializer } from './route-params-runtime';
 
+export const routeNodeInfo: unique symbol = Symbol('ngx-urlik route node');
+
 type AnyRecord = Readonly<Record<string, unknown>>;
 type Simplify<T> = { [K in keyof T]: T[K] };
 type State<P, Q> = Readonly<{ path: Readonly<Simplify<P>>; query: Readonly<Simplify<Q>> }>;
@@ -29,6 +31,16 @@ export interface UrlParamsRef<P, Q> {
     updater: (previous: Readonly<Simplify<Q>>) => Simplify<Q>,
     options?: { replaceUrl?: boolean },
   ): Promise<boolean>;
+}
+
+export interface ActiveRouteRef {
+  readonly value: Signal<
+    Readonly<{
+      route: PropertyKey;
+      node: object;
+      params: Readonly<{ path: AnyRecord; query: AnyRecord }>;
+    }>
+  >;
 }
 
 export function createRouteTree(
@@ -51,6 +63,7 @@ export function createRouteTree(
 
   const makeNode = (info: CompiledRoute): Record<string, unknown> => {
     const node: Record<string, unknown> = {};
+    Object.defineProperty(node, routeNodeInfo, { value: info });
     if (!info.fallback) {
       node['createUrlTree'] = (
         values: { path?: AnyRecord; query?: AnyRecord; fragment?: string | null } = {},
@@ -142,5 +155,35 @@ export function createRouteTree(
 
   const tree: Record<string, unknown> = {};
   for (const root of roots) tree[root.identity] = makeNode(root);
+  tree['activeRoute'] = (candidates: Readonly<Record<PropertyKey, object>>): ActiveRouteRef => ({
+    value: computed(() => {
+      navigation();
+      for (const key of Reflect.ownKeys(candidates)) {
+        const node = candidates[key] as Record<PropertyKey, unknown>;
+        const info = node[routeNodeInfo] as CompiledRoute | undefined;
+        if (!info || info.redirect)
+          throw new Error(`activeRoute(): candidate '${String(key)}' is not a stateful route node`);
+        const active = findActiveRoute(router.routerState.snapshot.root, info.angular);
+        if (active)
+          return {
+            route: key,
+            node,
+            params: runInInjectionContext(injector, () =>
+              readState(
+                info,
+                active.paramMap,
+                active.queryParamMap,
+                router.url.split(/[?#]/, 1)[0] || '/',
+              ),
+            ),
+          };
+      }
+      throw new Error(
+        `activeRoute(): none of the candidate routes [${Reflect.ownKeys(candidates)
+          .map(String)
+          .join(', ')}] is active`,
+      );
+    }),
+  });
   return tree;
 }

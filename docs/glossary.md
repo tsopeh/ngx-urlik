@@ -42,6 +42,10 @@
 
 **UrlParamsRef** — A stable, readonly signal-oriented view of one route node's accumulated state plus `updateQueryParams()`.
 
+**Typed activation context** — A signal-oriented discriminated union identifying which member of an explicitly selected set of stateful route nodes is active, together with the exact node and its typed accumulated parameters.
+
+**Activation candidate set** — The alias-to-route-node object supplied to `AppRouter.activeRoute()`. Its aliases become the discriminants of the resulting typed activation context.
+
 **Deterministic construction** — Creating an absolute target solely from the selected route and supplied values, without inheriting the current URL.
 
 **Construction fragment** — An optional typed `string | null` anchor supplied when constructing or navigating to a typed route. It is construction-only: it is not part of declared parameter state and does not appear in `urlParams()`.

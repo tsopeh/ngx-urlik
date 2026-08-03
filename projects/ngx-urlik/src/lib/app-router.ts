@@ -34,7 +34,7 @@ import {
 } from './route-definition';
 import { AppRouterEscapeHatch, createRouterEscapeHatch } from './router-escape-hatch';
 import { createParameterReader } from './route-params-runtime';
-import { UrlParamsRef, createRouteTree } from './route-node';
+import { UrlParamsRef, createRouteTree, routeNodeInfo } from './route-node';
 
 export type {
   AppRouterDiagnostic,
@@ -88,8 +88,23 @@ type BaseNode<P, Q, Required extends PropertyKey> = {
   ): Promise<boolean>;
 };
 type StatefulNode<P, Q> = {
+  readonly [routeNodeInfo]: unknown;
   urlParams(options?: { isEqual?: UrlStateEquality<P, Q> }): UrlParamsRef<P, Q>;
 };
+
+type AnyStatefulNode = StatefulNode<any, any>;
+type StateOfNode<N> = N extends StatefulNode<infer P, infer Q> ? State<P, Q> : never;
+export interface ActiveRouteRef<C extends Readonly<Record<PropertyKey, AnyStatefulNode>>> {
+  readonly value: import('@angular/core').Signal<
+    {
+      readonly [K in keyof C]: Readonly<{
+        route: K;
+        node: C[K];
+        params: StateOfNode<C[K]>;
+      }>;
+    }[keyof C]
+  >;
+}
 
 type OrdinaryKey = 'path' | 'pathParam' | 'queryParams' | 'children' | 'angular' | 'isEqual';
 type RedirectKey = 'path' | 'pathParam' | 'queryParams' | 'redirectTo' | 'angular';
@@ -136,7 +151,7 @@ type ContextualRoutes<R, AP = object, AQ = object, Root extends boolean = true> 
   R extends Readonly<Record<string, unknown>>
     ? {
         readonly [K in keyof R]: K extends
-          ReservedIdentity | (Root extends true ? 'escapeHatch' : never)
+          ReservedIdentity | (Root extends true ? 'escapeHatch' | 'activeRoute' : never)
           ? never
           : ContextualRoute<R[K], AP, AQ>;
       }
@@ -160,7 +175,12 @@ type NodeFor<D, AP, AQ, Required extends PropertyKey> =
 type RouterTree<R, AP = object, AQ = object, Required extends PropertyKey = never> = {
   readonly [K in keyof R]: NodeFor<R[K], AP, AQ, Required>;
 };
-type GeneratedAppRouter<R> = RouterTree<R> & { readonly escapeHatch: AppRouterEscapeHatch };
+type GeneratedAppRouter<R> = RouterTree<R> & {
+  activeRoute<const C extends Readonly<Record<PropertyKey, AnyStatefulNode>>>(
+    candidates: C,
+  ): ActiveRouteRef<C>;
+  readonly escapeHatch: AppRouterEscapeHatch;
+};
 
 const routerConfigurationFeatureKind = 5;
 const isRouterConfigurationFeature = (feature: RouterFeatures) =>
