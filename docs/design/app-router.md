@@ -201,6 +201,38 @@ Every declared query property exists in state. Optional scalar values use `null`
 
 Updates preserve the current path, descendant-owned query keys, and unknown keys. The updater is invoked once with complete owned state. Calls are not queued.
 
+### Query form bindings
+
+The optional `ngx-urlik/forms` entry point binds the accumulated query state of one active stateful
+route node to Angular Reactive Forms or Signal Forms. Path parameters are excluded. The entry point
+provides bind and create helpers for both forms systems.
+
+Reactive forms use an exact flat group with one `FormControl` for every query property. Optional
+scalars retain `null`, and repeated or delimited arrays remain array-valued controls rather than
+`FormArray` instances. The creator adds no validators; applications that need validators construct
+the exact group and bind it. Signal forms bind an Angular `FieldTree`; their creator returns its
+writable model and field tree and accepts an optional Angular schema.
+
+Bindings require an injection context and clean themselves up with `DestroyRef`. The active URL
+initializes the form synchronously. External navigation, including browser history navigation,
+cancels pending writes and resets the form to the URL state as a pristine and untouched baseline.
+Self-originated navigation echoes preserve interaction state. Origin is tracked by navigation
+identity rather than URL equality.
+
+Form changes become typed per-parameter RxJS events containing the changed key and value, the full
+raw query snapshot, and parameter/form validity and pending metadata. `transformWrites` may return a
+mapped, filtered, grouped, debounced, or throttled stream. The library supplies no replacement
+operator catalog; documentation demonstrates standard RxJS `groupBy` composition. Validation does
+not gate writes unless the transformation filters events.
+
+Automatic writes use `replaceUrl: true` by default. Each binding coalesces synchronous changes,
+allows one navigation in flight, and converges to the latest desired query snapshot with at most one
+follow-up navigation. This coordinator does not change the unqueued contract of direct
+`updateQueryParams()` calls.
+
+Signal bindings observe the form model value, so native Signal Forms debounce precedes any debounce
+inside `transformWrites`. Applying both to one field intentionally delays twice.
+
 ## Typed activation context
 
 A component shared by several route nodes can select the finite set of activation contexts it supports:

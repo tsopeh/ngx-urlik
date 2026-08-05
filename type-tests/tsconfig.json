@@ -6,7 +6,10 @@
     "module": "preserve",
     "moduleResolution": "bundler",
     "target": "ES2022",
-    "paths": { "ngx-urlik": ["../dist/ngx-urlik"] }
+    "paths": {
+      "ngx-urlik": ["../dist/ngx-urlik"],
+      "ngx-urlik/forms": ["../dist/ngx-urlik/forms"]
+    }
   },
   "include": ["consumer.ts"]
 }

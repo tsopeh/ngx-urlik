@@ -42,6 +42,17 @@
 
 **UrlParamsRef** — A stable, readonly signal-oriented view of one route node's accumulated state plus `updateQueryParams()`.
 
+**Query form binding** — An injection-context-owned synchronization between one active route node's
+accumulated query state and an Angular Reactive Form or Signal Form. Path parameters are not part of
+the binding.
+
+**Query write stream** — The typed RxJS stream of per-parameter form changes that a query form
+binding may transform before values are written to the URL.
+
+**External URL update** — A successful navigation not originated by the current query form binding.
+It is authoritative: staged form writes are cancelled and the form is reset to the URL value as a
+new pristine baseline.
+
 **Typed activation context** — A signal-oriented discriminated union identifying which member of an explicitly selected set of stateful route nodes is active, together with the exact node and its typed accumulated parameters.
 
 **Activation candidate set** — The alias-to-route-node object supplied to `AppRouter.activeRoute()`. Its aliases become the discriminants of the resulting typed activation context.

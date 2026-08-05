@@ -1,5 +1,7 @@
 import { inject } from '@angular/core';
 import { Router, UrlTree, withRouterConfig } from '@angular/router';
+import { FormArray, FormControl, FormGroup } from '@angular/forms';
+import { filter } from 'rxjs';
 import {
   booleanCodec,
   defineAppRouter,
@@ -11,6 +13,11 @@ import {
   repeatedQueryParam,
   stringCodec,
 } from 'ngx-urlik';
+import {
+  bindQueryParamsToFormGroup,
+  createQueryParamsFormGroup,
+  createQueryParamsSignalForm,
+} from 'ngx-urlik/forms';
 
 // @ts-expect-error route compiler implementation types are not public API
 import type { RouteDefinition } from 'ngx-urlik';
@@ -44,6 +51,48 @@ const definition = defineAppRouter({
 
 type TokenValue<T> = T extends import('@angular/core').InjectionToken<infer Value> ? Value : never;
 declare const router: TokenValue<typeof definition.AppRouter>;
+
+const itemQueryForm = createQueryParamsFormGroup(router.ROOT.ITEM);
+itemQueryForm.controls.filter satisfies FormControl<string | null>;
+itemQueryForm.controls.tags satisfies FormControl<readonly string[]>;
+
+bindQueryParamsToFormGroup(
+  router.ROOT.ITEM,
+  new FormGroup({
+    locale: new FormControl('en', { nonNullable: true }),
+    filter: new FormControl<string | null>(null),
+    required: new FormControl<string | null>(null),
+    tags: new FormControl<readonly string[]>([], { nonNullable: true }),
+    ids: new FormControl<readonly number[]>([], { nonNullable: true }),
+  }),
+  {
+    transformWrites: (changes) =>
+      changes.pipe(
+        // @ts-expect-error query parameter names are typed
+        filter((change) => change.param !== 'serach'),
+      ),
+  },
+);
+
+bindQueryParamsToFormGroup(
+  router.ROOT.ITEM,
+  // @ts-expect-error FormArray query controls are intentionally unsupported
+  new FormGroup({
+    locale: new FormControl('en', { nonNullable: true }),
+    filter: new FormControl<string | null>(null),
+    required: new FormControl<string | null>(null),
+    tags: new FormArray([new FormControl('tag', { nonNullable: true })]),
+    ids: new FormControl<readonly number[]>([], { nonNullable: true }),
+  }),
+);
+
+createQueryParamsSignalForm(router.ROOT.ITEM, {
+  schema: (query) => {
+    query.filter;
+    // @ts-expect-error path parameters are not part of the query form schema
+    query.itemId;
+  },
+});
 
 router.ROOT.ITEM.createUrlTree({
   path: { itemId: '1' },

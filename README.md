@@ -132,4 +132,52 @@ queryParam({
 
 Repeated arrays use `?role=admin&role=editor`. Delimited arrays use one physical key such as `?role=admin,editor`; each element is URI-encoded before joining, so embedded separators are represented with nested percent encoding.
 
+## Query forms
+
+The optional `ngx-urlik/forms` entry point synchronizes an active route's accumulated query
+parameters with Angular Reactive Forms or Signal Forms. Path parameters are intentionally excluded.
+
+```ts
+import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
+
+const filters = createQueryParamsFormGroup(routes.ROOT.RESULTS);
+```
+
+Reactive forms are exact and flat: every query property has one `FormControl`, including one
+array-valued control for repeated or delimited parameters. `FormArray` and nested control shapes are
+not supported. Build an exact group yourself and use `bindQueryParamsToFormGroup()` when adding
+validators or other control options.
+
+Signal Forms creation returns its URL-initialized model and field tree:
+
+```ts
+import { maxLength } from '@angular/forms/signals';
+import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
+
+const { model, form } = createQueryParamsSignalForm(routes.ROOT.RESULTS, {
+  schema: (query) => maxLength(query.search, 100),
+});
+```
+
+Both integrations accept a typed RxJS write transformation. Group by parameter before delaying one
+field so an immediate field cannot flush its staged value:
+
+```ts
+import { debounceTime, groupBy, mergeMap } from 'rxjs';
+
+const filters = createQueryParamsFormGroup(routes.ROOT.RESULTS, {
+  transformWrites: (changes) =>
+    changes.pipe(
+      groupBy((change) => change.param),
+      mergeMap((group) => (group.key === 'search' ? group.pipe(debounceTime(300)) : group)),
+    ),
+});
+```
+
+Write events include field and whole-form validity metadata, but validation does not block URL
+writes automatically; filter the stream when that policy is desired. Writes replace the current
+history entry by default. Browser history and other external navigation cancel staged writes and
+reset the form to a pristine URL baseline. Signal bindings observe the model value, so native Signal
+Forms debounce runs before `transformWrites`; avoid unintentionally delaying the same field twice.
+
 See the accepted [App Router design](docs/design/app-router.md), [Angular restrictions](docs/angular-restrictions.md), and [deferred topics](docs/deferred-discussions.md).
