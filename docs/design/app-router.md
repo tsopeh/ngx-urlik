@@ -260,7 +260,7 @@ Recoverable parameter failures emit structured `AppRouterDiagnostic` values thro
 
 Implementation files are organized as private model-oriented modules with acyclic imports, as recorded by [ADR 0006](../adr/0006-acyclic-model-modules.md). `app-router.ts` is the composition root rather than the owner of every runtime concern.
 
-Library-owned parameter handling throws only for inactive route state or invalid active path state. Structural definition validation also throws at startup and aggregates every detected invariant violation with complete contextual text.
+Library-owned parameter handling throws only for inactive route state or invalid active path state. Structural definition validation also throws at startup and aggregates every detected invariant violation with complete contextual text. Cross-route relationships such as parameter shadowing, duplicate sibling URL patterns, and fallback placement remain definition-time runtime checks rather than TypeScript constraints. Local route shape and generated router usage remain statically typed. See ADR 0009.
 
 ## Angular runtime relationship
 
