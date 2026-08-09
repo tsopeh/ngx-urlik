@@ -8,7 +8,7 @@ A signal-first, typed application router for Angular 22. Angular Router remains 
 npm install ngx-urlik
 ```
 
-Development requires Node 24.15.0, recorded in `.nvmrc`.
+Development requires Node 24.19.0, recorded in `.nvmrc`.
 
 ## Define and provide the router
 
