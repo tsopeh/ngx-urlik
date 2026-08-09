@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, effect, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AppRouter } from './app-router';
 import { ThemeService, type ThemePreference } from './theme';
@@ -162,6 +162,20 @@ import { ThemeService, type ThemePreference } from './theme';
 export class Shell {
   protected readonly routes = inject(AppRouter);
   protected readonly theme = inject(ThemeService);
+  private readonly landingRoute = this.routes.activeRoute({
+    dashboard: this.routes.ROOT.DASHBOARD,
+    screen: this.routes.ROOT.SCREEN,
+    music: this.routes.ROOT.MUSIC,
+    theatre: this.routes.ROOT.THEATRE,
+    people: this.routes.ROOT.PEOPLE,
+    groups: this.routes.ROOT.GROUPS,
+    tags: this.routes.ROOT.TAGS,
+    collection: this.routes.ROOT.COLLECTION,
+    activity: this.routes.ROOT.ACTIVITY,
+    settings: this.routes.ROOT.SETTINGS,
+    notFound: this.routes.ROOT.NOT_FOUND,
+    root: this.routes.ROOT,
+  });
   protected readonly themes: readonly ThemePreference[] = ['system', 'light', 'dark'];
   protected readonly navigation = [
     { label: 'Dashboard', icon: '⌂', url: this.routes.ROOT.DASHBOARD.createUrlTree() },
@@ -173,4 +187,10 @@ export class Shell {
     { label: 'People', icon: '◎', url: this.routes.ROOT.PEOPLE.createUrlTree() },
     { label: 'Settings', icon: '⚙', url: this.routes.ROOT.SETTINGS.createUrlTree() },
   ];
+
+  constructor() {
+    effect(() => {
+      if (this.landingRoute.value().route === 'root') void this.routes.ROOT.DASHBOARD.navigate();
+    });
+  }
 }

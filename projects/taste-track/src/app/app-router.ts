@@ -8,6 +8,7 @@ import {
   repeatedQueryParam,
   stringCodec,
 } from 'ngx-urlik';
+import type { CanMatchFn } from '@angular/router';
 import {
   experienceCountCodec,
   paginationParams,
@@ -49,6 +50,7 @@ const loadShell = () => import('./shell').then((module) => module.Shell);
 const loadSection = () => import('./section-page').then((module) => module.SectionPage);
 const loadCatalog = () => import('./catalog-page').then((module) => module.CatalogPage);
 const loadDetail = () => import('./detail-page').then((module) => module.DetailPage);
+const hasUnmatchedSegments: CanMatchFn = (_route, segments) => segments.length > 0;
 
 export const { AppRouter, provideAppRouter } = defineAppRouter({
   routes: {
@@ -256,6 +258,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
         NOT_FOUND: {
           path: '**',
           angular: {
+            canMatch: [hasUnmatchedSegments],
             loadComponent: () => import('./not-found-page').then((module) => module.NotFoundPage),
           },
         },
