@@ -9,6 +9,19 @@ test('opens the dashboard and follows a typed catalog link', async ({ page }) =>
     .click();
   await expect(page).toHaveURL(/\/screen\/movies/);
   await expect(page.getByRole('heading', { name: 'Movies' })).toBeVisible();
+  await page.getByRole('link', { name: 'The Fellowship of the Spreadsheet', exact: true }).click();
+  await expect(page).toHaveURL(/\/screen\/movies\/movie\/mov_fellowship-of-the-spreadsheet/);
+  await expect(
+    page.getByRole('heading', { name: 'The Fellowship of the Spreadsheet' }),
+  ).toBeVisible();
+});
+
+test('uses the URL as the source of truth for catalog chips', async ({ page }) => {
+  await page.goto('/screen/movies');
+  await page.getByRole('button', { name: 'Drama', exact: true }).click();
+  await expect(page).toHaveURL(/genres=Drama/);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Drama', exact: true })).toHaveClass(/selected/);
 });
 
 test('persists an explicit theme across reloads', async ({ page }) => {
