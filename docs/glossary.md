@@ -68,3 +68,42 @@ new pristine baseline.
 **Semantic state error** — An attempt to read an inactive route or an invalid active path parameter. These are the only library-owned runtime parameter-state errors that throw.
 
 **Structural validation** — Aggregated synchronous validation performed by `defineAppRouter()` without executing codecs or default factories.
+
+## TasteTrack demo domain
+
+**TasteTrack** — The browser-local demonstration application for organizing screen, music, and
+theatre catalog data and recording one anonymous profile's experiences.
+
+**Catalog item** — Readonly seeded metadata for a movie, show, episode, album, song, theatre work,
+production, or performance. Each kind remains a first-class entity rather than a generic media-item
+subtype.
+
+**Media summary** — A shared projection used when different catalog-item kinds appear together in
+search, collection, dashboard, or activity views.
+
+**Person** — A contributor who may receive role-specific credits across screen, music, and theatre.
+
+**Group** — A credited band, orchestra, ensemble, theatre company, or production company.
+
+**Theatre work** — The underlying play or musical independent of any particular staging.
+
+**Production** — One staging of a theatre work by a particular company and creative team.
+
+**Performance** — One dated occurrence of a production at a venue. Theatre attendance records refer
+to performances.
+
+**Personal state** — The editable status, favorite marker, rating, notes, experience count, and tags
+associated with a catalog item in the local profile.
+
+**Journal event** — A dated movie watch, episode watch, album listen, song listen, or theatre
+attendance. Events may include a rating and note and do not replace an item's overall rating.
+
+**Experience count** — Either an exact non-negative number or the reversible `countless` value,
+displayed as “More than I can count.” Dated journal events may describe only part of the aggregate
+experience history.
+
+**Collection status** — The shared `saved`, `in-progress`, `completed`, `paused`, or `abandoned`
+state. TasteTrack presents medium-specific labels such as Watchlist, Listen later, or Want to attend.
+
+**Personal tag** — A reusable browser-local label with a name and color. Unlike seeded genres, it
+describes the profile's relationship with catalog items.

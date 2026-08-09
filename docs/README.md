@@ -15,6 +15,7 @@ These documents describe the accepted Typed App Router design on the Angular 22 
 - [ADR 0007: explicit typed activation context](adr/0007-typed-activation-context.md)
 - [ADR 0008: query form bindings](adr/0008-query-form-bindings.md)
 - [ADR 0009: structural route diagnostics](adr/0009-structural-route-diagnostics.md)
+- [ADR 0010: TasteTrack demo architecture](adr/0010-tastetrack-demo.md)
 
 ## Document authority
 

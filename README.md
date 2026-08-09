@@ -2,6 +2,10 @@
 
 A signal-first, typed application router for Angular 22. Angular Router remains the runtime engine; `ngx-urlik` owns route definition, typed URL construction (including fragments), parameter codecs, reactive parameter state, and diagnostics. A bounded escape hatch covers native addressing needs outside the typed route tree.
 
+The repository also contains [TasteTrack](projects/taste-track/README.md), a browser-local media
+journal demonstrating deeply nested typed routes, custom codecs, URL-bound Reactive and Signal
+Forms, deterministic IndexedDB persistence, and system/light/dark themes.
+
 ## Install
 
 ```sh
