@@ -6,8 +6,6 @@ These documents describe the accepted Typed App Router design on the Angular 22 
 - [Angular Router restrictions](angular-restrictions.md) — deliberate differences from normal Angular routing.
 - [Deferred discussions](deferred-discussions.md) — explicitly postponed product, compatibility, and implementation topics.
 - [Domain glossary](glossary.md) — canonical terminology.
-- [Implementation plan: router-addressing parity](plans/0005-router-addressing-parity.md)
-- [Implementation plan: query form bindings](plans/0008-query-form-bindings.md)
 - [ADR 0001: static route tree](adr/0001-static-route-tree.md)
 - [ADR 0002: parameter model](adr/0002-parameter-model.md)
 - [ADR 0003: deterministic routing and state](adr/0003-deterministic-routing-and-state.md)
