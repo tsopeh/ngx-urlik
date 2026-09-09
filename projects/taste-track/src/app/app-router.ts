@@ -21,28 +21,21 @@ const statusCodec = enumCodec({
   SAVED: 'saved',
   IN_PROGRESS: 'in-progress',
   COMPLETED: 'completed',
-  PAUSED: 'paused',
-  ABANDONED: 'abandoned',
 } as const);
 
 const mediaKindCodec = enumCodec({
   MOVIE: 'movie',
   SHOW: 'show',
   EPISODE: 'episode',
-  ALBUM: 'album',
-  SONG: 'song',
-  THEATRE: 'theatre',
 } as const);
 
 const catalogQueryParams = () => ({
   search: queryParam({ codec: stringCodec(), defaultValue: '' }),
   genres: repeatedQueryParam({ codec: stringCodec() }),
-  tags: repeatedQueryParam({ codec: stringCodec() }),
-  replayCount: queryParam({ codec: experienceCountCodec() }),
   ...paginationParams({ defaultPageSize: 24, pageSizes: [12, 24, 48] }),
   sort: queryParam({
-    codec: sortCodec(['title', 'year', 'rating', 'lastActivity'] as const),
-    defaultValue: { field: 'lastActivity', direction: 'desc' },
+    codec: sortCodec(['title', 'year'] as const),
+    defaultValue: { field: 'title', direction: 'asc' },
   }),
 });
 
@@ -58,12 +51,6 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
       path: '',
       angular: { loadComponent: loadShell },
       children: {
-        DASHBOARD: {
-          path: 'dashboard',
-          angular: {
-            loadComponent: () => import('./dashboard-page').then((module) => module.DashboardPage),
-          },
-        },
         SCREEN: {
           path: 'screen',
           queryParams: catalogQueryParams(),
@@ -91,7 +78,10 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
                   children: {
                     SEASONS: {
                       path: 'seasons',
-                      angular: { loadComponent: loadSection },
+                      angular: {
+                        loadComponent: () =>
+                          import('./seasons-page').then((module) => module.SeasonsPage),
+                      },
                       children: {
                         DETAIL: {
                           path: 'season',
@@ -125,88 +115,33 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
             },
           },
         },
-        MUSIC: {
-          path: 'music',
-          queryParams: catalogQueryParams(),
-          angular: { loadComponent: loadSection },
-          children: {
-            ALBUMS: {
-              path: 'albums',
-              angular: { loadComponent: loadCatalog },
-              children: {
-                DETAIL: {
-                  path: 'album',
-                  pathParam: pathParam({ name: 'albumId', codec: prefixedIdCodec('alb') }),
-                  angular: { loadComponent: loadDetail },
-                },
-              },
-            },
-            SONGS: {
-              path: 'songs',
-              angular: { loadComponent: loadCatalog },
-              children: {
-                DETAIL: {
-                  path: 'song',
-                  pathParam: pathParam({ name: 'songId', codec: prefixedIdCodec('song') }),
-                  angular: { loadComponent: loadDetail },
-                },
-              },
-            },
-          },
-        },
-        THEATRE: {
-          path: 'theatre',
-          queryParams: catalogQueryParams(),
-          angular: { loadComponent: loadSection },
-          children: {
-            WORKS: { path: 'works', angular: { loadComponent: loadCatalog } },
-            PRODUCTIONS: {
-              path: 'productions',
-              angular: { loadComponent: loadCatalog },
-              children: {
-                DETAIL: {
-                  path: 'production',
-                  pathParam: pathParam({ name: 'productionId', codec: prefixedIdCodec('prod') }),
-                  angular: { loadComponent: loadDetail },
-                  children: {
-                    PERFORMANCES: { path: 'performances', angular: { loadComponent: loadCatalog } },
-                  },
-                },
-              },
-            },
-            VENUES: { path: 'venues', angular: { loadComponent: loadCatalog } },
-          },
-        },
         PEOPLE: {
           path: 'people',
-          angular: { loadComponent: loadCatalog },
+          angular: {
+            loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
+          },
           children: {
             DETAIL: {
               path: 'profile',
               pathParam: pathParam({ name: 'personId', codec: prefixedIdCodec('per') }),
-              angular: { loadComponent: loadDetail },
+              angular: {
+                loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
+              },
             },
           },
         },
-        GROUPS: {
-          path: 'groups',
-          angular: { loadComponent: loadCatalog },
+        COMPANIES: {
+          path: 'companies',
+          angular: {
+            loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
+          },
           children: {
             DETAIL: {
               path: 'profile',
-              pathParam: pathParam({ name: 'groupId', codec: prefixedIdCodec('grp') }),
-              angular: { loadComponent: loadDetail },
-            },
-          },
-        },
-        TAGS: {
-          path: 'tags',
-          angular: { loadComponent: loadCatalog },
-          children: {
-            DETAIL: {
-              path: 'tag',
-              pathParam: pathParam({ name: 'tagId', codec: prefixedIdCodec('tag') }),
-              angular: { loadComponent: loadDetail },
+              pathParam: pathParam({ name: 'companyId', codec: prefixedIdCodec('co') }),
+              angular: {
+                loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
+              },
             },
           },
         },
@@ -216,14 +151,12 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
             media: delimitedQueryParam({ codec: mediaKindCodec, separator: ',' }),
             statuses: repeatedQueryParam({ codec: statusCodec }),
-            genres: repeatedQueryParam({ codec: stringCodec() }),
-            tags: repeatedQueryParam({ codec: stringCodec() }),
-            minRating: queryParam({ codec: numberCodec() }),
             replayCount: queryParam({ codec: experienceCountCodec() }),
+            minRating: queryParam({ codec: numberCodec() }),
             ...paginationParams({ defaultPageSize: 24, pageSizes: [12, 24, 48] }),
             sort: queryParam({
-              codec: sortCodec(['title', 'rating', 'lastActivity'] as const),
-              defaultValue: { field: 'lastActivity', direction: 'desc' },
+              codec: sortCodec(['title', 'rating'] as const),
+              defaultValue: { field: 'title', direction: 'asc' },
             }),
           },
           angular: {
@@ -235,13 +168,11 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
           path: 'activity',
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
-            media: delimitedQueryParam({ codec: mediaKindCodec, separator: ',' }),
             from: queryParam({ codec: stringCodec() }),
             to: queryParam({ codec: stringCodec() }),
-            minRating: queryParam({ codec: numberCodec() }),
             ...paginationParams({ defaultPageSize: 24, pageSizes: [12, 24, 48] }),
             sort: queryParam({
-              codec: sortCodec(['date', 'rating', 'title'] as const),
+              codec: sortCodec(['date', 'rating'] as const),
               defaultValue: { field: 'date', direction: 'desc' },
             }),
           },

@@ -2,252 +2,170 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AppRouter } from './app-router';
 import { TasteTrackRepository } from './database';
-import type { CatalogItem, MediaKind } from './domain';
+import { CatalogLinks } from './catalog-links';
 import { MediaCard } from './media-card';
+import type { PageSize } from './codecs';
 
 @Component({
   imports: [MediaCard, RouterOutlet],
   template: `
-    <section class="page-stack inset">
-      @if (!detailActive()) {
+    @if (!detailActive()) {
+      <section class="page-stack inset">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Catalog</p>
             <h2>{{ heading() }}</h2>
-            <p>{{ results().length }} records in this view</p>
+            <p>{{ results().length }} titles</p>
           </div>
-          <label class="search">
-            <span>Search</span>
-            <input
-              type="search"
-              [value]="search()"
-              (input)="setSearch($any($event.target).value)"
-              placeholder="Titles, genres, contributors…"
-            />
-          </label>
         </div>
-        @if (hasCatalogFilters()) {
-          <div class="chip-row" aria-label="Quick genre filters">
-            @for (genre of genres; track genre) {
-              <button
-                type="button"
-                [class.selected]="selectedGenres().includes(genre)"
-                (click)="toggleGenre(genre)"
-              >
-                {{ genre }}
-              </button>
-            }
-          </div>
-        }
+        <div class="filter-panel">
+          <label
+            >Search<input
+              type="search"
+              [value]="query().search"
+              (input)="update({ search: $any($event.target).value, page: 1 })"
+              placeholder="Search titles…"
+          /></label>
+          <label
+            >Sort<select [value]="query().sort.field" (change)="sort($any($event.target).value)">
+              <option value="title">Title</option>
+              <option value="year">Year</option>
+            </select></label
+          >
+          <label
+            >Direction<select
+              [value]="query().sort.direction"
+              (change)="direction($any($event.target).value)"
+            >
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select></label
+          >
+          <label
+            >Page size<select
+              [value]="query().pageSize"
+              (change)="pageSize($any($event.target).value)"
+            >
+              <option>12</option>
+              <option>24</option>
+              <option>48</option>
+            </select></label
+          >
+        </div>
+        <div class="chip-row" aria-label="Quick genre filters">
+          @for (genre of genres; track genre) {
+            <button
+              type="button"
+              [class.selected]="query().genres.includes(genre)"
+              [attr.aria-pressed]="query().genres.includes(genre)"
+              (click)="toggleGenre(genre)"
+            >
+              {{ genre }}
+            </button>
+          }
+        </div>
         <div class="media-grid">
           @for (item of visible(); track item.id) {
             <app-media-card
               [item]="item"
               [state]="stateFor(item.id)"
-              [url]="urlFor(item)"
-              (favorite)="toggleFavorite(item.id)"
+              [url]="links.item(item)"
+              (favorite)="repository.toggleFavorite(item.id)"
             />
           } @empty {
-            <p class="empty">Nothing matches this combination yet.</p>
+            <p class="empty">No titles match these filters.</p>
           }
         </div>
-      }
-      <router-outlet (activate)="detailActive.set(true)" (deactivate)="detailActive.set(false)" />
-    </section>
+        <nav class="anchor-links" aria-label="Pagination">
+          <button
+            class="button"
+            [disabled]="query().page <= 1"
+            (click)="update({ page: query().page - 1 })"
+          >
+            Previous
+          </button>
+          <span>Page {{ query().page }}</span>
+          <button
+            class="button"
+            [disabled]="query().page * query().pageSize >= results().length"
+            (click)="update({ page: query().page + 1 })"
+          >
+            Next
+          </button>
+        </nav>
+      </section>
+    }
+    <router-outlet (activate)="detailActive.set(true)" (deactivate)="detailActive.set(false)" />
   `,
 })
 export class CatalogPage {
   private readonly routes = inject(AppRouter);
-  private readonly repository = inject(TasteTrackRepository);
+  protected readonly repository = inject(TasteTrackRepository);
+  protected readonly links = inject(CatalogLinks);
+  private readonly params = this.routes.ROOT.SCREEN.urlParams();
   private readonly active = this.routes.activeRoute({
     episodes: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.EPISODES,
     movies: this.routes.ROOT.SCREEN.MOVIES,
     shows: this.routes.ROOT.SCREEN.SHOWS,
-    albums: this.routes.ROOT.MUSIC.ALBUMS,
-    songs: this.routes.ROOT.MUSIC.SONGS,
-    performances: this.routes.ROOT.THEATRE.PRODUCTIONS.DETAIL.PERFORMANCES,
-    productions: this.routes.ROOT.THEATRE.PRODUCTIONS,
-    works: this.routes.ROOT.THEATRE.WORKS,
-    venues: this.routes.ROOT.THEATRE.VENUES,
-    people: this.routes.ROOT.PEOPLE,
-    groups: this.routes.ROOT.GROUPS,
-    tags: this.routes.ROOT.TAGS,
   });
-  private readonly localSearch = signal('');
-
   protected readonly detailActive = signal(false);
-  protected readonly genres = ['Drama', 'Comedy', 'Science fiction', 'Rock', 'Jazz', 'Musical'];
-  protected readonly hasCatalogFilters = computed(() => this.catalogKind() !== null);
+  protected readonly genres = ['Drama', 'Comedy', 'Science fiction', 'Mystery'];
+  protected readonly query = computed(() => this.params.value().query);
   protected readonly heading = computed(
     () =>
-      ({
-        episodes: 'Episodes',
-        movies: 'Movies',
-        shows: 'TV shows',
-        albums: 'Albums',
-        songs: 'Songs',
-        performances: 'Performances',
-        productions: 'Productions',
-        works: 'Theatre works',
-        venues: 'Venues',
-        people: 'People',
-        groups: 'Groups',
-        tags: 'Personal tags',
-      })[this.active.value().route],
+      ({ episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' })[this.active.value().route],
   );
-  protected readonly search = computed(() => {
-    const active = this.active.value();
-    switch (active.route) {
-      case 'episodes':
-      case 'movies':
-      case 'shows':
-      case 'albums':
-      case 'songs':
-      case 'performances':
-      case 'productions':
-      case 'works':
-      case 'venues':
-        return active.params.query.search;
-      case 'people':
-      case 'groups':
-      case 'tags':
-        return this.localSearch();
-    }
-  });
-  protected readonly selectedGenres = computed(() => {
-    const active = this.active.value();
-    switch (active.route) {
-      case 'episodes':
-      case 'movies':
-      case 'shows':
-      case 'albums':
-      case 'songs':
-      case 'performances':
-      case 'productions':
-      case 'works':
-      case 'venues':
-        return active.params.query.genres;
-      case 'people':
-      case 'groups':
-      case 'tags':
-        return [];
-    }
-  });
   protected readonly results = computed(() => {
-    const kind = this.catalogKind();
+    const active = this.active.value();
+    const query = this.query();
     return this.repository
       .items()
-      .filter(
-        (item) =>
-          (!kind || item.kind === kind) &&
-          (!this.search() ||
-            `${item.title} ${item.subtitle} ${item.genres.join(' ')}`
-              .toLowerCase()
-              .includes(this.search().toLowerCase())) &&
-          (!this.selectedGenres().length ||
-            this.selectedGenres().some((genre) => item.genres.includes(genre))),
+      .filter((item) => {
+        const inBranch =
+          active.route === 'episodes'
+            ? item.kind === 'episode' &&
+              item.showId === active.params.path.showId &&
+              item.seasonNumber === active.params.path.seasonNumber
+            : item.kind === (active.route === 'movies' ? 'movie' : 'show');
+        return (
+          inBranch &&
+          `${item.title} ${item.subtitle}`.toLowerCase().includes(query.search.toLowerCase()) &&
+          (!query.genres.length || query.genres.some((genre) => item.genres.includes(genre)))
+        );
+      })
+      .sort(
+        (a, b) =>
+          (query.sort.field === 'year' ? a.year - b.year : a.title.localeCompare(b.title)) *
+          (query.sort.direction === 'asc' ? 1 : -1),
       );
   });
-  protected readonly visible = computed(() => this.results().slice(0, 24));
-
-  private readonly catalogKind = computed<MediaKind | null>(() => {
-    const route = this.active.value().route;
-    return {
-      episodes: 'episode',
-      movies: 'movie',
-      shows: 'show',
-      albums: 'album',
-      songs: 'song',
-      performances: 'theatre',
-      productions: 'theatre',
-      works: 'theatre',
-      venues: 'theatre',
-      people: null,
-      groups: null,
-      tags: null,
-    }[route] as MediaKind | null;
-  });
-
-  protected setSearch(search: string) {
-    const active = this.active.value();
-    switch (active.route) {
-      case 'episodes':
-      case 'movies':
-      case 'shows':
-      case 'albums':
-      case 'songs':
-      case 'performances':
-      case 'productions':
-      case 'works':
-      case 'venues':
-        void active.node
-          .urlParams()
-          .updateQueryParams((query) => ({ ...query, search, page: 1 }), { replaceUrl: true });
-        break;
-      case 'people':
-      case 'groups':
-      case 'tags':
-        this.localSearch.set(search);
-    }
+  protected readonly visible = computed(() =>
+    this.results().slice(
+      (this.query().page - 1) * this.query().pageSize,
+      this.query().page * this.query().pageSize,
+    ),
+  );
+  protected update(patch: Partial<ReturnType<typeof this.query>>) {
+    void this.params.updateQueryParams((query) => ({ ...query, ...patch }), { replaceUrl: true });
   }
-
+  protected sort(field: 'title' | 'year') {
+    this.update({ sort: { ...this.query().sort, field }, page: 1 });
+  }
+  protected direction(direction: 'asc' | 'desc') {
+    this.update({ sort: { ...this.query().sort, direction }, page: 1 });
+  }
+  protected pageSize(value: string) {
+    this.update({ pageSize: Number(value) as PageSize, page: 1 });
+  }
   protected toggleGenre(genre: string) {
-    const active = this.active.value();
-    switch (active.route) {
-      case 'episodes':
-      case 'movies':
-      case 'shows':
-      case 'albums':
-      case 'songs':
-      case 'performances':
-      case 'productions':
-      case 'works':
-      case 'venues':
-        void active.node.urlParams().updateQueryParams(
-          (query) => ({
-            ...query,
-            genres: query.genres.includes(genre)
-              ? query.genres.filter((candidate) => candidate !== genre)
-              : [...query.genres, genre],
-            page: 1,
-          }),
-          { replaceUrl: true },
-        );
-        break;
-      case 'people':
-      case 'groups':
-      case 'tags':
-        break;
-    }
+    const genres = this.query().genres;
+    this.update({
+      genres: genres.includes(genre)
+        ? genres.filter((value) => value !== genre)
+        : [...genres, genre],
+      page: 1,
+    });
   }
-
   protected stateFor(id: string) {
     return this.repository.personalStates().find((state) => state.itemId === id);
-  }
-  protected toggleFavorite(id: CatalogItem['id']) {
-    void this.repository.toggleFavorite(id);
-  }
-  protected urlFor(item: CatalogItem) {
-    if (item.kind === 'movie')
-      return this.routes.ROOT.SCREEN.MOVIES.DETAIL.createUrlTree({
-        path: { movieId: item.id as `mov_${string}` },
-      });
-    if (item.kind === 'show')
-      return this.routes.ROOT.SCREEN.SHOWS.DETAIL.createUrlTree({
-        path: { showId: item.id as `tv_${string}` },
-      });
-    if (item.kind === 'album')
-      return this.routes.ROOT.MUSIC.ALBUMS.DETAIL.createUrlTree({
-        path: { albumId: item.id as `alb_${string}` },
-      });
-    if (item.kind === 'song')
-      return this.routes.ROOT.MUSIC.SONGS.DETAIL.createUrlTree({
-        path: { songId: item.id as `song_${string}` },
-      });
-    if (item.kind === 'theatre')
-      return this.routes.ROOT.THEATRE.PRODUCTIONS.DETAIL.createUrlTree({
-        path: { productionId: item.id as `prod_${string}` },
-      });
-    return null;
   }
 }

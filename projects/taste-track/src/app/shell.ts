@@ -1,5 +1,6 @@
 import { Component, effect, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { TasteTrackRepository } from './database';
 import { AppRouter } from './app-router';
 import { ThemeService, type ThemePreference } from './theme';
 
@@ -8,9 +9,9 @@ import { ThemeService, type ThemePreference } from './theme';
   template: `
     <div class="app-frame">
       <aside class="sidebar">
-        <a class="brand" [routerLink]="routes.ROOT.DASHBOARD.createUrlTree()">
+        <a class="brand" [routerLink]="routes.ROOT.SCREEN.MOVIES.createUrlTree()">
           <span class="brand-mark" aria-hidden="true">T</span>
-          <span><strong>TasteTrack</strong><small>Your culture, in motion</small></span>
+          <span><strong>TasteTrack</strong><small>Movies, shows, and you</small></span>
         </a>
         <nav aria-label="Primary navigation">
           @for (item of navigation; track item.label) {
@@ -32,7 +33,12 @@ import { ThemeService, type ThemePreference } from './theme';
           }
         </fieldset>
       </aside>
-      <main id="main-content"><router-outlet /></main>
+      <main id="main-content">
+        @if (repository.error(); as error) {
+          <p class="panel" role="alert">{{ error }}</p>
+        }
+        <router-outlet />
+      </main>
     </div>
   `,
   styles: `
@@ -146,30 +152,32 @@ import { ThemeService, type ThemePreference } from './theme';
         display: none;
       }
       nav {
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(6, 1fr);
       }
       nav a {
         justify-content: center;
         font-size: 1.1rem;
       }
-      nav a:nth-child(n + 6),
+      nav a {
+        flex-direction: column;
+        align-items: center;
+        gap: 0.2rem;
+        padding: 0.4rem 0.1rem;
+      }
       nav a span {
-        display: none;
+        font-size: 0.6rem;
       }
     }
   `,
 })
 export class Shell {
+  protected readonly repository = inject(TasteTrackRepository);
   protected readonly routes = inject(AppRouter);
   protected readonly theme = inject(ThemeService);
   private readonly landingRoute = this.routes.activeRoute({
-    dashboard: this.routes.ROOT.DASHBOARD,
     screen: this.routes.ROOT.SCREEN,
-    music: this.routes.ROOT.MUSIC,
-    theatre: this.routes.ROOT.THEATRE,
     people: this.routes.ROOT.PEOPLE,
-    groups: this.routes.ROOT.GROUPS,
-    tags: this.routes.ROOT.TAGS,
+    companies: this.routes.ROOT.COMPANIES,
     collection: this.routes.ROOT.COLLECTION,
     activity: this.routes.ROOT.ACTIVITY,
     settings: this.routes.ROOT.SETTINGS,
@@ -178,19 +186,18 @@ export class Shell {
   });
   protected readonly themes: readonly ThemePreference[] = ['system', 'light', 'dark'];
   protected readonly navigation = [
-    { label: 'Dashboard', icon: '⌂', url: this.routes.ROOT.DASHBOARD.createUrlTree() },
-    { label: 'Screen', icon: '◉', url: this.routes.ROOT.SCREEN.MOVIES.createUrlTree() },
-    { label: 'Music', icon: '♫', url: this.routes.ROOT.MUSIC.ALBUMS.createUrlTree() },
-    { label: 'Theatre', icon: '◇', url: this.routes.ROOT.THEATRE.PRODUCTIONS.createUrlTree() },
+    { label: 'Browse', icon: '◉', url: this.routes.ROOT.SCREEN.MOVIES.createUrlTree() },
     { label: 'Collection', icon: '♥', url: this.routes.ROOT.COLLECTION.createUrlTree() },
-    { label: 'Activity', icon: '↻', url: this.routes.ROOT.ACTIVITY.createUrlTree() },
+    { label: 'History', icon: '↻', url: this.routes.ROOT.ACTIVITY.createUrlTree() },
     { label: 'People', icon: '◎', url: this.routes.ROOT.PEOPLE.createUrlTree() },
+    { label: 'Companies', icon: '▣', url: this.routes.ROOT.COMPANIES.createUrlTree() },
     { label: 'Settings', icon: '⚙', url: this.routes.ROOT.SETTINGS.createUrlTree() },
   ];
 
   constructor() {
     effect(() => {
-      if (this.landingRoute.value().route === 'root') void this.routes.ROOT.DASHBOARD.navigate();
+      if (this.landingRoute.value().route === 'root')
+        void this.routes.ROOT.SCREEN.MOVIES.navigate({}, { replaceUrl: true });
     });
   }
 }

@@ -218,80 +218,11 @@ h2 {
   background: var(--accent-danger);
   border-color: var(--accent-danger);
 }
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-}
-.stat-grid article {
-  border: 1px solid var(--border-subtle);
-  border-radius: 1rem;
-  padding: 1.3rem;
-  background: var(--surface-raised);
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.2rem 0.8rem;
-}
-.stat-grid article > span {
-  grid-row: span 2;
-  color: var(--accent-primary);
-  font-size: 1.2rem;
-}
-.stat-grid strong {
-  color: var(--text-strong);
-  font-size: 1.7rem;
-}
-.stat-grid small {
-  color: var(--text-muted);
-}
 .panel {
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: 1.25rem;
   padding: clamp(1.25rem, 3vw, 2.5rem);
-}
-.panel.split {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  gap: 2rem;
-}
-.quote {
-  padding: 2rem;
-  border-radius: 1rem;
-  background: var(--surface-inverse);
-  color: var(--surface-page);
-}
-.quote > span {
-  color: var(--accent-warm);
-  font-size: 4rem;
-  line-height: 0.5;
-}
-.quote p {
-  font-size: 1.4rem;
-}
-.bars {
-  display: grid;
-  gap: 0.7rem;
-  margin-top: 1.5rem;
-}
-.bars > div {
-  display: grid;
-  grid-template-columns: 5rem 1fr 2.5rem;
-  align-items: center;
-  gap: 0.75rem;
-  font-size: 0.8rem;
-}
-.bars i {
-  height: 0.55rem;
-  border-radius: 99rem;
-  background: var(--surface-selected);
-  overflow: hidden;
-}
-.bars b {
-  display: block;
-  height: 100%;
-  background: var(--accent-primary);
-  border-radius: inherit;
 }
 .section-heading {
   display: flex;
@@ -453,10 +384,6 @@ pre {
   }
 }
 @media (max-width: 900px) {
-  .stat-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .panel.split,
   .detail-hero {
     grid-template-columns: 1fr;
   }
@@ -473,7 +400,6 @@ pre {
     align-items: start;
     flex-direction: column;
   }
-  .stat-grid,
   .filter-panel {
     grid-template-columns: 1fr;
   }
@@ -484,4 +410,15 @@ pre {
   .activity-icon {
     display: none;
   }
+}
+
+a {
+  color: var(--accent-primary);
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
 }

@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, effect, inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { AppRouter } from './app-router';
 
@@ -8,12 +8,11 @@ import { AppRouter } from './app-router';
     <header class="page-header compact">
       <div>
         <p class="eyebrow">Browse</p>
-        <h1>{{ title() }}</h1>
+        <h1>Movies & TV</h1>
       </div>
       <nav aria-label="Section navigation">
-        @for (link of links(); track link.label) {
-          <a [routerLink]="link.url">{{ link.label }}</a>
-        }
+        <a [routerLink]="moviesUrl()">Movies</a>
+        <a [routerLink]="showsUrl()">TV shows</a>
       </nav>
     </header>
     <router-outlet />
@@ -22,37 +21,28 @@ import { AppRouter } from './app-router';
 export class SectionPage {
   private readonly routes = inject(AppRouter);
   private readonly active = this.routes.activeRoute({
+    movies: this.routes.ROOT.SCREEN.MOVIES,
+    shows: this.routes.ROOT.SCREEN.SHOWS,
     screen: this.routes.ROOT.SCREEN,
-    music: this.routes.ROOT.MUSIC,
-    theatre: this.routes.ROOT.THEATRE,
-    seasons: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS,
   });
-  protected readonly title = computed(
-    () =>
-      ({ screen: 'Screen', music: 'Music', theatre: 'Theatre', seasons: 'Seasons' })[
-        this.active.value().route
-      ],
+  constructor() {
+    effect(() => {
+      if (this.active.value().route === 'screen')
+        void this.routes.ROOT.SCREEN.MOVIES.navigate(
+          { query: this.params.value().query },
+          { replaceUrl: true },
+        );
+    });
+  }
+  private readonly params = this.routes.ROOT.SCREEN.urlParams();
+  protected readonly moviesUrl = computed(() =>
+    this.routes.ROOT.SCREEN.MOVIES.createUrlTree({
+      query: { ...this.params.value().query, page: 1 },
+    }),
   );
-  protected readonly links = computed(() => {
-    switch (this.active.value().route) {
-      case 'screen':
-        return [
-          { label: 'Movies', url: this.routes.ROOT.SCREEN.MOVIES.createUrlTree() },
-          { label: 'TV shows', url: this.routes.ROOT.SCREEN.SHOWS.createUrlTree() },
-        ];
-      case 'music':
-        return [
-          { label: 'Albums', url: this.routes.ROOT.MUSIC.ALBUMS.createUrlTree() },
-          { label: 'Songs', url: this.routes.ROOT.MUSIC.SONGS.createUrlTree() },
-        ];
-      case 'theatre':
-        return [
-          { label: 'Works', url: this.routes.ROOT.THEATRE.WORKS.createUrlTree() },
-          { label: 'Productions', url: this.routes.ROOT.THEATRE.PRODUCTIONS.createUrlTree() },
-          { label: 'Venues', url: this.routes.ROOT.THEATRE.VENUES.createUrlTree() },
-        ];
-      case 'seasons':
-        return [];
-    }
-  });
+  protected readonly showsUrl = computed(() =>
+    this.routes.ROOT.SCREEN.SHOWS.createUrlTree({
+      query: { ...this.params.value().query, page: 1 },
+    }),
+  );
 }

@@ -1,39 +1,53 @@
-export type MediaKind = 'movie' | 'show' | 'episode' | 'album' | 'song' | 'theatre';
-
-export type CatalogId = `${'mov' | 'tv' | 'ep' | 'alb' | 'song' | 'prod'}_${string}`;
+export type MediaKind = 'movie' | 'show' | 'episode';
+export type CatalogId = `mov_${string}` | `tv_${string}` | `ep_${string}`;
 export type PersonId = `per_${string}`;
-export type GroupId = `grp_${string}`;
+export type CompanyId = `co_${string}`;
 
 export type ExperienceCount =
   Readonly<{ kind: 'exact'; value: number }> | Readonly<{ kind: 'countless' }>;
+export type CollectionStatus = 'saved' | 'in-progress' | 'completed';
 
-export type CollectionStatus = 'saved' | 'in-progress' | 'completed' | 'paused' | 'abandoned';
+export interface Credit {
+  readonly contributorId: PersonId | CompanyId;
+  readonly role: 'Actor' | 'Director' | 'Writer' | 'Production';
+}
 
-export interface CatalogItem {
-  readonly id: CatalogId;
-  readonly kind: MediaKind;
+interface CatalogMetadata {
   readonly title: string;
   readonly subtitle: string;
   readonly year: number;
   readonly genres: readonly string[];
-  readonly contributorIds: readonly (PersonId | GroupId)[];
-  readonly parentId?: CatalogId;
+  readonly credits: readonly Credit[];
   readonly accent: string;
-  readonly featured: boolean;
 }
 
-export interface Contributor {
-  readonly id: PersonId | GroupId;
-  readonly kind: 'person' | 'group';
-  readonly name: string;
-  readonly roles: readonly string[];
+export type CatalogItem = CatalogMetadata &
+  (
+    | { readonly kind: 'movie'; readonly id: `mov_${string}` }
+    | { readonly kind: 'show'; readonly id: `tv_${string}` }
+    | {
+        readonly kind: 'episode';
+        readonly id: `ep_${string}`;
+        readonly showId: `tv_${string}`;
+        readonly seasonNumber: number;
+        readonly episodeNumber: number;
+      }
+  );
+
+export interface Season {
+  readonly id: string;
+  readonly showId: `tv_${string}`;
+  readonly number: number;
+  readonly title: string;
 }
 
-export interface PersonalTag {
-  readonly id: `tag_${string}`;
+export type Contributor = {
   readonly name: string;
-  readonly color: string;
-}
+  readonly description: string;
+} & (
+  | { readonly kind: 'person'; readonly id: PersonId }
+  | { readonly kind: 'company'; readonly id: CompanyId }
+);
 
 export interface PersonalState {
   readonly itemId: CatalogId;
@@ -41,8 +55,6 @@ export interface PersonalState {
   readonly favorite: boolean;
   readonly rating: number | null;
   readonly count: ExperienceCount;
-  readonly notes: string;
-  readonly tagIds: readonly PersonalTag['id'][];
 }
 
 export interface JournalEvent {
@@ -51,13 +63,12 @@ export interface JournalEvent {
   readonly kind: MediaKind;
   readonly occurredAt: string;
   readonly rating: number | null;
-  readonly note: string;
 }
 
 export interface TasteTrackSeed {
   readonly items: readonly CatalogItem[];
+  readonly seasons: readonly Season[];
   readonly contributors: readonly Contributor[];
-  readonly tags: readonly PersonalTag[];
   readonly personalStates: readonly PersonalState[];
   readonly events: readonly JournalEvent[];
 }

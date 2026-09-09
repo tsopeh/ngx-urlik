@@ -54,7 +54,11 @@ export class SettingsPage {
   protected async reset() {
     if (!confirm('Reset all TasteTrack demo data?')) return;
     this.resetting.set(true);
-    await this.repository.reset();
-    await this.routes.ROOT.DASHBOARD.navigate();
+    try {
+      await this.repository.reset();
+      await this.routes.ROOT.SCREEN.MOVIES.navigate();
+    } finally {
+      this.resetting.set(false);
+    }
   }
 }

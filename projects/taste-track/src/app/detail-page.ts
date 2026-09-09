@@ -1,98 +1,282 @@
-import { Component, computed, inject } from '@angular/core';
-import { JsonPipe } from '@angular/common';
+import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { AppRouter } from './app-router';
 import { TasteTrackRepository } from './database';
+import { CatalogLinks } from './catalog-links';
+import type { CollectionStatus } from './domain';
 
 @Component({
-  imports: [JsonPipe, RouterLink, RouterOutlet],
+  imports: [RouterLink, RouterOutlet],
   template: `
-    <section class="detail-hero">
-      <div class="detail-cover cover-{{ item()?.accent }}">
-        <span>{{ item()?.kind }}</span
-        ><strong>{{ item()?.title?.slice(0, 1) }}</strong>
-      </div>
-      <div>
-        <p class="eyebrow">{{ item()?.kind ?? 'Typed route detail' }}</p>
-        <h1>{{ item()?.title ?? 'Nested route context' }}</h1>
-        <p class="lede">
-          {{ item()?.subtitle ?? 'This route demonstrates accumulated, decoded path state.' }}
-        </p>
-        <div class="chip-row">
-          @for (genre of item()?.genres ?? []; track genre) {
-            <span>{{ genre }}</span>
+    @if (!childActive()) {
+      <section class="page-stack">
+        @if (item(); as title) {
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">{{ isSeason() ? 'Season' : title.kind }}</p>
+              <h1>{{ heading() }}</h1>
+              <p>{{ title.subtitle }}</p>
+            </div>
+          </header>
+          <nav class="anchor-links" aria-label="On this page">
+            <a [routerLink]="sectionUrl('overview')">Overview</a
+            ><a [routerLink]="sectionUrl('credits')">Credits</a
+            ><a [routerLink]="sectionUrl('history')">History</a>
+          </nav>
+          <section id="overview" class="panel">
+            <h2>Overview</h2>
+            <p>{{ title.year }} · {{ title.genres.join(', ') }}</p>
+            @if (parentLink(); as parent) {
+              <p>
+                <a [routerLink]="parent.url">{{ parent.label }}</a>
+              </p>
+            }
+            @if (childrenLink(); as child) {
+              <p>
+                <a [routerLink]="child.url">{{ child.label }}</a>
+              </p>
+            }
+          </section>
+          @if (!isSeason()) {
+            <section class="panel">
+              <h2>Your collection</h2>
+              <div class="filter-panel">
+                <label
+                  >Status<select
+                    [value]="state()?.status ?? ''"
+                    (change)="setStatus($any($event.target).value)"
+                  >
+                    <option value="" disabled>Not in collection</option>
+                    <option value="saved">Watchlist</option>
+                    <option value="in-progress">Watching</option>
+                    <option value="completed">Watched</option>
+                  </select></label
+                >
+                <label
+                  >Rating<select
+                    [value]="state()?.rating ?? ''"
+                    (change)="setRating($any($event.target).value)"
+                  >
+                    <option value="">Unrated</option>
+                    @for (rating of ratings; track rating) {
+                      <option [value]="rating" [selected]="state()?.rating === rating">
+                        {{ rating }}/10
+                      </option>
+                    }
+                  </select></label
+                >
+                <label
+                  >Viewing date<input
+                    type="date"
+                    [value]="viewingDate()"
+                    (input)="viewingDate.set($any($event.target).value)"
+                /></label>
+                <button
+                  class="button primary"
+                  [disabled]="saving() || !viewingDate()"
+                  (click)="logViewing()"
+                >
+                  Log viewing
+                </button>
+              </div>
+              @if (saved()) {
+                <p role="status">Viewing saved.</p>
+              }
+              @if (error()) {
+                <p role="alert">{{ error() }}</p>
+              }
+            </section>
           }
-        </div>
-        <nav class="anchor-links" aria-label="On this page">
-          <a [routerLink]="sectionUrl('overview')">Overview</a
-          ><a [routerLink]="sectionUrl('credits')">Credits</a
-          ><a [routerLink]="sectionUrl('activity')">Activity</a>
-        </nav>
-      </div>
-    </section>
-    <section id="overview" class="panel">
-      <p class="eyebrow">Decoded path state</p>
-      <pre>{{ context.value().params.path | json }}</pre>
-    </section>
-    <section id="credits" class="panel">
-      <p class="eyebrow">Credits</p>
-      <h2>Connected across every medium</h2>
-      <p>People and groups remain shared entities while their roles are specific to each work.</p>
-    </section>
-    <section id="activity" class="panel">
-      <p class="eyebrow">Your history</p>
-      <h2>{{ eventCount() }} recorded experiences</h2>
-    </section>
-    <router-outlet />
+          <section id="credits" class="panel">
+            <h2>Cast & crew</h2>
+            @for (credit of credits(); track credit.person.id + credit.role) {
+              <p>
+                <a [routerLink]="links.contributor(credit.person)">{{ credit.person.name }}</a> ·
+                {{ credit.role }}
+              </p>
+            }
+          </section>
+          <section id="history" class="panel">
+            <h2>{{ eventCount() }} recorded viewings</h2>
+            <a [routerLink]="historyUrl()">View history for {{ title.title }}</a>
+          </section>
+        } @else if (repository.ready()) {
+          <h1>Title not found</h1>
+          <p>This movie, show, season, or episode is not in the catalog.</p>
+        }
+      </section>
+    }
+    <router-outlet (activate)="childActive.set(true)" (deactivate)="childActive.set(false)" />
   `,
 })
 export class DetailPage {
   private readonly routes = inject(AppRouter);
-  private readonly repository = inject(TasteTrackRepository);
-  protected readonly context = this.routes.activeRoute({
-    movie: this.routes.ROOT.SCREEN.MOVIES.DETAIL,
-    show: this.routes.ROOT.SCREEN.SHOWS.DETAIL,
-    season: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL,
+  protected readonly repository = inject(TasteTrackRepository);
+  protected readonly links = inject(CatalogLinks);
+  protected readonly childActive = signal(false);
+  protected readonly viewingDate = signal(new Date().toISOString().slice(0, 10));
+  protected readonly saving = signal(false);
+  protected readonly saved = signal(false);
+  protected readonly error = signal('');
+  protected readonly ratings = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  // activeRoute selects the first match; descendants must precede ancestors.
+  private readonly context = this.routes.activeRoute({
     episode: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.EPISODES.DETAIL,
-    album: this.routes.ROOT.MUSIC.ALBUMS.DETAIL,
-    song: this.routes.ROOT.MUSIC.SONGS.DETAIL,
-    production: this.routes.ROOT.THEATRE.PRODUCTIONS.DETAIL,
-    person: this.routes.ROOT.PEOPLE.DETAIL,
-    group: this.routes.ROOT.GROUPS.DETAIL,
-    tag: this.routes.ROOT.TAGS.DETAIL,
+    season: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL,
+    show: this.routes.ROOT.SCREEN.SHOWS.DETAIL,
+    movie: this.routes.ROOT.SCREEN.MOVIES.DETAIL,
   });
-  private readonly entityId = computed(() =>
-    Object.values(this.context.value().params.path).find((value) => typeof value === 'string'),
-  );
-  protected readonly item = computed(() =>
-    this.repository.items().find((item) => item.id === this.entityId()),
+  protected readonly isSeason = computed(() => this.context.value().route === 'season');
+  protected readonly item = computed(() => {
+    const active = this.context.value();
+    const items = this.repository.items();
+    switch (active.route) {
+      case 'movie':
+        return items.find((item) => item.id === active.params.path.movieId);
+      case 'show':
+        return items.find((item) => item.id === active.params.path.showId);
+      case 'season':
+        return this.repository
+          .seasons()
+          .some(
+            (season) =>
+              season.showId === active.params.path.showId &&
+              season.number === active.params.path.seasonNumber,
+          )
+          ? items.find((item) => item.id === active.params.path.showId)
+          : undefined;
+      case 'episode':
+        return items.find(
+          (item) =>
+            item.kind === 'episode' &&
+            item.showId === active.params.path.showId &&
+            item.seasonNumber === active.params.path.seasonNumber &&
+            item.episodeNumber === active.params.path.episodeNumber,
+        );
+    }
+  });
+  protected readonly heading = computed(() => {
+    const active = this.context.value();
+    return active.route === 'season'
+      ? `${this.item()?.title} · Season ${active.params.path.seasonNumber}`
+      : this.item()?.title;
+  });
+  protected readonly state = computed(() =>
+    this.repository.personalStates().find((state) => state.itemId === this.item()?.id),
   );
   protected readonly eventCount = computed(
     () => this.repository.events().filter((event) => event.itemId === this.item()?.id).length,
   );
+  protected readonly credits = computed(
+    () =>
+      this.item()?.credits.flatMap((credit) => {
+        const person = this.repository
+          .contributors()
+          .find((person) => person.id === credit.contributorId);
+        return person ? [{ person, role: credit.role }] : [];
+      }) ?? [],
+  );
+  protected readonly parentLink = computed(() => {
+    const active = this.context.value();
+    if (active.route === 'episode')
+      return {
+        label: `Season ${active.params.path.seasonNumber}`,
+        url: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.createUrlTree({
+          path: active.params.path,
+          query: active.params.query,
+        }),
+      };
+    if (active.route === 'season')
+      return {
+        label: 'Back to show',
+        url: this.routes.ROOT.SCREEN.SHOWS.DETAIL.createUrlTree({
+          path: { showId: active.params.path.showId },
+          query: active.params.query,
+        }),
+      };
+    return null;
+  });
+  protected readonly childrenLink = computed(() => {
+    const active = this.context.value();
+    if (active.route === 'show')
+      return {
+        label: 'Browse seasons',
+        url: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.createUrlTree({
+          path: active.params.path,
+          query: active.params.query,
+        }),
+      };
+    if (active.route === 'season')
+      return {
+        label: 'Browse episodes',
+        url: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.EPISODES.createUrlTree({
+          path: active.params.path,
+          query: { ...active.params.query, search: '', genres: [], page: 1 },
+        }),
+      };
+    return null;
+  });
   protected sectionUrl(fragment: string) {
     const active = this.context.value();
     switch (active.route) {
       case 'movie':
-        return active.node.createUrlTree({ path: active.params.path, fragment });
+        return active.node.createUrlTree({
+          path: active.params.path,
+          query: active.params.query,
+          fragment,
+        });
       case 'show':
-        return active.node.createUrlTree({ path: active.params.path, fragment });
+        return active.node.createUrlTree({
+          path: active.params.path,
+          query: active.params.query,
+          fragment,
+        });
       case 'season':
-        return active.node.createUrlTree({ path: active.params.path, fragment });
+        return active.node.createUrlTree({
+          path: active.params.path,
+          query: active.params.query,
+          fragment,
+        });
       case 'episode':
-        return active.node.createUrlTree({ path: active.params.path, fragment });
-      case 'album':
-        return active.node.createUrlTree({ path: active.params.path, fragment });
-      case 'song':
-        return active.node.createUrlTree({ path: active.params.path, fragment });
-      case 'production':
-        return active.node.createUrlTree({ path: active.params.path, fragment });
-      case 'person':
-        return active.node.createUrlTree({ path: active.params.path, fragment });
-      case 'group':
-        return active.node.createUrlTree({ path: active.params.path, fragment });
-      case 'tag':
-        return active.node.createUrlTree({ path: active.params.path, fragment });
+        return active.node.createUrlTree({
+          path: active.params.path,
+          query: active.params.query,
+          fragment,
+        });
+    }
+  }
+  protected historyUrl() {
+    return this.routes.ROOT.ACTIVITY.createUrlTree({ query: { search: this.item()?.title ?? '' } });
+  }
+  protected async setStatus(status: CollectionStatus) {
+    const item = this.item();
+    if (item) await this.persist(() => this.repository.updatePersonal(item.id, { status }));
+  }
+  protected async setRating(value: string) {
+    const item = this.item();
+    if (item)
+      await this.persist(() =>
+        this.repository.updatePersonal(item.id, { rating: value ? Number(value) : null }),
+      );
+  }
+  protected async logViewing() {
+    const item = this.item();
+    if (!item) return;
+    this.saved.set(false);
+    await this.persist(async () => {
+      await this.repository.logViewing(item, this.viewingDate());
+      this.saved.set(true);
+    });
+  }
+  private async persist(write: () => Promise<void>) {
+    this.saving.set(true);
+    this.error.set('');
+    try {
+      await write();
+    } catch {
+      this.error.set('Could not save your changes. Please try again.');
+    } finally {
+      this.saving.set(false);
     }
   }
 }

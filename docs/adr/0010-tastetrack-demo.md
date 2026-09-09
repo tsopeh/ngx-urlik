@@ -1,61 +1,68 @@
-# ADR 0010: Demonstrate the router through a browser-local media journal
+# ADR 0010: Demonstrate the router through a browser-local movie and TV journal
 
-Status: accepted.
+Status: accepted; scope simplified September 2026.
 
 ## Decision
 
-The repository includes TasteTrack, a client-only Angular demo application for a fictional personal
-media journal. It covers screen, music, and theatre through separate first-class domain entities,
-with shared projections for dashboards, collection views, activity, people, groups, and personal
-tags.
+TasteTrack is a client-only Angular demonstration of the public `ngx-urlik` and
+`ngx-urlik/forms` entry points. Preserve each distinct router capability, while removing
+product features that duplicate examples. The app opens on movie browsing.
 
-TasteTrack is generated as the `taste-track` application in the existing Angular workspace. It may
-import only the public `ngx-urlik` and `ngx-urlik/forms` entry points. Its static typed route tree is
-grouped under screen, music, and theatre branches and uses accumulated parameters, typed
-construction fragments, custom codecs, reusable query-definition fragments, explicit active-route
-selection, Reactive Forms bindings, and Signal Forms bindings. It does not demonstrate the native
-Router escape hatch.
+The scope is movies, TV shows, seasons, and episodes, with people and production companies
+linked through credits. A credit assigns a role to a person or company on a particular title;
+there is no separate crew or team entity. Seasons have explicit records, and each episode
+has a show ID, season number, and episode number matching its typed route.
 
-All shareable dashboard state is URL-owned, including filters, sorting, pagination, and chart
-ranges. Transient presentation state and unsaved edits remain local. Pagination uses separate
-one-based `page` and constrained `pageSize` query parameters produced by a typed
-`paginationParams()` helper. Sorting remains one atomic query field. Experience counts use a
-type-safe codec for exact non-negative counts or the explicit `countless` value rendered as “More
-than I can count.”
+The application has browsing, nested details, people/company profiles, collection, viewing
+history, and settings. Music, theatre, generic groups, standalone tags, and the dashboard
+are removed. Seeded catalog metadata stays readonly. Personal status, rating, and favorites
+are editable; logging a dated viewing appends history and updates the viewing count.
 
-The application is a single anonymous browser-local profile. Dexie wraps IndexedDB behind
-application repository interfaces. A deterministic bundled seed combines curated parody content
-with generated supporting records. Personal state and journal events persist across reloads and can
-be transactionally reset without resetting the separately persisted theme preference.
+## Router coverage
 
-TasteTrack uses Angular 22 defaults: standalone components, zoneless change detection, OnPush
-change detection, the concise filename convention, CSS, and no server rendering. Its light, dark,
-and system themes use complete semantic CSS custom-property sets without fallback values. Focused
-CSS/SVG visualizations provide accessible textual equivalents. Featured records use original local
-artwork; supporting records use deterministic CSS covers.
+| Capability                              | Demonstration                                                              |
+| --------------------------------------- | -------------------------------------------------------------------------- |
+| Static typed routes and lazy components | All screens use public route nodes                                         |
+| Accumulated decoded path parameters     | Show → season → episode                                                    |
+| Inherited query state                   | Screen filters inherited by movie/show descendants                         |
+| Explicit active-route selection         | Catalog, detail, and contributor pages                                     |
+| Typed cross-branch navigation           | Credits → person/company → filmography → title                             |
+| Construction-only fragments             | Overview, credits, and history section links                               |
+| Scalar/default query parameters         | Search, rating thresholds, page and page size                              |
+| Repeated arrays                         | Catalog genres and collection statuses                                     |
+| Delimited arrays                        | Collection media kinds                                                     |
+| Custom scalar and structured codecs     | Prefixed IDs, positive numbers, atomic sort, exact/countless viewing count |
+| Reusable query definitions              | `paginationParams()` across browsing, collection, and history              |
+| Signal Forms                            | Collection filters                                                         |
+| Reactive Forms and grouped debounce     | Viewing-history search and date filters                                    |
+| Fallback routes                         | Root-scoped wildcard with empty-path guard                                 |
 
-## Rationale
+Shareable filter, sort, and page state belongs in the URL. Transient presentation state and
+unsaved edits stay local. The application does not use `AppRouter.escapeHatch`.
 
-A media journal creates deep, understandable route structure without pretending to be a production
-service. Movies, shows, seasons, episodes, albums, songs, theatre works, productions, performances,
-venues, people, and groups provide both nested and cross-branch navigation. Collection filters and
-chronological activity provide credible query-state complexity, while local editing makes browser
-persistence and reset behavior visible.
+## Persistence and mock data
 
-Keeping the demo in the library workspace makes API changes and integration examples evolve in one
-change. The public-entry-point boundary prevents the demo from succeeding through internal access.
-Browser-local persistence removes backend setup and keeps the application deterministic and fully
-resettable.
+Dexie wraps IndexedDB. The simplified dataset uses **`taste-track-screen-v2`**, starting at
+schema version 1. The old **`taste-track-demo`** database remains untouched and is not read
+or migrated. Existing personal data is not carried into the simplified demo.
+
+A deterministic seed contains 30 movies, 4 shows, 8 seasons, 32 episodes, 4 people, and
+2 companies, plus personal state and viewing events. This is enough data for pagination
+and connected browsing without a large catalog generator. Credits and parent references
+resolve to real seed records. Initial population and reset use the same seed; reset runs
+transactionally. Theme preference is stored separately and survives reset.
+
+## Validation
+
+Seed integrity tests verify references, unique episode addresses, and plausible event dates.
+Browser tests cover typed navigation, exact nested episode resolution, credit cross-links,
+URL filters/sorting/pagination, both form integrations, persisted edits, transactional reset,
+theme preservation, and isolation from the legacy database. Existing library tests continue
+to validate the router contract independently of the demo.
 
 ## Consequences
 
-- TasteTrack is an integration consumer and living example, not a publishable part of the library.
-- Seeded catalog metadata is readonly; personal ratings, statuses, favorites, tags, counts, notes,
-  and dated events are editable.
-- Catalog routes browse all seed content; collection and activity routes project browser-local
-  personal state.
-- Movies, shows, albums, songs, theatre entities, people, and groups remain distinct domain models.
-- A current overall rating and historical per-event ratings may coexist.
-- Exact experience totals need not equal remembered dated events; `countless` is reversible.
-- Library changes discovered during demo work require a separate design decision rather than a
-  TasteTrack-specific widening.
+TasteTrack is a living integration example, not a production media service. Library changes
+discovered during demo work still require a separate design decision. There is no backend,
+authentication, external catalog API, or migration framework. Angular standalone components,
+zoneless change detection, and the existing system/light/dark themes remain in use.
