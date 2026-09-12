@@ -106,6 +106,11 @@ const userId = computed(() => params.value().path.userId);
 await params.updateQueryParams((query) => ({ ...query, search: null }), { replaceUrl: true });
 ```
 
+Query updates across routes and forms execute in submission order against the latest committed
+state. Callbacks run asynchronously; handle errors through the returned promise. External navigation
+cancels waiting updates at navigation start, even if a guard later blocks it. Canceled writes resolve
+`false`; a failed write does not stop later writes. Guard redirects cancel waiting work.
+
 Every declared query property is present: optional scalars use `null`, while absent arrays use `[]`. Reading an inactive route or an invalid active path parameter throws a contextual semantic error. Query decoding failures recover through defaults and structured diagnostics.
 
 ## Reusable codecs and arrays
@@ -180,8 +185,11 @@ const filters = createQueryParamsFormGroup(routes.ROOT.RESULTS, {
 
 Write events include field and whole-form validity metadata, but validation does not block URL
 writes automatically; filter the stream when that policy is desired. Writes replace the current
-history entry by default. Browser history and other external navigation cancel staged writes and
-reset the form to a pristine URL baseline. Signal bindings observe the model value, so native Signal
+history entry by default. Forms submit only changed fields through the same queue as direct query
+updates. Other coordinated writes preserve unrelated staged edits; later submitted writes to the
+same field win. Debounced edits are submitted when their transformation emits. Browser history and
+other external navigation cancel staged writes at navigation start and reset the form to a pristine
+URL baseline. Signal bindings observe the model value, so native Signal
 Forms debounce runs before `transformWrites`; avoid unintentionally delaying the same field twice.
 
 See the accepted [App Router design](docs/design/app-router.md), [Angular restrictions](docs/angular-restrictions.md), and [deferred topics](docs/deferred-discussions.md).

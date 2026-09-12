@@ -1,24 +1,8 @@
-import {
-  DestroyRef,
-  EffectRef,
-  ErrorHandler,
-  WritableSignal,
-  effect,
-  inject,
-  signal,
-} from '@angular/core';
+import { DestroyRef, ErrorHandler, WritableSignal, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
 import { FieldTree, SchemaOrSchemaFn, form as signalForm } from '@angular/forms/signals';
-import {
-  NavigationCancel,
-  NavigationEnd,
-  NavigationError,
-  NavigationSkipped,
-  NavigationStart,
-  Router,
-} from '@angular/router';
 import { Observable, Subject, Subscription } from 'rxjs';
-import { isEqual, type UrlParamsRef } from 'ngx-urlik';
+import { isEqual, ɵgetQueryBinding, type UrlParamsRef } from 'ngx-urlik';
 
 type QueryState = Readonly<Record<string, unknown>>;
 type QueryRoute<Q extends QueryState> = { urlParams(): UrlParamsRef<unknown, Q> };
@@ -52,6 +36,7 @@ export interface QueryParamsBindingOptions<Q extends QueryState> {
 
 type BindingAdapter<Q extends QueryState> = {
   reset(query: Q): void;
+  write(query: Q): void;
   changes(emit: (query: Q, metadata: (param: keyof Q) => QueryChangeMetadata) => void): () => void;
 };
 
@@ -74,18 +59,15 @@ const bindQueryParams = <Q extends QueryState>(
 ): void => {
   const destroyRef = inject(DestroyRef);
   const errorHandler = inject(ErrorHandler);
-  const router = inject(Router);
   const ref = route.urlParams();
-  let observed = ref.value().query;
-  let desired = observed;
-  let inFlight = false;
-  let needsWrite = false;
-  let capturingTarget: Q | undefined;
-  let acceptedOwnTarget: Q | undefined;
-  const ownNavigationTargets = new Map<number, Q>();
+  const binding = ɵgetQueryBinding<Q>(ref);
+  let observed = binding.read() ?? ref.value().query;
+  const owner = {};
+  const staged = new Map<keyof Q, { revision: number; value: Q[keyof Q] }>();
+  let revision = 0;
+  let destroyed = false;
   let source = new Subject<QueryParamChange<Q>>();
   let outputSubscription: Subscription;
-
   adapter.reset(observed);
 
   const reportFailure = (failure: QueryWriteFailure) => {
@@ -93,60 +75,66 @@ const bindQueryParams = <Q extends QueryState>(
     else if (failure.kind === 'error') errorHandler.handleError(failure.error);
   };
 
-  const write = () => {
-    if (inFlight || !needsWrite) return;
-    inFlight = true;
-    needsWrite = false;
-    const target = desired;
-    capturingTarget = target;
-    let navigation: Promise<boolean>;
-    try {
-      navigation = ref.updateQueryParams((query) => ({ ...query, ...target }), {
-        replaceUrl: options.replaceUrl ?? true,
-      });
-    } finally {
-      capturingTarget = undefined;
-    }
-    void navigation
-      .then((result) => {
-        if (!result) reportFailure({ kind: 'declined' });
-      })
-      .catch((error: unknown) => reportFailure({ kind: 'error', error }))
-      .finally(() => {
-        inFlight = false;
-        write();
-      });
-  };
-
   const connectOutput = () => {
     const output = options.transformWrites?.(source.asObservable()) ?? source;
     outputSubscription = output.subscribe({
       next: (change) => {
-        desired = { ...desired, [change.param]: change.value };
-        needsWrite = true;
-        write();
+        const pending = staged.get(change.param);
+        const submittedRevision = pending?.revision;
+        const clearSubmitted = () => {
+          if (staged.get(change.param)?.revision === submittedRevision) staged.delete(change.param);
+        };
+        void binding
+          .update(
+            (query) => ({ ...query, [change.param]: change.value }),
+            { replaceUrl: options.replaceUrl ?? true },
+            owner,
+            clearSubmitted,
+          )
+          .then((result) => {
+            if (!result && !destroyed) {
+              reportFailure({ kind: 'declined' });
+            }
+          })
+          .catch((error: unknown) => {
+            if (!destroyed) {
+              reportFailure({ kind: 'error', error });
+            }
+          });
       },
       error: (error: unknown) => errorHandler.handleError(error),
     });
   };
   connectOutput();
 
-  const resetToUrl = (incoming: Q) => {
-    acceptedOwnTarget = undefined;
-    outputSubscription.unsubscribe();
-    source.complete();
-    source = new Subject<QueryParamChange<Q>>();
-    observed = incoming;
-    desired = incoming;
-    needsWrite = false;
-    adapter.reset(incoming);
-    connectOutput();
+  const synchronize = (reset: boolean) => {
+    const incoming = binding.read();
+    if (!incoming) return;
+    const next = { ...incoming };
+    for (const [param, pending] of staged) next[param] = pending.value;
+    if (reset || !isEqual(next, observed)) {
+      observed = next;
+      if (reset) adapter.reset(next);
+      else adapter.write(next);
+    }
   };
+
+  const subscription = binding.coordinator.changes.subscribe((kind) => {
+    if (kind === 'external') {
+      outputSubscription.unsubscribe();
+      source.complete();
+      source = new Subject<QueryParamChange<Q>>();
+      staged.clear();
+      synchronize(true);
+      connectOutput();
+    } else synchronize(false);
+  });
 
   const stopFormChanges = adapter.changes((next, metadata) => {
     for (const param of Object.keys(next) as (keyof Q)[]) {
       if (isEqual(observed[param], next[param])) continue;
       observed = { ...observed, [param]: next[param] };
+      staged.set(param, { revision: ++revision, value: next[param] });
       source.next({
         param,
         value: next[param],
@@ -156,40 +144,16 @@ const bindQueryParams = <Q extends QueryState>(
     }
   });
 
-  const routerSubscription = router.events.subscribe((event) => {
-    if (event instanceof NavigationStart && capturingTarget)
-      ownNavigationTargets.set(event.id, capturingTarget);
-    if (event instanceof NavigationEnd || event instanceof NavigationSkipped) {
-      const ownTarget = ownNavigationTargets.get(event.id);
-      ownNavigationTargets.delete(event.id);
-      const incoming = ref.value().query;
-      if (ownTarget && isEqual(incoming, ownTarget)) acceptedOwnTarget = incoming;
-      else resetToUrl(incoming);
-    } else if (event instanceof NavigationCancel || event instanceof NavigationError) {
-      ownNavigationTargets.delete(event.id);
-    }
-  });
-
-  const urlEffect: EffectRef = effect(() => {
-    const incoming = ref.value().query;
-    if (isEqual(incoming, observed)) {
-      if (acceptedOwnTarget && isEqual(incoming, acceptedOwnTarget)) acceptedOwnTarget = undefined;
-      return;
-    }
-    if (acceptedOwnTarget && isEqual(incoming, acceptedOwnTarget)) {
-      acceptedOwnTarget = undefined;
-      return;
-    }
-    resetToUrl(incoming);
-  });
-
+  // Also observe injection-aware defaults that can change without navigation.
+  const urlEffect = effect(() => synchronize(false));
   destroyRef.onDestroy(() => {
+    destroyed = true;
+    binding.coordinator.cancelOwner(owner);
     stopFormChanges();
-    routerSubscription.unsubscribe();
+    subscription.unsubscribe();
     outputSubscription.unsubscribe();
     source.complete();
     urlEffect.destroy();
-    needsWrite = false;
   });
 };
 
@@ -202,6 +166,7 @@ export function bindQueryParamsToFormGroup<Q extends QueryState>(
     route,
     {
       reset: (query) => form.reset(query as never, { emitEvent: false }),
+      write: (query) => form.setValue(query as never, { emitEvent: false }),
       changes: (emit) => {
         const subscription = form.valueChanges.subscribe(() =>
           emit(form.getRawValue() as Q, (param) => ({
@@ -243,6 +208,7 @@ export function bindQueryParamsToSignalForm<Q extends QueryState>(
     route,
     {
       reset: (query) => form().reset(query as never),
+      write: (query) => form().value.set(query as never),
       changes: (emit) => {
         const watcher = effect(() => {
           const query = form().value();

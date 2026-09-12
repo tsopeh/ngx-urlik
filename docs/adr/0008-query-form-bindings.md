@@ -1,6 +1,7 @@
 # ADR 0008: Synchronize query forms through one write stream
 
-Status: accepted.
+Status: accepted. The binding-local coalescing policy below is superseded by
+[ADR 0011](0011-shared-query-write-coordinator.md), which shares ordered writes across routes and forms.
 
 ## Decision
 

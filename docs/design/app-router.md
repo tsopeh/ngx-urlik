@@ -199,7 +199,17 @@ interface UrlParamsRef<Path, Query> {
 
 Every declared query property exists in state. Optional scalar values use `null`; arrays use `[]`. Reading an inactive node or an invalid accumulated active path throws a semantic error.
 
-Updates preserve the current path, descendant-owned query keys, and unknown keys. The updater is invoked once with complete owned state. Calls are not queued.
+Updates preserve the current path, fragment, descendant-owned query keys, and unknown keys. All
+route refs and forms share one coordinator per generated router tree. Writes execute in submission
+order, each updater invoked once against fresh committed owned state, independently of signal
+equality. Updaters execute asynchronously; exceptions reject the returned promise. Later same-field
+writes win. Each write retains its own history option and Angular navigation result.
+
+External navigation cancels waiting writes at navigation start, even if navigation is later blocked.
+Canceled writes resolve false without running their updater; submissions during pending external
+navigation are declined. Guard redirects also cancel waiting work. Ordinary guard rejection or an
+error affects only its write; later writes continue. Same-URL skips resolve false and allow subsequent
+writes. Router-tree destruction settles waiting and active callers as false. See ADR 0011.
 
 ### Query form bindings
 
@@ -216,8 +226,9 @@ writable model and field tree and accepts an optional Angular schema.
 Bindings require an injection context and clean themselves up with `DestroyRef`. The active URL
 initializes the form synchronously. External navigation, including browser history navigation,
 cancels pending writes and resets the form to the URL state as a pristine and untouched baseline.
-Self-originated navigation echoes preserve interaction state. Origin is tracked by navigation
-identity rather than URL equality.
+Coordinated query writes preserve interaction state and unrelated staged field edits. Origin is
+tracked by navigation identity rather than URL equality. External navigation cancels staged edits
+at its start, even if subsequently blocked.
 
 Form changes become typed per-parameter RxJS events containing the changed key and value, the full
 raw query snapshot, and parameter/form validity and pending metadata. `transformWrites` may return a
@@ -225,10 +236,12 @@ mapped, filtered, grouped, debounced, or throttled stream. The library supplies 
 operator catalog; documentation demonstrates standard RxJS `groupBy` composition. Validation does
 not gate writes unless the transformation filters events.
 
-Automatic writes use `replaceUrl: true` by default. Each binding coalesces synchronous changes,
-allows one navigation in flight, and converges to the latest desired query snapshot with at most one
-follow-up navigation. This coordinator does not change the unqueued contract of direct
-`updateQueryParams()` calls.
+Automatic writes use `replaceUrl: true` by default. Each transformed emission submits only its
+changed field to the shared coordinator, merged into fresh query state at execution time. Debounced
+edits take their place in submission order when the transformation emits. Bindings do not batch
+writes or maintain a second navigation queue. Destroying a binding cancels its waiting writes but
+does not abort an already-started navigation. Failed writes retain entered form values and are not
+retried automatically.
 
 Signal bindings observe the form model value, so native Signal Forms debounce precedes any debounce
 inside `transformWrites`. Applying both to one field intentionally delays twice.

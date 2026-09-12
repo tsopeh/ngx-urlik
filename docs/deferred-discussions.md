@@ -13,8 +13,6 @@ These topics were deliberately left for later rather than implicitly rejected fo
 - Relative navigation remains confined to the escape hatch; fragments are supported only as typed, construction-only values unless concrete state-modeling needs emerge.
 - Named outlets, custom matchers, matrix parameters, empty child routes, and lazy route definitions.
 - More navigation/update behavior options if concrete use cases require them.
-- Managed queuing or conflict semantics for direct concurrent `updateQueryParams()` calls outside
-  the binding-local coordinator defined by ADR 0008.
 - Development diagnostic and tracing facilities beyond the current validation errors.
 - Optional ESLint rules warning when application code bypasses the typed API through Angular `Router` or raw route constructs.
 - Whether route-level equality callbacks can receive perfectly inferred accumulated state in all recursive TypeScript contexts; the desired public contract remains fully typed.

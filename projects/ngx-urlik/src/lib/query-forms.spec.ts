@@ -1,392 +1,244 @@
-import { Component, ErrorHandler, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  createEnvironmentInjector,
+  EnvironmentInjector,
+  ErrorHandler,
+  runInInjectionContext,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FormControl, FormGroup, Validators } from '@angular/forms';
-import { NavigationEnd, NavigationStart, Router } from '@angular/router';
-import { debounceTime, groupBy, mergeMap, Subject, tap } from 'rxjs';
+import { CanActivateFn, NavigationStart, Router } from '@angular/router';
+import {
+  defineAppRouter,
+  numberCodec,
+  queryParam,
+  repeatedQueryParam,
+  stringCodec,
+} from 'ngx-urlik';
 import {
   bindQueryParamsToFormGroup,
   createQueryParamsFormGroup,
   createQueryParamsSignalForm,
 } from 'ngx-urlik/forms';
-import { defineAppRouter, queryParam, stringCodec } from 'ngx-urlik';
+import { debounceTime, groupBy, map, mergeMap, tap } from 'rxjs';
 
 @Component({ template: '' })
-class QueryFormTestComponent {}
+class Page {}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+async function setup(guard: CanActivateFn = () => true) {
+  const definition = defineAppRouter({
+    routes: {
+      ROOT: {
+        path: '',
+        queryParams: {
+          search: queryParam({ codec: stringCodec(), defaultValue: '' }),
+          page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
+          roles: repeatedQueryParam({ codec: stringCodec() }),
+        },
+        children: {
+          RESULTS: {
+            path: 'results',
+            angular: { component: Page, canActivate: [guard], runGuardsAndResolvers: 'always' },
+          },
+          OTHER: { path: 'other', angular: { component: Page } },
+        },
+      },
+    },
+  });
+  const handleError = vi.fn();
+  TestBed.configureTestingModule({
+    providers: [
+      definition.provideAppRouter(),
+      { provide: ErrorHandler, useValue: { handleError } },
+    ],
+  });
+  const routes = TestBed.inject(definition.AppRouter);
+  const router = TestBed.inject(Router);
+  await router.navigateByUrl('/results');
+  return { routes, router, handleError };
+}
+
+const groupedDelay = <T extends { param: PropertyKey }>(changes: import('rxjs').Observable<T>) =>
+  changes.pipe(
+    groupBy((change) => change.param),
+    mergeMap((group) => (group.key === 'search' ? group.pipe(debounceTime(300)) : group)),
+  );
+
+afterEach(() => vi.useRealTimers());
 
 describe('query form bindings', () => {
-  it('writes a changed query control while replacing history by default', async () => {
-    const query = signal({ search: '', page: 1 });
-    const updateQueryParams = vi.fn(
-      async (
-        updater: (previous: Readonly<{ search: string; page: number }>) => {
-          search: string;
-          page: number;
-        },
-        _options?: { replaceUrl?: boolean },
-      ) => {
-        query.update((previous) => updater(previous));
-        return true;
-      },
-    );
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
-      }),
-    };
-    const form = new FormGroup({
-      search: new FormControl('', { nonNullable: true }),
-      page: new FormControl(1, { nonNullable: true }),
+  it('writes controls with replacement history and preserves interaction state', async () => {
+    const { routes, router } = await setup();
+    const history: (boolean | undefined)[] = [];
+    router.events.subscribe((event) => {
+      if (event instanceof NavigationStart)
+        history.push(router.currentNavigation()?.extras.replaceUrl);
     });
-
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: new Subject() } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-    TestBed.runInInjectionContext(() => bindQueryParamsToFormGroup(route, form));
-
+    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT));
+    form.markAsDirty();
+    form.markAllAsTouched();
     form.controls.search.setValue('angular');
-    await Promise.resolve();
-
-    expect(updateQueryParams).toHaveBeenCalledTimes(1);
-    expect(updateQueryParams.mock.calls[0][0]({ search: '', page: 1 })).toEqual({
-      search: 'angular',
-      page: 1,
-    });
-    expect(updateQueryParams.mock.calls[0][1]).toEqual({ replaceUrl: true });
-  });
-
-  it('preserves earlier parameter changes while a query navigation is in flight', async () => {
-    const query = signal({ page: 1, sort: 'name' });
-    const settlements: Array<(result: boolean) => void> = [];
-    const updateQueryParams = vi.fn(
-      (
-        updater: (previous: Readonly<{ page: number; sort: string }>) => {
-          page: number;
-          sort: string;
-        },
-        _options?: { replaceUrl?: boolean },
-      ) => {
-        const target = updater(query());
-        return new Promise<boolean>((resolve) => {
-          settlements.push((result) => {
-            if (result) query.set(target);
-            resolve(result);
-          });
-        });
-      },
-    );
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
-      }),
-    };
-    const form = new FormGroup({
-      page: new FormControl(1, { nonNullable: true }),
-      sort: new FormControl('name', { nonNullable: true }),
-    });
-
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: new Subject() } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-    TestBed.runInInjectionContext(() => bindQueryParamsToFormGroup(route, form));
-
-    form.controls.page.setValue(2);
-    form.controls.sort.setValue('date');
-
-    expect(updateQueryParams).toHaveBeenCalledTimes(1);
-    settlements[0](true);
-    await vi.waitFor(() => expect(updateQueryParams).toHaveBeenCalledTimes(2));
-    expect(updateQueryParams.mock.calls[1][0](query())).toEqual({ page: 2, sort: 'date' });
-  });
-
-  it('delays one grouped parameter without flushing it through an immediate change', async () => {
-    vi.useFakeTimers();
-    const query = signal({ search: '', page: 1 });
-    const routerEvents = new Subject<NavigationStart | NavigationEnd>();
-    let navigationId = 0;
-    const targets: Array<{ search: string; page: number }> = [];
-    const updateQueryParams = vi.fn(
-      async (
-        updater: (previous: Readonly<{ search: string; page: number }>) => {
-          search: string;
-          page: number;
-        },
-      ) => {
-        const target = updater(query());
-        targets.push(target);
-        navigationId += 1;
-        routerEvents.next(new NavigationStart(navigationId, '/'));
-        query.set(target);
-        routerEvents.next(new NavigationEnd(navigationId, '/', '/'));
-        return true;
-      },
-    );
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
-      }),
-    };
-    const form = new FormGroup({
-      search: new FormControl('', { nonNullable: true }),
-      page: new FormControl(1, { nonNullable: true }),
-    });
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: routerEvents } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-    TestBed.runInInjectionContext(() =>
-      bindQueryParamsToFormGroup(route, form, {
-        transformWrites: (changes) =>
-          changes.pipe(
-            groupBy((change) => change.param),
-            mergeMap((group) => (group.key === 'search' ? group.pipe(debounceTime(300)) : group)),
-          ),
-      }),
-    );
-
-    form.controls.search.setValue('router');
-    form.controls.page.setValue(2);
-    await Promise.resolve();
-    expect(targets).toEqual([{ search: '', page: 2 }]);
-
-    await vi.advanceTimersByTimeAsync(300);
-    await vi.waitFor(() => expect(targets).toHaveLength(2));
-    expect(targets[1]).toEqual({ search: 'router', page: 2 });
-    vi.useRealTimers();
-  });
-
-  it('creates a flat reactive group with array-valued controls', () => {
-    const query = signal({ search: null as string | null, roles: ['admin'] as readonly string[] });
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams: vi.fn(async () => true),
-      }),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: new Subject() } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(route));
-
-    expect(form.controls.search).toBeInstanceOf(FormControl);
-    expect(form.controls.roles).toBeInstanceOf(FormControl);
-    expect(form.getRawValue()).toEqual({ search: null, roles: ['admin'] });
-  });
-
-  it('creates a signal form whose model writes query parameters', async () => {
-    const query = signal({ search: '', roles: [] as readonly string[] });
-    const updateQueryParams = vi.fn(
-      async (
-        updater: (previous: Readonly<typeof query extends () => infer Q ? Q : never>) => never,
-      ) => {
-        query.update((previous) => updater(previous) as never);
-        return true;
-      },
-    );
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
-      }),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: new Subject() } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-    const binding = TestBed.runInInjectionContext(() => createQueryParamsSignalForm(route));
-
-    binding.model.update((value) => ({ ...value, roles: ['admin', 'editor'] }));
+    await vi.waitFor(() => expect(router.url).toBe('/results?search=angular'));
     TestBed.flushEffects();
-    await Promise.resolve();
-
-    expect(updateQueryParams).toHaveBeenCalledTimes(1);
-    expect(updateQueryParams.mock.calls[0][0]({ search: '', roles: [] })).toEqual({
-      search: '',
-      roles: ['admin', 'editor'],
-    });
+    expect(form.dirty).toBe(true);
+    expect(form.touched).toBe(true);
+    expect(history).toEqual([true]);
   });
 
-  it('cancels a delayed write and resets interaction state after external navigation', async () => {
+  it('shares the queue across two bindings and a direct writer', async () => {
+    const { routes, router } = await setup();
+    const first = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT));
+    const second = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(routes.ROOT.RESULTS),
+    );
+    first.controls.search.setValue('angular');
+    second.controls.page.setValue(2);
+    await routes.ROOT.urlParams().updateQueryParams((q) => ({ ...q, roles: ['admin'] }));
+    TestBed.flushEffects();
+    expect(router.url).toBe('/results?search=angular&page=2&roles=admin');
+    expect(first.getRawValue()).toEqual({ search: 'angular', page: 2, roles: ['admin'] });
+    expect(second.getRawValue()).toEqual(first.getRawValue());
+  });
+
+  it('preserves edits made while a prior form write is waiting on a guard', async () => {
+    const entered = deferred<void>();
+    const release = deferred<boolean>();
+    let hold = false;
+    const { routes, router } = await setup(() => {
+      if (!hold) return true;
+      entered.resolve();
+      return release.promise;
+    });
+    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT));
+    hold = true;
+    form.controls.page.setValue(2);
+    await entered.promise;
+    form.controls.search.setValue('new');
+    form.controls.page.setValue(3);
+    hold = false;
+    release.resolve(true);
+    await vi.waitFor(() => expect(router.url).toBe('/results?page=3&search=new'));
+    expect(form.getRawValue()).toEqual({ search: 'new', page: 3, roles: [] });
+  });
+
+  it('preserves a debounced field when another binding writes an unrelated field', async () => {
+    const { routes, router } = await setup();
     vi.useFakeTimers();
-    const query = signal({ search: '', page: 1 });
-    const routerEvents = new Subject<NavigationStart | NavigationEnd>();
-    const updateQueryParams = vi.fn(async () => true);
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
-      }),
-    };
-    const form = new FormGroup({
-      search: new FormControl('', { nonNullable: true }),
-      page: new FormControl(1, { nonNullable: true }),
-    });
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: routerEvents } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-    TestBed.runInInjectionContext(() =>
-      bindQueryParamsToFormGroup(route, form, {
-        transformWrites: (changes) => changes.pipe(debounceTime(300)),
-      }),
+    const first = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(routes.ROOT, { transformWrites: groupedDelay }),
+    );
+    const second = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT));
+    first.controls.search.setValue('delayed');
+    second.controls.page.setValue(2);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(router.url).toBe('/results?page=2');
+    expect(first.getRawValue()).toEqual({ search: 'delayed', page: 2, roles: [] });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(router.url).toBe('/results?page=2&search=delayed');
+    expect(second.controls.search.value).toBe('delayed');
+  });
+
+  it('does not flush a debounced field through an immediate field in the same form', async () => {
+    const { routes, router } = await setup();
+    vi.useFakeTimers();
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(routes.ROOT, { transformWrites: groupedDelay }),
+    );
+    form.controls.search.setValue('delayed');
+    form.controls.page.setValue(2);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(router.url).toBe('/results?page=2');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(router.url).toBe('/results?page=2&search=delayed');
+  });
+
+  it('orders same-field writes by submission, including debounced submissions', async () => {
+    const { routes, router } = await setup();
+    vi.useFakeTimers();
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(routes.ROOT, { transformWrites: groupedDelay }),
+    );
+    form.controls.search.setValue('staged');
+    await routes.ROOT.urlParams().updateQueryParams((q) => ({ ...q, search: 'direct' }));
+    expect(form.controls.search.value).toBe('staged');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(router.url).toBe('/results?search=staged');
+    form.controls.search.setValue('earlier');
+    await vi.advanceTimersByTimeAsync(300);
+    await routes.ROOT.urlParams().updateQueryParams((q) => ({ ...q, search: 'later' }));
+    expect(form.controls.search.value).toBe('later');
+  });
+
+  it('cancels staged edits at external navigation start even when its guard rejects', async () => {
+    let reject = false;
+    const { routes, router } = await setup(() => !reject);
+    vi.useFakeTimers();
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(routes.ROOT, { transformWrites: groupedDelay }),
     );
     form.markAsDirty();
     form.markAllAsTouched();
     form.controls.search.setValue('stale');
-
-    routerEvents.next(new NavigationStart(10, '/?search=history&page=2', 'popstate'));
-    query.set({ search: 'history', page: 2 });
-    routerEvents.next(new NavigationEnd(10, '/?search=history&page=2', '/?search=history&page=2'));
-    TestBed.flushEffects();
-    await vi.advanceTimersByTimeAsync(300);
-
-    expect(updateQueryParams).not.toHaveBeenCalled();
-    expect(form.getRawValue()).toEqual({ search: 'history', page: 2 });
+    reject = true;
+    expect(await router.navigateByUrl('/results?search=external')).toBe(false);
+    expect(form.getRawValue()).toEqual({ search: '', page: 1, roles: [] });
     expect(form.pristine).toBe(true);
     expect(form.untouched).toBe(true);
-    vi.useRealTimers();
+    reject = false;
+    await vi.advanceTimersByTimeAsync(300);
+    expect(router.url).toBe('/results');
   });
 
-  it('preserves dirty and touched state after its own navigation echo', async () => {
-    const query = signal({ search: '' });
-    const routerEvents = new Subject<NavigationStart | NavigationEnd>();
-    const updateQueryParams = vi.fn(
-      async (updater: (previous: Readonly<{ search: string }>) => { search: string }) => {
-        routerEvents.next(new NavigationStart(20, '/?search=own'));
-        query.set(updater(query()));
-        routerEvents.next(new NavigationEnd(20, '/?search=own', '/?search=own'));
-        return true;
-      },
+  it('resets forms to the external URL and tolerates an inactive bound route', async () => {
+    const { routes, router } = await setup();
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(routes.ROOT.RESULTS),
     );
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
-      }),
-    };
-    const form = new FormGroup({
-      search: new FormControl('', { nonNullable: true }),
-    });
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: routerEvents } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-    TestBed.runInInjectionContext(() => bindQueryParamsToFormGroup(route, form));
-    form.markAsDirty();
-    form.markAllAsTouched();
-
-    form.controls.search.setValue('own');
-    await Promise.resolve();
+    await router.navigateByUrl('/results?search=history&page=2');
     TestBed.flushEffects();
-
-    expect(form.dirty).toBe(true);
-    expect(form.touched).toBe(true);
+    expect(form.getRawValue()).toEqual({ search: 'history', page: 2, roles: [] });
+    await router.navigateByUrl('/other');
+    expect(() => TestBed.flushEffects()).not.toThrow();
   });
 
-  it('uses an explicit history option and reports automatic write failures', async () => {
-    const query = signal({ search: '' });
-    const failure = new Error('navigation failed');
-    const onWriteFailure = vi.fn();
-    const updateQueryParams = vi.fn(
-      async (_updater: unknown, _options?: { replaceUrl?: boolean }) => {
-        throw failure;
-      },
-    );
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
-      }),
-    };
-    const form = new FormGroup({ search: new FormControl('', { nonNullable: true }) });
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: new Subject() } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-    TestBed.runInInjectionContext(() =>
-      bindQueryParamsToFormGroup(route, form, { replaceUrl: false, onWriteFailure }),
-    );
-
-    form.controls.search.setValue('failed');
-    await vi.waitFor(() =>
-      expect(onWriteFailure).toHaveBeenCalledWith({ kind: 'error', error: failure }),
-    );
-    expect(updateQueryParams.mock.calls[0][1]).toEqual({ replaceUrl: false });
+  it('creates array controls and signal forms that share the coordinator', async () => {
+    const { routes, router } = await setup();
+    const reactive = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT));
+    const binding = TestBed.runInInjectionContext(() => createQueryParamsSignalForm(routes.ROOT));
+    expect(reactive.controls.roles).toBeInstanceOf(FormControl);
+    binding.model.update((q) => ({ ...q, roles: ['admin', 'editor'] }));
+    TestBed.flushEffects();
+    reactive.controls.search.setValue('angular');
+    await vi.waitFor(() => expect(router.url).toContain('search=angular'));
+    TestBed.flushEffects();
+    expect(binding.model()).toEqual({ search: 'angular', page: 1, roles: ['admin', 'editor'] });
+    expect(reactive.getRawValue()).toEqual(binding.model());
   });
 
-  it('fails synchronously when the selected route is inactive', () => {
-    const route = {
-      urlParams: () => ({
-        value: computed(() => {
-          throw new Error('ROOT.SEARCH: inactive');
-        }),
-        updateQueryParams: vi.fn(async () => true),
-      }),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: new Subject() } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-
-    expect(() =>
-      TestBed.runInInjectionContext(() => createQueryParamsFormGroup(route)),
-    ).toThrowError('ROOT.SEARCH: inactive');
-  });
-
-  it('emits validation metadata without blocking an invalid value', async () => {
-    const query = signal({ search: 'initial' });
+  it('emits validity metadata without automatically blocking an invalid write', async () => {
+    const { routes, router } = await setup();
+    await router.navigateByUrl('/results?search=initial');
     const events: unknown[] = [];
-    const updateQueryParams = vi.fn(async () => true);
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
-      }),
-    };
     const form = new FormGroup({
-      search: new FormControl('initial', {
-        nonNullable: true,
-        validators: Validators.required,
-      }),
-    });
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: new Subject() } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
+      search: new FormControl('', { nonNullable: true, validators: Validators.required }),
+      page: new FormControl(1, { nonNullable: true }),
+      roles: new FormControl<readonly string[]>([], { nonNullable: true }),
     });
     TestBed.runInInjectionContext(() =>
-      bindQueryParamsToFormGroup(route, form, {
-        transformWrites: (changes) => changes.pipe(tap((event) => events.push(event))),
+      bindQueryParamsToFormGroup(routes.ROOT, form, {
+        transformWrites: (changes) => changes.pipe(tap((change) => events.push(change))),
       }),
     );
-
     form.controls.search.setValue('');
-    await Promise.resolve();
-
+    await vi.waitFor(() => expect(router.url).toBe('/results'));
     expect(events).toEqual([
       expect.objectContaining({
         param: 'search',
@@ -397,149 +249,136 @@ describe('query form bindings', () => {
         formPending: false,
       }),
     ]);
-    expect(updateQueryParams).toHaveBeenCalledTimes(1);
   });
 
-  it('stops observing form changes when its injection context is destroyed', () => {
-    const query = signal({ search: '' });
-    const updateQueryParams = vi.fn(async () => true);
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
+  it('supports transformed values and synchronizes the canonical result', async () => {
+    const { routes, router } = await setup();
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(routes.ROOT, {
+        transformWrites: (changes) =>
+          changes.pipe(
+            map((change) =>
+              change.param === 'search' ? { ...change, value: change.value.trim() } : change,
+            ),
+          ),
       }),
-    };
-    const form = new FormGroup({ search: new FormControl('', { nonNullable: true }) });
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: new Subject() } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-    TestBed.runInInjectionContext(() => bindQueryParamsToFormGroup(route, form));
-
-    TestBed.resetTestingModule();
-    form.controls.search.setValue('ignored');
-
-    expect(updateQueryParams).not.toHaveBeenCalled();
+    );
+    form.controls.search.setValue('  new  ');
+    await vi.waitFor(() => expect(router.url).toBe('/results?search=new'));
+    expect(form.controls.search.value).toBe('new');
+    form.controls.search.setValue('');
+    await vi.waitFor(() => expect(router.url).toBe('/results'));
+    expect(form.controls.search.value).toBe('');
   });
 
-  it('recognizes its own navigation using the real Angular Router', async () => {
-    const definition = defineAppRouter({
-      routes: {
-        ROOT: {
-          path: '',
-          queryParams: { search: queryParam({ codec: stringCodec(), defaultValue: '' }) },
-          angular: { component: QueryFormTestComponent },
-        },
-      },
-    });
-    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
-    const router = TestBed.inject(Router);
-    await router.navigateByUrl('/');
-    const appRouter = TestBed.runInInjectionContext(() => inject(definition.AppRouter));
-    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(appRouter.ROOT));
-    form.markAsDirty();
-    form.markAllAsTouched();
+  it.each(['declined', 'error'] as const)(
+    'reports %s writes and retains entered values',
+    async (kind) => {
+      let fail = false;
+      const failure = new Error('guard failed');
+      const { routes, router } = await setup(() => {
+        if (!fail) return true;
+        if (kind === 'error') throw failure;
+        return false;
+      });
+      const onWriteFailure = vi.fn();
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(routes.ROOT, { replaceUrl: false, onWriteFailure }),
+      );
+      fail = true;
+      form.controls.search.setValue('failed');
+      await vi.waitFor(() =>
+        expect(onWriteFailure).toHaveBeenCalledWith(
+          kind === 'error' ? { kind, error: failure } : { kind },
+        ),
+      );
+      expect(form.controls.search.value).toBe('failed');
+      expect(router.url).toBe('/results');
+    },
+  );
 
-    form.controls.search.setValue('angular');
-    await vi.waitFor(() => expect(router.url).toBe('/?search=angular'));
-    TestBed.flushEffects();
-
-    expect(form.dirty).toBe(true);
-    expect(form.touched).toBe(true);
-  });
-
-  it('treats a redirected self-write as authoritative when the URL changes its value', async () => {
-    const query = signal({ search: '' });
-    const routerEvents = new Subject<NavigationStart | NavigationEnd>();
-    const updateQueryParams = vi.fn(async () => {
-      routerEvents.next(new NavigationStart(30, '/?search=requested'));
-      query.set({ search: 'redirected' });
-      routerEvents.next(new NavigationEnd(30, '/?search=requested', '/?search=redirected'));
+  it('reports unhandled write errors through Angular ErrorHandler', async () => {
+    let fail = false;
+    const failure = new Error('guard failed');
+    const { routes, handleError } = await setup(() => {
+      if (fail) throw failure;
       return true;
     });
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
-      }),
-    };
-    const form = new FormGroup({ search: new FormControl('', { nonNullable: true }) });
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: routerEvents } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
+    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT));
+    fail = true;
+    form.controls.search.setValue('failed');
+    await vi.waitFor(() => expect(handleError).toHaveBeenCalledWith(failure));
+  });
+
+  it('cancels a destroyed binding’s queued and staged writes without canceling other writers', async () => {
+    const { routes, router } = await setup();
+    const context = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
+    const form = runInInjectionContext(context, () => createQueryParamsFormGroup(routes.ROOT));
+    form.controls.search.setValue('stale');
+    const other = routes.ROOT.urlParams().updateQueryParams((q) => ({ ...q, page: 2 }));
+    context.destroy();
+    expect(await other).toBe(true);
+    form.controls.search.setValue('ignored');
+    expect(router.url).toBe('/results?page=2');
+  });
+
+  it('clears staged edits and resets interaction state after a redirected form write', async () => {
+    let redirect = false;
+    const { routes, router } = await setup(() => {
+      if (!redirect) return true;
+      redirect = false;
+      return router.parseUrl('/results?search=redirected');
     });
-    TestBed.runInInjectionContext(() => bindQueryParamsToFormGroup(route, form));
+    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT));
     form.markAsDirty();
     form.markAllAsTouched();
-
+    redirect = true;
     form.controls.search.setValue('requested');
-    await Promise.resolve();
-    TestBed.flushEffects();
-
-    expect(form.getRawValue()).toEqual({ search: 'redirected' });
+    form.controls.page.setValue(2);
+    await vi.waitFor(() => expect(router.url).toBe('/results?search=redirected'));
+    expect(form.getRawValue()).toEqual({ search: 'redirected', page: 1, roles: [] });
     expect(form.pristine).toBe(true);
     expect(form.untouched).toBe(true);
   });
 
-  it("treats another binding's navigation as external and cancels staged work", async () => {
-    vi.useFakeTimers();
-    const query = signal({ search: '', page: 1 });
-    const routerEvents = new Subject<NavigationStart | NavigationEnd>();
-    let navigationId = 40;
-    const updateQueryParams = vi.fn(
-      async (
-        updater: (previous: Readonly<{ search: string; page: number }>) => {
-          search: string;
-          page: number;
-        },
-      ) => {
-        const target = updater(query());
-        routerEvents.next(new NavigationStart(navigationId, '/'));
-        query.set(target);
-        routerEvents.next(new NavigationEnd(navigationId, '/', '/'));
-        navigationId += 1;
-        return true;
-      },
-    );
-    const route = {
-      urlParams: () => ({
-        value: computed(() => ({ path: {}, query: query() })),
-        updateQueryParams,
+  it('settles a same-URL form write and honors explicit history options', async () => {
+    const { routes, router } = await setup();
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(routes.ROOT, {
+        replaceUrl: false,
+        transformWrites: (changes) =>
+          changes.pipe(
+            map((change) =>
+              change.param === 'search' ? { ...change, value: change.value.trim() } : change,
+            ),
+          ),
       }),
-    };
-    const first = new FormGroup({
-      search: new FormControl('', { nonNullable: true }),
-      page: new FormControl(1, { nonNullable: true }),
-    });
-    const second = new FormGroup({
-      search: new FormControl('', { nonNullable: true }),
-      page: new FormControl(1, { nonNullable: true }),
-    });
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events: routerEvents } },
-        { provide: ErrorHandler, useValue: { handleError: vi.fn() } },
-      ],
-    });
-    TestBed.runInInjectionContext(() => {
-      bindQueryParamsToFormGroup(route, first, {
-        transformWrites: (changes) => changes.pipe(debounceTime(300)),
-      });
-      bindQueryParamsToFormGroup(route, second);
-    });
+    );
+    form.controls.search.setValue('   ');
+    await vi.waitFor(() => expect(form.controls.search.value).toBe(''));
+    expect(router.url).toBe('/results');
+    form.controls.page.setValue(2);
+    await vi.waitFor(() => expect(router.url).toBe('/results?page=2'));
+    expect(router.lastSuccessfulNavigation()?.extras.replaceUrl).toBe(false);
+  });
 
-    first.controls.search.setValue('stale');
-    second.controls.page.setValue(2);
-    TestBed.flushEffects();
-    await vi.advanceTimersByTimeAsync(300);
+  it('initializes from fresh state even when the route ref retains an older signal value', async () => {
+    const { routes } = await setup();
+    const ref = routes.ROOT.urlParams({ isEqual: () => true });
+    expect(ref.value().query.search).toBe('');
+    await ref.updateQueryParams((q) => ({ ...q, search: 'latest' }));
+    expect(ref.value().query.search).toBe('');
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup({ urlParams: () => ref }),
+    );
+    expect(form.controls.search.value).toBe('latest');
+  });
 
-    expect(updateQueryParams).toHaveBeenCalledTimes(1);
-    expect(first.getRawValue()).toEqual({ search: '', page: 2 });
-    expect(first.pristine).toBe(true);
-    vi.useRealTimers();
+  it('fails synchronously when binding an inactive route', async () => {
+    const { routes, router } = await setup();
+    await router.navigateByUrl('/other');
+    expect(() =>
+      TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT.RESULTS)),
+    ).toThrow('inactive');
   });
 });

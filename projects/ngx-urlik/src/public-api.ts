@@ -21,3 +21,6 @@ export {
   type ActiveRouteRef,
   type UrlParamsRef,
 } from './lib/app-router';
+
+// Internal bridge between package entry points.
+export { getQueryBinding as ɵgetQueryBinding } from './lib/query-write-coordinator';

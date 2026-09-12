@@ -176,3 +176,28 @@ test('restores collection select values and browser back/forward state', async (
   await page.goForward();
   await expect(page.getByRole('searchbox', { name: 'Search history' })).toHaveValue('algorithm');
 });
+
+test('browser back cancels a staged search instead of replaying it on forward', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/collection');
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: /History/ })
+    .click();
+  const search = page.getByRole('searchbox', { name: 'Search history' });
+  // Trigger input and history in the same browser task, before the debounce can emit.
+  await search.evaluate((element: HTMLInputElement) => {
+    element.value = 'stale';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    history.back();
+  });
+  await expect(page).toHaveURL(/\/collection$/);
+  await expect(page.getByRole('searchbox', { name: 'Search collection' })).toBeVisible();
+  await page.goForward();
+  await expect(search).toHaveValue('');
+  await page.clock.runFor(300);
+  await expect(page).not.toHaveURL(/search=stale/);
+  await expect(search).toHaveValue('');
+});
