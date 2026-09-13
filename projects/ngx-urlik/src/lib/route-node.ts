@@ -6,18 +6,14 @@ import {
   runInInjectionContext,
   signal,
 } from '@angular/core';
-import {
-  NavigationBehaviorOptions,
-  NavigationEnd,
-  ParamMap,
-  Router,
-  UrlTree,
-} from '@angular/router';
+import { NavigationBehaviorOptions, NavigationEnd, Router, UrlTree } from '@angular/router';
 import { filter } from 'rxjs';
 import { QueryWriteCoordinator, registerQueryBinding } from './query-write-coordinator';
-import { CompiledRoute, findActiveRoute } from './compiled-route';
+import { CompiledRoute, RuntimeParam, findActiveRoute } from './compiled-route';
 import { ReportParameterFailure } from './route-diagnostics';
-import { RuntimeState, createParameterSerializer } from './route-params-runtime';
+import { createParameterReader, createParameterSerializer } from './route-params-runtime';
+import { QueryDefinitions } from './route-definition';
+import { isEqual } from './is-equal';
 
 export const routeNodeInfo: unique symbol = Symbol('ngx-urlik route node');
 
@@ -41,6 +37,10 @@ export interface UrlParamsRef<P, Q> {
   ): Promise<boolean>;
 }
 
+export interface GlobalQueryParamsRef<Q> {
+  readonly value: Signal<Readonly<Q>>;
+}
+
 export interface ActiveRouteRef {
   readonly value: Signal<
     Readonly<{
@@ -55,12 +55,7 @@ export function createRouteTree(
   roots: readonly CompiledRoute[],
   router: Router,
   injector: EnvironmentInjector,
-  readState: (
-    info: CompiledRoute,
-    params: ParamMap,
-    query: ParamMap,
-    attemptedPath: string,
-  ) => RuntimeState,
+  readState: ReturnType<typeof createParameterReader>,
   report: ReportParameterFailure,
 ): Record<string, unknown> {
   const destroyRef = injector.get(DestroyRef);
@@ -191,6 +186,28 @@ export function createRouteTree(
 
   const tree: Record<string, unknown> = {};
   for (const root of roots) tree[root.identity] = makeNode(root);
+  tree['globalQueryParams'] = (
+    definitions: QueryDefinitions,
+    options?: { isEqual?: (previous: AnyRecord, next: AnyRecord) => boolean },
+  ): GlobalQueryParamsRef<AnyRecord> => {
+    const params: RuntimeParam[] = Object.entries(definitions).map(([name, definition]) => ({
+      name,
+      definition,
+      owner: { fullIdentity: 'globalQueryParams' },
+      placement: 'query',
+    }));
+    return {
+      value: computed(
+        () => {
+          navigation();
+          return runInInjectionContext(injector, () =>
+            readState.readQueryState(params, router.routerState.snapshot.root.queryParamMap),
+          );
+        },
+        { equal: options?.isEqual ?? isEqual },
+      ),
+    };
+  };
   tree['activeRoute'] = (candidates: Readonly<Record<PropertyKey, object>>): ActiveRouteRef => ({
     value: computed(() => {
       navigation();

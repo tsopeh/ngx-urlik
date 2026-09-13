@@ -271,3 +271,34 @@ const injectionAwareDefault = queryParam({
   defaultValue: () => inject(class Settings {}).toString(),
 });
 injectionAwareDefault satisfies unknown;
+
+const globalQueries = inject(definition.AppRouter).globalQueryParams(
+  {
+    search: queryParam({ codec: stringCodec(), required: true }),
+    count: queryParam({ codec: numberCodec(), defaultValue: 0 }),
+    tags: repeatedQueryParam({ codec: stringCodec() }),
+  },
+  { isEqual: (previous, next) => previous.count === next.count },
+);
+const globalSearch: string | null = globalQueries.value().search;
+const globalCount: number = globalQueries.value().count;
+const globalTags: readonly string[] = globalQueries.value().tags;
+const globalRef: import('ngx-urlik').GlobalQueryParamsRef<{ count: number }> = globalQueries;
+// @ts-expect-error global references are read-only
+globalQueries.updateQueryParams(() => ({}));
+// @ts-expect-error decoded properties are readonly
+globalQueries.value().count = 2;
+// @ts-expect-error direct values have no query wrapper
+globalQueries.value().query;
+// @ts-expect-error only declared keys are readable
+globalQueries.value().unknown;
+inject(definition.AppRouter).globalQueryParams({
+  // @ts-expect-error global definitions require query placement wrappers
+  id: pathParam({ name: 'id', codec: stringCodec() }),
+});
+defineAppRouter({
+  routes: {
+    // @ts-expect-error globalQueryParams is reserved at the router root
+    globalQueryParams: { path: '' },
+  },
+});

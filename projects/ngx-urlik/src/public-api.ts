@@ -20,6 +20,7 @@ export {
   type AppRouterDiagnostics,
   type ActiveRouteRef,
   type UrlParamsRef,
+  type GlobalQueryParamsRef,
 } from './lib/app-router';
 
 // Internal bridge between package entry points.

@@ -83,7 +83,10 @@ export function createParameterReader(report: ReportParameterFailure) {
     return invalid ? queryFallback(definition) : values;
   };
 
-  return (
+  const readQueryState = (params: readonly RuntimeParam[], query: ParamMap): AnyRecord =>
+    Object.fromEntries(params.map((param) => [param.name, readQuery(param, query)]));
+
+  const readState = (
     info: CompiledRoute,
     params: ParamMap,
     query: ParamMap,
@@ -99,10 +102,10 @@ export function createParameterReader(report: ReportParameterFailure) {
         );
       path[param.name] = value;
     }
-    const queryState: Record<string, unknown> = {};
-    for (const param of info.queryParams) queryState[param.name] = readQuery(param, query);
-    return { path, query: queryState };
+    return { path, query: readQueryState(info.queryParams, query) };
   };
+
+  return Object.assign(readState, { readQueryState });
 }
 
 export function createParameterSerializer(

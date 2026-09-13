@@ -113,6 +113,33 @@ cancels waiting updates at navigation start, even if a guard later blocks it. Ca
 
 Every declared query property is present: optional scalars use `null`, while absent arrays use `[]`. Reading an inactive route or an invalid active path parameter throws a contextual semantic error. Query decoding failures recover through defaults and structured diagnostics.
 
+## Global query observation (advanced)
+
+Prefer route declarations and `urlParams()` for page-owned state. A service that observes a query
+convention across pages can use the read-only `globalQueryParams()` API without declaring those
+keys in the route tree:
+
+```ts
+const router = inject(AppRouter);
+const global = router.globalQueryParams({
+  timeRange: queryParam({ codec: stringCodec(), defaultValue: 'last-7-days' }),
+  tags: repeatedQueryParam({ codec: stringCodec() }),
+});
+const timeRange = computed(() => global.value().timeRange);
+```
+
+The reference exposes only `value`, containing the decoded query fields directly. It follows page
+references' navigation timing and decoding rules. Before initial navigation, reads use the current
+snapshot and normal absent-key defaults. Each reference uses its own definitions; share definitions
+with routes when you want consistent interpretation. `required` is accepted but has no effect on reads.
+
+Deep equality suppresses unchanged values. Pass `{ isEqual: (previous, next) => ... }` as a second
+argument to customize comparison of the complete query object. Once you hold the router instance,
+this method is callable outside an injection context; default factories still use the application
+injector. No caller-specific cleanup is needed. Observation does not preserve keys across navigation
+or write persisted values back to the URL. Parameter diagnostics identify their source as
+`globalQueryParams`.
+
 ## Reusable codecs and arrays
 
 ```ts

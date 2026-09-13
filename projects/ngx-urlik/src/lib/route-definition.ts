@@ -60,7 +60,7 @@ export function validateRouteDefinitions(
       if (!identity) errors.push(`${at}: route identity must be non-empty`);
       if (['navigate', 'createUrlTree', 'urlParams'].includes(identity))
         errors.push(`${at}: '${identity}' is a reserved router method name`);
-      if (root && ['escapeHatch', 'activeRoute'].includes(identity))
+      if (root && ['escapeHatch', 'activeRoute', 'globalQueryParams'].includes(identity))
         errors.push(`${at}: '${identity}' is reserved at the router root`);
       if (definition === null || typeof definition !== 'object' || Array.isArray(definition)) {
         errors.push(`${at}: route definition must be a non-null object`);

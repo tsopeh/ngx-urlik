@@ -77,6 +77,7 @@ const { AppRouter, provideAppRouter } = defineAppRouter({
 - There is exactly one named root.
 - Children are keyed objects; keys are stable application identities independent of URL segments.
 - `navigate`, `createUrlTree`, and `urlParams` are reserved identities.
+- `escapeHatch`, `activeRoute`, and `globalQueryParams` are additionally reserved at the application-router root.
 - Only the root may use `path: ''`.
 - Ordinary routes contribute one static segment and optionally one dynamic segment immediately after it.
 - Static paths may not contain Angular path syntax; multiple segments require nested definitions.
@@ -211,6 +212,60 @@ navigation are declined. Guard redirects also cancel waiting work. Ordinary guar
 error affects only its write; later writes continue. Same-URL skips resolve false and allow subsequent
 writes. Router-tree destruction settles waiting and active callers as false. See ADR 0011.
 
+### Global query observation
+
+Status: implemented. See ADR 0012.
+
+`router.globalQueryParams(definitions, options?)` is an advanced, read-only API for observing
+query parameters independently of the active route. Prefer route declarations and `urlParams()`
+for page-owned state. Global observation supports services that follow a convention such as
+`timeRange` across pages, and ad hoc observers that do not own a route declaration.
+
+```ts
+const global = router.globalQueryParams(
+  {
+    timeRange: queryParam({ codec: stringCodec(), defaultValue: 'last-7-days' }),
+    tags: repeatedQueryParam({ codec: stringCodec() }),
+  },
+  // Optional: { isEqual: (previous, next) => boolean }
+);
+
+global.value().timeRange;
+global.value().tags;
+```
+
+The definitions object maps physical query keys to the existing `queryParam`,
+`repeatedQueryParam`, or `delimitedQueryParam` definitions. Existing codecs, cardinality,
+defaults, and malformed-value fallback rules apply. `required` is accepted for definition reuse
+but has no effect on reads. Default factories execute in the application injection context,
+as they do for route references.
+
+The returned reference exposes only `value`, a signal of the readonly decoded query object,
+without a `query` wrapper or path state. There is no update method in this version. Each
+reference interprets its keys using its own definitions, including when a key is declared on
+a route or by another global reference. Shared definition objects can provide consistent
+interpretation; creating a reference does not register parameters in the static route tree.
+
+Global and page references use the same router snapshot timing and decoding rules. Global
+references refresh alongside page references on `NavigationEnd`; they do not observe attempted
+navigation values separately. A global service can read before a page exists: the current
+snapshot is used, and absent keys resolve to their defaults, `null`, or `[]`. There is no
+separate loading state or requirement for a particular route to be active.
+
+The optional second argument accepts `{ isEqual }`, comparing the complete decoded query object.
+The default is the library's deep `isEqual()`. Changes to the page or unrelated query keys do
+not notify consumers when the observed decoded values remain equal. Route-level equality
+configuration does not choose the comparator for an independent global reference.
+
+The method belongs directly to the injected router, alongside its other typed APIs. Once the
+caller holds the router instance, it may call the method outside an injection context, including
+from ordinary service methods. The router owns the navigation subscription and application
+injector; individual computed references require no caller-specific cleanup.
+
+Global observation does not make parameters persist across navigation or alter URL construction.
+Applications may observe values for mapping or persistence, but this API does not restore them
+to the URL. A future update API remains deferred; the reference object leaves room for extension.
+
 ### Query form bindings
 
 The optional `ngx-urlik/forms` entry point binds the accumulated query state of one active stateful
@@ -269,7 +324,7 @@ Routes inherit `isEqual` from ancestors and may override it. `urlParams({ isEqua
 
 ## Diagnostics and errors
 
-Recoverable parameter failures emit structured `AppRouterDiagnostic` values through `diagnostics.warn`, which defaults to `console.warn`. Codes distinguish serialization, deserialization, thrown codecs, and invalid array representation. The diagnostic `route` is the dot-separated complete route identity from the generated router root to the parameter owner, such as `ROOT.ADMIN.DETAIL`; it is not a URL path or a sibling-local leaf identity. Diagnostics also include parameter, operation, optional array index, and original cause.
+Recoverable parameter failures emit structured `AppRouterDiagnostic` values through `diagnostics.warn`, which defaults to `console.warn`. Codes distinguish serialization, deserialization, thrown codecs, and invalid array representation. The diagnostic `route` is the dot-separated complete route identity from the generated router root to the parameter owner, such as `ROOT.ADMIN.DETAIL`; it is not a URL path or a sibling-local leaf identity. Global query diagnostics use `globalQueryParams` as the `route` source because they have no owning route. Diagnostics also include parameter, operation, optional array index, and original cause.
 
 Implementation files are organized as private model-oriented modules with acyclic imports, as recorded by [ADR 0006](../adr/0006-acyclic-model-modules.md). `app-router.ts` is the composition root rather than the owner of every runtime concern.
 

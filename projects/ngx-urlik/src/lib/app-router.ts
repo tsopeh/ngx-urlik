@@ -35,6 +35,7 @@ import { AppRouterEscapeHatch, createRouterEscapeHatch } from './router-escape-h
 import { createParameterReader } from './route-params-runtime';
 import {
   TypedNavigationBehaviorOptions,
+  GlobalQueryParamsRef,
   UrlParamsRef,
   UrlParamsState,
   UrlStateEquality,
@@ -48,7 +49,7 @@ export type {
   AppRouterDiagnostics,
 } from './route-diagnostics';
 export type { AngularRedirectOptions, AngularRouteOptions } from './route-definition';
-export type { UrlParamsRef } from './route-node';
+export type { GlobalQueryParamsRef, UrlParamsRef } from './route-node';
 
 type ForwardedRouterFeature = Exclude<RouterFeatures, RouterConfigurationFeature>;
 type Merge<A, B> = Omit<A, keyof B> & B;
@@ -153,7 +154,8 @@ type ContextualRoutes<R, AP = object, AQ = object, Root extends boolean = true> 
   R extends Readonly<Record<string, unknown>>
     ? {
         readonly [K in keyof R]: K extends
-          ReservedIdentity | (Root extends true ? 'escapeHatch' | 'activeRoute' : never)
+          | ReservedIdentity
+          | (Root extends true ? 'escapeHatch' | 'activeRoute' | 'globalQueryParams' : never)
           ? never
           : ContextualRoute<R[K], AP, AQ>;
       }
@@ -177,7 +179,18 @@ type NodeFor<D, AP, AQ, Required extends PropertyKey> =
 type RouterTree<R, AP = object, AQ = object, Required extends PropertyKey = never> = {
   readonly [K in keyof R]: NodeFor<R[K], AP, AQ, Required>;
 };
+type GlobalQueryValues<Q extends QueryDefinitions> = { [K in keyof Q]: QueryValue<Q[K]> };
+
 type GeneratedAppRouter<R> = RouterTree<R> & {
+  globalQueryParams<const Q extends QueryDefinitions>(
+    definitions: Q,
+    options?: {
+      isEqual?: (
+        previous: Readonly<GlobalQueryValues<Q>>,
+        next: Readonly<GlobalQueryValues<Q>>,
+      ) => boolean;
+    },
+  ): GlobalQueryParamsRef<GlobalQueryValues<Q>>;
   activeRoute<const C extends Readonly<Record<PropertyKey, AnyStatefulNode>>>(
     candidates: C,
   ): ActiveRouteRef<C>;

@@ -5,6 +5,7 @@ These topics were deliberately left for later rather than implicitly rejected fo
 - Supported Angular version range beyond the current Angular 22 target.
 - Migration and release compatibility policy for future releases.
 - Comparator-specific `urlParams()` reference caching.
+- Updating query parameters through `globalQueryParams()` references; the accepted initial API is read-only (ADR 0012).
 - Expanding `isEqual()` for cycles, `Map`, `Set`, and other specialized values.
 - Broader runtime validation of custom codec domain values beyond checking serialized output.
 - Built-in date and other structured codecs beyond repeated and delimited arrays.

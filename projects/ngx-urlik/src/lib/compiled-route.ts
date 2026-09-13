@@ -8,7 +8,7 @@ export type ParameterPlacement = 'path' | 'query';
 export interface RuntimeParam {
   readonly name: string;
   readonly definition: PathParamDefinition<unknown> | AnyQueryParamDefinition;
-  readonly owner: CompiledRoute;
+  readonly owner: Pick<CompiledRoute, 'fullIdentity'>;
   readonly placement: ParameterPlacement;
 }
 

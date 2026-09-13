@@ -17,6 +17,7 @@ These documents describe the accepted Typed App Router design on the Angular 22 
 - [ADR 0009: structural route diagnostics](adr/0009-structural-route-diagnostics.md)
 - [ADR 0010: TasteTrack demo architecture](adr/0010-tastetrack-demo.md)
 - [ADR 0011: shared query-write coordinator](adr/0011-shared-query-write-coordinator.md)
+- [ADR 0012: read-only global query observation](adr/0012-global-query-observation.md)
 
 ## Document authority
 
