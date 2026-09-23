@@ -19,6 +19,9 @@ These documents describe the accepted Typed App Router design on the Angular 22 
 - [ADR 0011: shared query-write coordinator](adr/0011-shared-query-write-coordinator.md)
 - [ADR 0012: read-only global query observation](adr/0012-global-query-observation.md)
 
+- [ADR 0013: index routes and deepest active selection](adr/0013-index-routes-and-active-selection.md) — index design superseded by ADR 0014.
+- [ADR 0014: exact-match behavior on named routes](adr/0014-exact-match.md)
+
 ## Document authority
 
 The design specification is authoritative for behavior. ADRs preserve rationale. The restrictions and deferred lists are checklists that should be revisited during future planning and release review. If implementation and documentation diverge, reconcile them against the accepted design rather than treating the divergence as a new contract.

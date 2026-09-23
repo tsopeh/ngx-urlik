@@ -1,6 +1,8 @@
+import { inject } from '@angular/core';
+import type { UrlTree } from '@angular/router';
 import {
-  delimitedQueryParam,
   defineAppRouter,
+  delimitedQueryParam,
   enumCodec,
   numberCodec,
   pathParam,
@@ -8,7 +10,6 @@ import {
   repeatedQueryParam,
   stringCodec,
 } from 'ngx-urlik';
-import type { CanMatchFn } from '@angular/router';
 import {
   experienceCountCodec,
   paginationParams,
@@ -43,22 +44,23 @@ const loadShell = () => import('./shell').then((module) => module.Shell);
 const loadSection = () => import('./section-page').then((module) => module.SectionPage);
 const loadCatalog = () => import('./catalog-page').then((module) => module.CatalogPage);
 const loadDetail = () => import('./detail-page').then((module) => module.DetailPage);
-const hasUnmatchedSegments: CanMatchFn = (_route, segments) => segments.length > 0;
 
 export const { AppRouter, provideAppRouter } = defineAppRouter({
   routes: {
     ROOT: {
       path: '',
       angular: { loadComponent: loadShell },
+      exactMatch: { redirectTo: redirectToMovies },
       children: {
         SCREEN: {
           path: 'screen',
           queryParams: catalogQueryParams(),
           angular: { loadComponent: loadSection },
+          exactMatch: { redirectTo: redirectToMovies },
           children: {
             MOVIES: {
               path: 'movies',
-              angular: { loadComponent: loadCatalog },
+              exactMatch: { angular: { loadComponent: loadCatalog } },
               children: {
                 DETAIL: {
                   path: 'movie',
@@ -69,12 +71,12 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
             },
             SHOWS: {
               path: 'shows',
-              angular: { loadComponent: loadCatalog },
+              exactMatch: { angular: { loadComponent: loadCatalog } },
               children: {
                 DETAIL: {
                   path: 'show',
                   pathParam: pathParam({ name: 'showId', codec: prefixedIdCodec('tv') }),
-                  angular: { loadComponent: loadDetail },
+                  exactMatch: { angular: { loadComponent: loadDetail } },
                   children: {
                     SEASONS: {
                       path: 'seasons',
@@ -89,11 +91,11 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
                             name: 'seasonNumber',
                             codec: positiveIntegerCodec(),
                           }),
-                          angular: { loadComponent: loadDetail },
+                          exactMatch: { angular: { loadComponent: loadDetail } },
                           children: {
                             EPISODES: {
                               path: 'episodes',
-                              angular: { loadComponent: loadCatalog },
+                              exactMatch: { angular: { loadComponent: loadCatalog } },
                               children: {
                                 DETAIL: {
                                   path: 'episode',
@@ -117,8 +119,10 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
         },
         PEOPLE: {
           path: 'people',
-          angular: {
-            loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
+          exactMatch: {
+            angular: {
+              loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
+            },
           },
           children: {
             DETAIL: {
@@ -132,8 +136,10 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
         },
         COMPANIES: {
           path: 'companies',
-          angular: {
-            loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
+          exactMatch: {
+            angular: {
+              loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
+            },
           },
           children: {
             DETAIL: {
@@ -189,7 +195,6 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
         NOT_FOUND: {
           path: '**',
           angular: {
-            canMatch: [hasUnmatchedSegments],
             loadComponent: () => import('./not-found-page').then((module) => module.NotFoundPage),
           },
         },
@@ -197,3 +202,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
     },
   },
 });
+
+function redirectToMovies(values: { query: object }): UrlTree {
+  return inject(AppRouter).ROOT.SCREEN.MOVIES.createUrlTree({ query: values.query })!;
+}

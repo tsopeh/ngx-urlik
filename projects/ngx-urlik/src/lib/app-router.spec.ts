@@ -3,10 +3,13 @@ import { TestBed } from '@angular/core/testing';
 import {
   NavigationEnd,
   Router,
+  RouterOutlet,
+  ActivatedRoute,
   UrlTree,
   withComponentInputBinding,
   withRouterConfig,
 } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { filter, firstValueFrom } from 'rxjs';
 import {
   UrlParamCodec,
@@ -21,6 +24,15 @@ import { AppRouterDiagnostic, defineAppRouter } from './app-router';
 
 @Component({ template: '' })
 class EmptyComponent {}
+
+@Component({ imports: [RouterOutlet], template: 'layout <router-outlet />' })
+class TestLayout {}
+@Component({ template: 'exact {{ label }}' })
+class ExactPage {
+  readonly label = inject(ActivatedRoute).snapshot.data['label'];
+}
+@Component({ template: 'deeper page' })
+class DeeperPage {}
 
 const setup = <T>(definition: {
   AppRouter: InjectionToken<T>;
@@ -160,6 +172,273 @@ describe('defineAppRouter', () => {
     expect(() => activeRoute.value()).toThrowError(
       'activeRoute(): none of the candidate routes [left, right] is active',
     );
+  });
+
+  it('selects the deepest candidate with exact content, independently of candidate order', async () => {
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: {
+          path: '',
+          children: {
+            SHOW: {
+              path: 'show',
+              pathParam: pathParam({ name: 'id', codec: numberCodec() }),
+              exactMatch: { angular: { component: EmptyComponent } },
+              children: {
+                SEASON: { path: 'season', angular: { component: EmptyComponent } },
+              },
+            },
+          },
+        },
+      },
+    });
+    const { appRouter } = setup(definition);
+    const { ROOT } = appRouter;
+    const candidates = {
+      root: ROOT,
+      show: ROOT.SHOW,
+      season: ROOT.SHOW.SEASON,
+    };
+    const forwards = appRouter.activeRoute(candidates);
+    const backwards = appRouter.activeRoute({
+      season: candidates.season,
+      show: candidates.show,
+      root: candidates.root,
+    });
+    await ROOT.SHOW.navigate({ path: { id: 42 } });
+    expect(forwards.value()).toEqual({
+      route: 'show',
+      node: ROOT.SHOW,
+      params: { path: { id: 42 }, query: {} },
+    });
+    expect(backwards.value()).toEqual(forwards.value());
+    await ROOT.SHOW.SEASON.navigate({ path: { id: 42 } });
+    expect(forwards.value().route).toBe('season');
+    expect(backwards.value()).toEqual(forwards.value());
+    expect(ROOT.SHOW.urlParams().value().path.id).toBe(42);
+    expect(Object.keys(ROOT.SHOW)).not.toContain('exactMatch');
+    await ROOT.navigate();
+    expect(forwards.value().route).toBe('root');
+    expect(backwards.value()).toEqual(forwards.value());
+  });
+
+  it('constructs a named route with exact content and redirects only the exact landing URL', async () => {
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: {
+          path: '',
+          exactMatch: { redirectTo: (): UrlTree => inject(Router).parseUrl('/show/7?search=kept') },
+          children: {
+            SHOW: {
+              path: 'show',
+              pathParam: pathParam({ name: 'id', codec: numberCodec() }),
+              queryParams: { search: queryParam({ codec: stringCodec() }) },
+              exactMatch: { angular: { component: EmptyComponent } },
+              children: {
+                CHILD: { path: 'child', angular: { component: EmptyComponent } },
+              },
+            },
+            FALLBACK: { path: '**', angular: { component: EmptyComponent } },
+          },
+        },
+      },
+    });
+    const { appRouter, router } = setup(definition);
+    await router.navigateByUrl('/');
+    expect(router.url).toBe('/show/7?search=kept');
+    const route = appRouter.ROOT.SHOW;
+    expect(route.urlParams().value()).toEqual({ path: { id: 7 }, query: { search: 'kept' } });
+    expect(
+      router.serializeUrl(route.createUrlTree({ path: { id: 7 }, query: { search: 'next' } })!),
+    ).toBe('/show/7?search=next');
+    await route.urlParams().updateQueryParams(() => ({ search: 'updated' }));
+    expect(router.url).toBe('/show/7?search=updated');
+    await router.navigateByUrl('/show/7/child');
+    expect(router.url).toBe('/show/7/child');
+    expect(route.urlParams().value().path.id).toBe(7);
+    await router.navigateByUrl('/unknown');
+    expect(appRouter.ROOT.FALLBACK.urlParams().value()).toEqual({ path: {}, query: {} });
+  });
+
+  it('renders exact content inside a persistent layout with page-local Angular options', async () => {
+    const label = new InjectionToken<string>('label');
+    const pageGuard = vi.fn(() => true);
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: {
+          path: '',
+          angular: { component: TestLayout },
+          exactMatch: {
+            angular: {
+              loadComponent: async () => ExactPage,
+              providers: [{ provide: label, useValue: 'home' }],
+              resolve: { label: () => inject(label) },
+              canActivate: [pageGuard],
+              title: 'Home',
+              data: { page: true },
+            },
+          },
+          children: { DEEP: { path: 'deep', angular: { component: DeeperPage } } },
+        },
+      },
+    });
+    const { appRouter, router } = setup(definition);
+    const harness = await RouterTestingHarness.create('/?q=1#section');
+    const layout = harness.routeDebugElement!.componentInstance;
+    expect(harness.routeNativeElement!.textContent).toContain('layout exact home');
+    expect(pageGuard).toHaveBeenCalledTimes(1);
+    const page = router.routerState.snapshot.root.firstChild!.firstChild!;
+    expect(page.title).toBe('Home');
+    expect(page.data['page']).toBe(true);
+    await harness.navigateByUrl('/deep');
+    expect(harness.routeDebugElement!.componentInstance).toBe(layout);
+    expect(harness.routeNativeElement!.textContent).toContain('deeper page');
+    expect(harness.routeNativeElement!.textContent).not.toContain('exact home');
+    expect(pageGuard).toHaveBeenCalledTimes(1);
+    expect(appRouter.ROOT.urlParams().value()).toEqual({ path: {}, query: {} });
+  });
+
+  it('passes inherited and own parameters to exact redirects in their provider context', async () => {
+    const destination = new InjectionToken<string>('destination');
+    const canMatch = vi.fn(() => true);
+    const redirect = vi.fn();
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: {
+          path: 'account',
+          pathParam: pathParam({ name: 'accountId', codec: stringCodec() }),
+          queryParams: { locale: queryParam({ codec: stringCodec(), defaultValue: 'en' }) },
+          children: {
+            ITEM: {
+              path: 'item',
+              pathParam: pathParam({ name: 'id', codec: numberCodec() }),
+              queryParams: { search: queryParam({ codec: stringCodec() }) },
+              exactMatch: {
+                angular: {
+                  providers: [{ provide: destination, useValue: 'detail' }],
+                  canMatch: [canMatch],
+                  data: { landing: true },
+                },
+                redirectTo: ({ path, query }) => {
+                  redirect({ path, query });
+                  return inject(Router).parseUrl(
+                    `/account/${path.accountId}/item/${path.id}/${inject(destination)}?locale=${query.locale}&search=${query.search}`,
+                  );
+                },
+              },
+              children: { DETAIL: { path: 'detail', angular: { component: EmptyComponent } } },
+            },
+          },
+        },
+      },
+    });
+    const { appRouter, router } = setup(definition);
+    await router.navigateByUrl('/account/alice/item/7?locale=fr&search=kept');
+    expect(router.url).toBe('/account/alice/item/7/detail?locale=fr&search=kept');
+    expect(redirect).toHaveBeenCalledExactlyOnceWith({
+      path: { accountId: 'alice', id: 7 },
+      query: { locale: 'fr', search: 'kept' },
+    });
+    expect(canMatch).toHaveBeenCalledTimes(1);
+    expect(appRouter.ROOT.ITEM.urlParams().value()).toEqual({
+      path: { accountId: 'alice', id: 7 },
+      query: { locale: 'fr', search: 'kept' },
+    });
+    await router.navigateByUrl('/account/bob/item/8/detail?locale=en');
+    expect(router.url).toBe('/account/bob/item/8/detail?locale=en');
+    expect(redirect).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a layout outlet empty without exactMatch and renders exact content on a leaf', async () => {
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: {
+          path: '',
+          angular: { loadComponent: async () => TestLayout },
+          children: {
+            LEAF: {
+              path: 'leaf',
+              exactMatch: { angular: { component: ExactPage, data: { label: 'leaf' } } },
+            },
+            NESTED: {
+              path: 'nested',
+              angular: { component: TestLayout },
+              exactMatch: { angular: { component: ExactPage, data: { label: 'nested' } } },
+            },
+          },
+        },
+      },
+    });
+    const { appRouter } = setup(definition);
+    const harness = await RouterTestingHarness.create('/');
+    const layout = harness.routeDebugElement!.componentInstance;
+    expect(harness.routeNativeElement!.textContent!.trim()).toBe('layout');
+    await harness.navigateByUrl('/leaf?unowned=1#section');
+    expect(harness.routeNativeElement!.textContent).toContain('layout exact leaf');
+    expect(appRouter.ROOT.LEAF.urlParams().value()).toEqual({ path: {}, query: {} });
+    await harness.navigateByUrl('/nested');
+    expect(harness.routeNativeElement!.textContent).toContain('layout layout exact nested');
+    await harness.navigateByUrl('/');
+    expect(harness.routeDebugElement!.componentInstance).toBe(layout);
+    expect(harness.routeNativeElement!.textContent!.trim()).toBe('layout');
+  });
+
+  it('lets Angular fall back when a redirect canMatch guard rejects the exact URL', async () => {
+    const enabled = new InjectionToken<boolean>('enabled');
+    const guardedRedirect = vi.fn(() => new UrlTree());
+    const definition = defineAppRouter({
+      routes: {
+        ROOT: {
+          path: '',
+          children: {
+            PAGE: {
+              path: 'page',
+              exactMatch: {
+                angular: {
+                  providers: [{ provide: enabled, useValue: false }],
+                  canMatch: [() => inject(enabled)],
+                },
+                redirectTo: guardedRedirect,
+              },
+              children: {
+                CHILD: { path: 'child', angular: { component: DeeperPage } },
+                FALLBACK: {
+                  path: '**',
+                  angular: { component: ExactPage, data: { label: 'fallback' } },
+                },
+              },
+            },
+            OLD: {
+              path: 'old',
+              angular: {
+                providers: [{ provide: enabled, useValue: false }],
+                canMatch: [() => inject(enabled)],
+              },
+              redirectTo: guardedRedirect,
+            },
+            ALLOWED: {
+              path: 'allowed',
+              angular: { canMatch: [() => true] },
+              redirectTo: () => inject(Router).parseUrl('/page/child'),
+            },
+            FALLBACK: {
+              path: '**',
+              angular: { component: ExactPage, data: { label: 'fallback' } },
+            },
+          },
+        },
+      },
+    });
+    setup(definition);
+    const harness = await RouterTestingHarness.create('/page');
+    expect(harness.routeNativeElement!.textContent).toContain('exact fallback');
+    await harness.navigateByUrl('/old');
+    expect(harness.routeNativeElement!.textContent).toContain('exact fallback');
+    expect(guardedRedirect).not.toHaveBeenCalled();
+    await harness.navigateByUrl('/page/child');
+    expect(harness.routeNativeElement!.textContent).toContain('deeper page');
+    await harness.navigateByUrl('/allowed');
+    expect(TestBed.inject(Router).url).toBe('/page/child');
   });
 
   it('provides one bounded escape hatch with bound methods and live observations', async () => {
@@ -781,6 +1060,93 @@ describe('route validation', () => {
     expectInvalid({ ROOT: { path: '', children: { BAD: { path: 'two/segments' } } } }, [
       'ROOT.BAD: path must be one valid static segment',
     ]);
+  });
+
+  it('rejects empty child paths and invalid exact-match definitions', () => {
+    expectInvalid({ ROOT: { path: '', children: { BAD: { path: '' } } } }, [
+      'ROOT.BAD: empty paths are only allowed at the application root; use exactMatch',
+    ]);
+    for (const exactMatch of [
+      {},
+      { angular: {} },
+      { angular: { component: EmptyComponent, loadComponent: () => EmptyComponent } },
+    ])
+      expectInvalid({ ROOT: { path: '', exactMatch } }, [
+        'ROOT.exactMatch: specify exactly one component, loadComponent, or redirectTo',
+      ]);
+    for (const key of ['path', 'pathParam', 'queryParams', 'children', 'isEqual'])
+      expectInvalid(
+        { ROOT: { path: '', exactMatch: { angular: { component: EmptyComponent }, [key]: {} } } },
+        [`ROOT.exactMatch: unknown property '${key}'`],
+      );
+    expectInvalid({ ROOT: { path: '', redirectTo: () => new UrlTree(), exactMatch: {} } }, [
+      "ROOT: unknown route property 'exactMatch'",
+    ]);
+    expectInvalid({ ROOT: { path: '', children: { FALLBACK: { path: '**', exactMatch: {} } } } }, [
+      "ROOT.FALLBACK: unknown route property 'exactMatch'",
+    ]);
+    expectInvalid(
+      {
+        ROOT: {
+          path: '',
+          exactMatch: { redirectTo: () => new UrlTree(), angular: { component: EmptyComponent } },
+        },
+      },
+      [
+        "ROOT.exactMatch.angular: unknown Angular route property 'component'",
+        'ROOT.exactMatch: specify exactly one component, loadComponent, or redirectTo',
+      ],
+    );
+  });
+
+  it('reports malformed exact-match objects and forbidden Angular options', () => {
+    for (const exactMatch of [null, undefined, [], 'page'])
+      expectInvalid({ ROOT: { path: '', exactMatch } }, [
+        'ROOT.exactMatch: exactMatch must be a non-null object',
+      ]);
+    for (const angular of [null, [], 'page'])
+      expectInvalid({ ROOT: { path: '', exactMatch: { angular } } }, [
+        'ROOT.exactMatch.angular: Angular options must be a non-null object',
+        'ROOT.exactMatch: specify exactly one component, loadComponent, or redirectTo',
+      ]);
+    expectInvalid({ ROOT: { path: '', exactMatch: { redirectTo: '/page' } } }, [
+      'ROOT.exactMatch: redirectTo must be a function',
+    ]);
+    for (const key of [
+      'canActivate',
+      'canActivateChild',
+      'canDeactivate',
+      'resolve',
+      'title',
+      'runGuardsAndResolvers',
+    ])
+      expectInvalid(
+        {
+          ROOT: {
+            path: '',
+            exactMatch: { redirectTo: () => new UrlTree(), angular: { [key]: [] } },
+          },
+        },
+        [`ROOT.exactMatch.angular: unknown Angular route property '${key}'`],
+      );
+    for (const key of [
+      'path',
+      'pathMatch',
+      'children',
+      'loadChildren',
+      'outlet',
+      'matcher',
+      'redirectTo',
+    ])
+      expectInvalid(
+        {
+          ROOT: {
+            path: '',
+            exactMatch: { angular: { component: EmptyComponent, [key]: 'forbidden' } },
+          },
+        },
+        [`ROOT.exactMatch.angular: unknown Angular route property '${key}'`],
+      );
   });
 
   it('validates fallback placement and uniqueness', () => {

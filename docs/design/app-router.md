@@ -78,7 +78,7 @@ const { AppRouter, provideAppRouter } = defineAppRouter({
 - Children are keyed objects; keys are stable application identities independent of URL segments.
 - `navigate`, `createUrlTree`, and `urlParams` are reserved identities.
 - `escapeHatch`, `activeRoute`, and `globalQueryParams` are additionally reserved at the application-router root.
-- Only the root may use `path: ''`.
+- Only the application root may declare `path: ''`. Exact-path content or redirects belong in `exactMatch`.
 - Ordinary routes contribute one static segment and optionally one dynamic segment immediately after it.
 - Static paths may not contain Angular path syntax; multiple segments require nested definitions.
 - Components may be lazy, but route definitions may not be lazy or contributed later.
@@ -91,6 +91,51 @@ Ordinary routes may have `pathParam`, `queryParams`, children, equality configur
 Redirect routes are discriminated by `redirectTo`. Their callback receives typed accumulated source state and must synchronously return a definite `UrlTree`. Because typed construction can return `null`, redirect code must choose an explicit fallback. Redirects support only `canMatch`, `providers`, and `data` under `angular`; they have construction methods but no `urlParams()`.
 
 Fallback routes use the literal `path: '**'`. There may be at most one per sibling branch and it must be declared last. A fallback has state but no canonical construction/navigation methods. It cannot have a path parameter, redirect, or children.
+
+### Exact-match behavior
+
+An ordinary route may declare `exactMatch` for its own exact path. Query parameters and
+fragments do not affect this selection. It contains exactly one component, lazy component
+loader, or redirect callback:
+
+```ts
+ACCOUNT: {
+  path: 'account',
+  angular: { component: AccountLayout },
+  exactMatch: { angular: { component: AccountOverview } },
+  children: {
+    SETTINGS: { path: 'settings', angular: { component: AccountSettings } },
+  },
+}
+```
+
+The containing route's component keeps Angular's normal layout behavior. Exact content
+renders through its outlet, or through the enclosing outlet when the route has no component.
+The same property works on the application root and on leaves. Without it, normal Angular
+behavior is unchanged, including a layout with an empty outlet at its own URL.
+
+Content supports the existing `angular` route options, including page-specific guards,
+resolvers, providers, data and title. `component` and `loadComponent` are mutually exclusive.
+A redirect uses `exactMatch: { redirectTo: ({ path, query }) => urlTree, angular? }` and supports
+only the existing redirect subset (`canMatch`, `providers`, `data`). Its callback receives
+accumulated decoded parameters and must return a definite `UrlTree`. Top-level `redirectTo`
+remains a terminal redirect; `exactMatch.redirectTo` leaves deeper destinations accessible.
+Wildcards and top-level redirect routes cannot declare `exactMatch`.
+
+`exactMatch` declares no path, path parameter, query definitions, children, or equality.
+Parameters belong to the named route. It has no public node, navigation methods, or state
+reference. Navigate and observe through the named route, which remains active on descendants.
+There is no new exact-page-active observation interface. Angular receives a private empty
+child with full matching; guards/providers under `exactMatch.angular` belong to that child,
+while the containing route's options retain their normal scope. Angular forbids `canMatch`
+on a redirect itself, so guarded redirects use an additional anonymous full-match child
+beneath the guard and its providers. Rejecting an exact-match guard leaves the named route
+eligible; Angular can try its other children, including a local wildcard.
+
+Migration: move a child's `INDEX: { path: '', angular, redirectTo }` to the containing route's
+`exactMatch: { angular, redirectTo }` (choosing content or redirect). Move query definitions
+and equality to the named route; those parameters are now inherited by its descendants.
+Replace references to `.INDEX` with the named route. See [ADR 0014](../adr/0014-exact-match.md).
 
 ## Angular options
 
@@ -312,7 +357,7 @@ const detail = router.activeRoute({
 });
 ```
 
-`detail.value` is a signal whose value is a discriminated union keyed by the supplied aliases. Each member contains `route`, the exact generated `node`, and that node's typed accumulated `params`. Navigation between candidates updates the signal. Reading it while none of the candidates is active throws a semantic state error.
+`detail.value` is a signal whose value is a discriminated union keyed by the supplied aliases. Each member contains `route`, the exact generated `node`, and that node's typed accumulated `params`. Navigation between candidates updates the signal. When ancestors and descendants are both candidates, the deepest active node wins, regardless of candidate declaration order. Selection considers only named route candidates; the private exact-match child has no public identity. Aliases of the same node tie; the first declared alias wins. Reading it while none of the candidates is active throws a semantic state error.
 
 Candidates must be stateful generated nodes; redirects are excluded. The explicit candidate set keeps shared-component contracts local and avoids an application-wide union. Angular remains the matching and activation engine; ngx-urlik maps the active Angular snapshot back to the selected static route identity.
 

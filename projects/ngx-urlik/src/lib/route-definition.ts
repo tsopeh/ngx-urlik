@@ -25,12 +25,30 @@ const redirectAngularFields = [
 export type AngularRouteOptions = Pick<Route, (typeof angularRouteFields)[number]>;
 export type AngularRedirectOptions = Pick<Route, (typeof redirectAngularFields)[number]>;
 
+export type ExactMatchDefinition<State> =
+  | {
+      readonly angular: AngularRouteOptions & {
+        component: NonNullable<AngularRouteOptions['component']>;
+        loadComponent?: never;
+      };
+      readonly redirectTo?: never;
+    }
+  | {
+      readonly angular: AngularRouteOptions & {
+        loadComponent: NonNullable<AngularRouteOptions['loadComponent']>;
+        component?: never;
+      };
+      readonly redirectTo?: never;
+    }
+  | { readonly redirectTo: (values: State) => UrlTree; readonly angular?: AngularRedirectOptions };
+
 export interface RouteDefinition {
   readonly path: string;
   readonly pathParam?: PathParamDefinition<unknown>;
   readonly queryParams?: QueryDefinitions;
   readonly children?: Readonly<Record<string, RouteDefinition>>;
   readonly angular?: AngularRouteOptions;
+  readonly exactMatch?: ExactMatchDefinition<any>;
   readonly isEqual?: (a: unknown, b: unknown) => boolean;
   readonly redirectTo?: (values: any) => UrlTree;
 }
@@ -76,7 +94,7 @@ export function validateRouteDefinitions(
           ? ['path', 'queryParams', 'angular', 'isEqual']
           : redirect
             ? ['path', 'pathParam', 'queryParams', 'redirectTo', 'angular']
-            : ['path', 'pathParam', 'queryParams', 'children', 'angular', 'isEqual'],
+            : ['path', 'pathParam', 'queryParams', 'children', 'angular', 'isEqual', 'exactMatch'],
       );
       for (const key of Object.keys(definition))
         if (!allowed.has(key)) errors.push(`${at}: unknown route property '${key}'`);
@@ -87,13 +105,12 @@ export function validateRouteDefinitions(
       } else if (fallbackSeen) errors.push(`${at}: fallback routes must be declared last`);
       if (!fallback) {
         const path = definition.path;
-        if (
-          typeof path !== 'string' ||
-          (!root && path === '') ||
-          path === '**' ||
-          forbiddenPath.test(path)
-        )
+        if (typeof path !== 'string' || path === '**' || forbiddenPath.test(path))
           errors.push(`${at}: path must be ${root ? 'empty or ' : ''}one valid static segment`);
+        if (!root && path === '')
+          errors.push(
+            `${at}: empty paths are only allowed at the application root; use exactMatch`,
+          );
         const pattern = `${path}${definition.pathParam ? '/:param' : ''}`;
         const previous = patterns.get(pattern);
         if (previous)
@@ -115,6 +132,40 @@ export function validateRouteDefinitions(
             errors.push(`${at}.angular: unknown Angular route property '${key}'`);
         if (angular.component && angular.loadComponent)
           errors.push(`${at}.angular: component and loadComponent are mutually exclusive`);
+      }
+      if (!fallback && !hasRedirect && 'exactMatch' in definition) {
+        const exact = definition.exactMatch;
+        const exactAt = `${at}.exactMatch`;
+        if (!exact || typeof exact !== 'object' || Array.isArray(exact)) {
+          errors.push(`${exactAt}: exactMatch must be a non-null object`);
+        } else {
+          for (const key of Object.keys(exact))
+            if (key !== 'angular' && key !== 'redirectTo')
+              errors.push(`${exactAt}: unknown property '${key}'`);
+          const hasRedirect = 'redirectTo' in exact;
+          if (hasRedirect && typeof exact.redirectTo !== 'function')
+            errors.push(`${exactAt}: redirectTo must be a function`);
+          const angular = exact.angular as AngularRouteOptions | undefined;
+          if (
+            angular !== undefined &&
+            (!angular || typeof angular !== 'object' || Array.isArray(angular))
+          )
+            errors.push(`${exactAt}.angular: Angular options must be a non-null object`);
+          else if (angular) {
+            const fields: readonly string[] = hasRedirect
+              ? redirectAngularFields
+              : angularRouteFields;
+            for (const key of Object.keys(angular))
+              if (!fields.includes(key))
+                errors.push(`${exactAt}.angular: unknown Angular route property '${key}'`);
+          }
+          const actions =
+            Number(hasRedirect) +
+            Number(angular?.component != null) +
+            Number(angular?.loadComponent != null);
+          if (actions !== 1)
+            errors.push(`${exactAt}: specify exactly one component, loadComponent, or redirectTo`);
+        }
       }
       const names = new Set(ancestry);
       if (!fallback && definition.pathParam) {

@@ -201,3 +201,12 @@ test('browser back cancels a staged search instead of replaying it on forward', 
   await expect(page).not.toHaveURL(/search=stale/);
   await expect(search).toHaveValue('');
 });
+
+test('uses the screen exact-match redirect without losing query filters', async ({ page }) => {
+  await page.goto('/screen?search=algorithm&pageSize=12');
+  await expect(page).toHaveURL(/screen\/movies\?search=algorithm&pageSize=12$/);
+  await expect(page.getByRole('searchbox', { name: 'Search', exact: true })).toHaveValue(
+    'algorithm',
+  );
+  await expect(page.locator('app-media-card')).toHaveCount(1);
+});

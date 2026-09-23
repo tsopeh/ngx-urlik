@@ -8,6 +8,8 @@
 
 **Complete route identity** — The dot-separated chain of route identities from the generated router root to a node, such as `ROOT.ADMIN.DETAIL`. Diagnostics use the complete identity so repeated leaf identities in different branches remain unambiguous.
 
+**Exact-match behavior** — Content or a redirect selected by `exactMatch` at a named route’s own exact path. It has no separate public identity; parameters and navigation belong to the named route.
+
 **Route node** — One property in the generated typed router tree. Ordinary nodes expose construction, navigation, and state; redirect and fallback nodes expose reduced capabilities.
 
 **Route chain** — The ordered root-to-node ancestry. Parameter definitions and equality configuration accumulate along it.
@@ -55,7 +57,7 @@ new pristine baseline.
 
 **Typed activation context** — A signal-oriented discriminated union identifying which member of an explicitly selected set of stateful route nodes is active, together with the exact node and its typed accumulated parameters.
 
-**Activation candidate set** — The alias-to-route-node object supplied to `AppRouter.activeRoute()`. Its aliases become the discriminants of the resulting typed activation context.
+**Activation candidate set** — The alias-to-route-node object supplied to `AppRouter.activeRoute()`. Its aliases become the discriminants of the resulting typed activation context. The deepest active named node wins; aliases of the same node retain declaration order.
 
 **Deterministic construction** — Creating an absolute target solely from the selected route and supplied values, without inheriting the current URL.
 

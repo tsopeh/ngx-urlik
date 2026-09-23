@@ -1,4 +1,4 @@
-import { Component, effect, inject } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { TasteTrackRepository } from './database';
 import { AppRouter } from './app-router';
@@ -174,16 +174,6 @@ export class Shell {
   protected readonly repository = inject(TasteTrackRepository);
   protected readonly routes = inject(AppRouter);
   protected readonly theme = inject(ThemeService);
-  private readonly landingRoute = this.routes.activeRoute({
-    screen: this.routes.ROOT.SCREEN,
-    people: this.routes.ROOT.PEOPLE,
-    companies: this.routes.ROOT.COMPANIES,
-    collection: this.routes.ROOT.COLLECTION,
-    activity: this.routes.ROOT.ACTIVITY,
-    settings: this.routes.ROOT.SETTINGS,
-    notFound: this.routes.ROOT.NOT_FOUND,
-    root: this.routes.ROOT,
-  });
   protected readonly themes: readonly ThemePreference[] = ['system', 'light', 'dark'];
   protected readonly navigation = [
     { label: 'Browse', icon: '◉', url: this.routes.ROOT.SCREEN.MOVIES.createUrlTree() },
@@ -193,11 +183,4 @@ export class Shell {
     { label: 'Companies', icon: '▣', url: this.routes.ROOT.COMPANIES.createUrlTree() },
     { label: 'Settings', icon: '⚙', url: this.routes.ROOT.SETTINGS.createUrlTree() },
   ];
-
-  constructor() {
-    effect(() => {
-      if (this.landingRoute.value().route === 'root')
-        void this.routes.ROOT.SCREEN.MOVIES.navigate({}, { replaceUrl: true });
-    });
-  }
 }

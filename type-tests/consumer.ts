@@ -239,12 +239,12 @@ redirectRouter.activeRoute({ redirect: redirectRouter.ROOT.REDIRECT });
 declare const nullableTree: UrlTree | null;
 defineAppRouter({
   routes: {
-    // @ts-expect-error redirect callbacks must convert nullable construction to a definite tree
     ROOT: {
       path: '',
       children: {
         REDIRECT: {
           path: 'old',
+          // @ts-expect-error redirect callbacks must convert nullable construction to a definite tree
           redirectTo: () => nullableTree,
         },
       },
@@ -300,5 +300,337 @@ defineAppRouter({
   routes: {
     // @ts-expect-error globalQueryParams is reserved at the router root
     globalQueryParams: { path: '' },
+  },
+});
+
+const exactDefinition = defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      children: {
+        ITEM: {
+          path: 'item',
+          pathParam: pathParam({ name: 'id', codec: numberCodec() }),
+          queryParams: { search: queryParam({ codec: stringCodec() }) },
+          exactMatch: {
+            redirectTo: ({ path, query }): UrlTree => {
+              path.id satisfies number;
+              query.search satisfies string | null;
+              // @ts-expect-error unknown path property
+              path.noSuchKey;
+              return new UrlTree();
+            },
+          },
+          children: {
+            DETAIL: { path: 'detail', exactMatch: { angular: { component: class {} } } },
+          },
+        },
+      },
+    },
+  },
+});
+declare const exactRouter: TokenValue<typeof exactDefinition.AppRouter>;
+exactRouter.ROOT.ITEM.createUrlTree({ path: { id: 1 } }) satisfies UrlTree | null;
+exactRouter.ROOT.ITEM.urlParams().value().path.id satisfies number;
+// @ts-expect-error exactMatch is not a generated public node
+exactRouter.ROOT.ITEM.exactMatch;
+// @ts-expect-error accumulated path is still required
+exactRouter.ROOT.ITEM.createUrlTree();
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      children: {
+        // @ts-expect-error empty child paths are forbidden
+        BAD: { path: '' },
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    // @ts-expect-error exactMatch must have an action
+    ROOT: { path: '', exactMatch: {} },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      exactMatch: {
+        angular: { component: class {} },
+        // @ts-expect-error exactMatch cannot introduce query parameters
+        queryParams: { q: queryParam({ codec: stringCodec() }) },
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      // @ts-expect-error content and redirect are mutually exclusive
+      exactMatch: { angular: { component: class {} }, redirectTo: () => new UrlTree() },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    // @ts-expect-error exact redirects must return a definite UrlTree
+    ROOT: { path: '', exactMatch: { redirectTo: () => nullableTree } },
+  },
+});
+
+// Keep inference independent of callback/property order and annotation style.
+const accumulatedDefinition = defineAppRouter({
+  routes: {
+    ROOT: {
+      children: {
+        ITEM: {
+          exactMatch: {
+            redirectTo: ({ path, query }) => {
+              path.accountId satisfies string;
+              path.id satisfies number;
+              query.locale satisfies string;
+              query.search satisfies string | null;
+              // @ts-expect-error path properties are inferred, not any
+              path.id satisfies string;
+              // @ts-expect-error only declared queries are available
+              query.missing;
+              // @ts-expect-error decoded state is readonly
+              path.id = 1;
+              return new UrlTree();
+            },
+            angular: {
+              canMatch: [(_route, segments) => segments.length === 0],
+              data: { exact: true },
+            },
+          },
+          path: 'item',
+          pathParam: pathParam({ name: 'id', codec: numberCodec() }),
+          queryParams: { search: queryParam({ codec: stringCodec() }) },
+          children: {
+            OLD: {
+              path: 'old',
+              redirectTo: ({ path, query }) => {
+                path.accountId satisfies string;
+                path.id satisfies number;
+                query.locale satisfies string;
+                query.search satisfies string | null;
+                // @ts-expect-error ordinary redirect callbacks also reject unknown paths
+                path.missing;
+                // @ts-expect-error ordinary redirect callbacks also reject unknown queries
+                query.missing;
+                return new UrlTree();
+              },
+            },
+          },
+        },
+      },
+      path: 'account',
+      pathParam: pathParam({ name: 'accountId', codec: stringCodec() }),
+      queryParams: { locale: queryParam({ codec: stringCodec(), defaultValue: 'en' }) },
+    },
+  },
+});
+declare const accumulatedRouter: TokenValue<typeof accumulatedDefinition.AppRouter>;
+accumulatedRouter.ROOT.ITEM.createUrlTree({ path: { accountId: 'a', id: 1 } });
+// @ts-expect-error inherited path is required for construction
+accumulatedRouter.ROOT.ITEM.createUrlTree({ path: { id: 1 } });
+// @ts-expect-error terminal redirects remain stateless
+accumulatedRouter.ROOT.ITEM.OLD.urlParams();
+
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      // @ts-expect-error both content loaders are forbidden
+      exactMatch: {
+        angular: { component: class {}, loadComponent: async () => class {} },
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      // @ts-expect-error exact content must specify a component or loader
+      exactMatch: {
+        angular: { data: {} },
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      exactMatch: {
+        redirectTo: () => new UrlTree(),
+        angular: {
+          // @ts-expect-error exact redirects do not run activation guards
+          canActivate: [() => true],
+        },
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      exactMatch: {
+        angular: {
+          component: class {},
+          // @ts-expect-error Angular matching is owned by the compiler
+          pathMatch: 'prefix',
+        },
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      exactMatch: {
+        angular: { component: class {} },
+        // @ts-expect-error exactMatch cannot introduce paths
+        path: 'other',
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      exactMatch: {
+        angular: { component: class {} },
+        // @ts-expect-error exactMatch cannot introduce path parameters
+        pathParam: pathParam({ name: 'id', codec: numberCodec() }),
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      exactMatch: {
+        angular: { component: class {} },
+        // @ts-expect-error exactMatch cannot introduce children
+        children: { CHILD: { path: 'child' } },
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      exactMatch: {
+        angular: { component: class {} },
+        // @ts-expect-error exactMatch cannot introduce equality options
+        isEqual: () => true,
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      redirectTo: () => new UrlTree(),
+      // @ts-expect-error terminal redirects cannot have exactMatch
+      exactMatch: { angular: { component: class {} } },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      children: {
+        FALLBACK: {
+          path: '**',
+          // @ts-expect-error wildcard routes cannot have exactMatch
+          exactMatch: { angular: { component: class {} } },
+        },
+      },
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      exactMatch: {
+        // @ts-expect-error invalid callback return types are rejected
+        redirectTo: () => '/somewhere',
+      },
+    },
+  },
+});
+
+// Route names must not change the inference algorithm.
+const namedLikeOptions = defineAppRouter({
+  routes: {
+    angular: {
+      path: '',
+      children: {
+        queryParams: {
+          path: 'q',
+          pathParam: pathParam({ name: 'id', codec: numberCodec() }),
+          exactMatch: {
+            redirectTo: ({ path }) => {
+              path.id satisfies number;
+              // @ts-expect-error no untyped index signature
+              path.missing;
+              return new UrlTree();
+            },
+          },
+        },
+      },
+    },
+  },
+});
+inject(namedLikeOptions.AppRouter).angular.queryParams.createUrlTree({ path: { id: 1 } });
+
+defineAppRouter({
+  routes: { ROOT: { path: '', isEqual: (previous, next) => Object.is(previous, next) } },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      // @ts-expect-error children are named records, not arrays
+      children: [],
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      // @ts-expect-error children cannot be null
+      children: null,
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      // @ts-expect-error redirect callbacks must be functions
+      redirectTo: '/other',
+    },
+  },
+});
+defineAppRouter({
+  routes: {
+    // @ts-expect-error every named route requires a path
+    ROOT: { angular: { component: class {} } },
   },
 });

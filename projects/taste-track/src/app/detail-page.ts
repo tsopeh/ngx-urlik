@@ -1,125 +1,120 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { RouterLink, RouterOutlet } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { AppRouter } from './app-router';
 import { TasteTrackRepository } from './database';
 import { CatalogLinks } from './catalog-links';
 import type { CollectionStatus } from './domain';
 
 @Component({
-  imports: [RouterLink, RouterOutlet],
+  imports: [RouterLink],
   template: `
-    @if (!childActive()) {
-      <section class="page-stack">
-        @if (item(); as title) {
-          <header class="page-header">
-            <div>
-              <p class="eyebrow">{{ isSeason() ? 'Season' : title.kind }}</p>
-              <h1>{{ heading() }}</h1>
-              <p>{{ title.subtitle }}</p>
-            </div>
-          </header>
-          <nav class="anchor-links" aria-label="On this page">
-            <a [routerLink]="sectionUrl('overview')">Overview</a
-            ><a [routerLink]="sectionUrl('credits')">Credits</a
-            ><a [routerLink]="sectionUrl('history')">History</a>
-          </nav>
-          <section id="overview" class="panel">
-            <h2>Overview</h2>
-            <p>{{ title.year }} · {{ title.genres.join(', ') }}</p>
-            @if (parentLink(); as parent) {
-              <p>
-                <a [routerLink]="parent.url">{{ parent.label }}</a>
-              </p>
-            }
-            @if (childrenLink(); as child) {
-              <p>
-                <a [routerLink]="child.url">{{ child.label }}</a>
-              </p>
-            }
-          </section>
-          @if (!isSeason()) {
-            <section class="panel">
-              <h2>Your collection</h2>
-              <div class="filter-panel">
-                <label
-                  >Status<select
-                    [value]="state()?.status ?? ''"
-                    (change)="setStatus($any($event.target).value)"
-                  >
-                    <option value="" disabled>Not in collection</option>
-                    <option value="saved">Watchlist</option>
-                    <option value="in-progress">Watching</option>
-                    <option value="completed">Watched</option>
-                  </select></label
-                >
-                <label
-                  >Rating<select
-                    [value]="state()?.rating ?? ''"
-                    (change)="setRating($any($event.target).value)"
-                  >
-                    <option value="">Unrated</option>
-                    @for (rating of ratings; track rating) {
-                      <option [value]="rating" [selected]="state()?.rating === rating">
-                        {{ rating }}/10
-                      </option>
-                    }
-                  </select></label
-                >
-                <label
-                  >Viewing date<input
-                    type="date"
-                    [value]="viewingDate()"
-                    (input)="viewingDate.set($any($event.target).value)"
-                /></label>
-                <button
-                  class="button primary"
-                  [disabled]="saving() || !viewingDate()"
-                  (click)="logViewing()"
-                >
-                  Log viewing
-                </button>
-              </div>
-              @if (saved()) {
-                <p role="status">Viewing saved.</p>
-              }
-              @if (error()) {
-                <p role="alert">{{ error() }}</p>
-              }
-            </section>
+    <section class="page-stack">
+      @if (item(); as title) {
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">{{ isSeason() ? 'Season' : title.kind }}</p>
+            <h1>{{ heading() }}</h1>
+            <p>{{ title.subtitle }}</p>
+          </div>
+        </header>
+        <nav class="anchor-links" aria-label="On this page">
+          <a [routerLink]="sectionUrl('overview')">Overview</a
+          ><a [routerLink]="sectionUrl('credits')">Credits</a
+          ><a [routerLink]="sectionUrl('history')">History</a>
+        </nav>
+        <section id="overview" class="panel">
+          <h2>Overview</h2>
+          <p>{{ title.year }} · {{ title.genres.join(', ') }}</p>
+          @if (parentLink(); as parent) {
+            <p>
+              <a [routerLink]="parent.url">{{ parent.label }}</a>
+            </p>
           }
-          <section id="credits" class="panel">
-            <h2>Cast & crew</h2>
-            @for (credit of credits(); track credit.person.id + credit.role) {
-              <p>
-                <a [routerLink]="links.contributor(credit.person)">{{ credit.person.name }}</a> ·
-                {{ credit.role }}
-              </p>
+          @if (childrenLink(); as child) {
+            <p>
+              <a [routerLink]="child.url">{{ child.label }}</a>
+            </p>
+          }
+        </section>
+        @if (!isSeason()) {
+          <section class="panel">
+            <h2>Your collection</h2>
+            <div class="filter-panel">
+              <label
+                >Status<select
+                  [value]="state()?.status ?? ''"
+                  (change)="setStatus($any($event.target).value)"
+                >
+                  <option value="" disabled>Not in collection</option>
+                  <option value="saved">Watchlist</option>
+                  <option value="in-progress">Watching</option>
+                  <option value="completed">Watched</option>
+                </select></label
+              >
+              <label
+                >Rating<select
+                  [value]="state()?.rating ?? ''"
+                  (change)="setRating($any($event.target).value)"
+                >
+                  <option value="">Unrated</option>
+                  @for (rating of ratings; track rating) {
+                    <option [value]="rating" [selected]="state()?.rating === rating">
+                      {{ rating }}/10
+                    </option>
+                  }
+                </select></label
+              >
+              <label
+                >Viewing date<input
+                  type="date"
+                  [value]="viewingDate()"
+                  (input)="viewingDate.set($any($event.target).value)"
+              /></label>
+              <button
+                class="button primary"
+                [disabled]="saving() || !viewingDate()"
+                (click)="logViewing()"
+              >
+                Log viewing
+              </button>
+            </div>
+            @if (saved()) {
+              <p role="status">Viewing saved.</p>
+            }
+            @if (error()) {
+              <p role="alert">{{ error() }}</p>
             }
           </section>
-          <section id="history" class="panel">
-            <h2>{{ eventCount() }} recorded viewings</h2>
-            <a [routerLink]="historyUrl()">View history for {{ title.title }}</a>
-          </section>
-        } @else if (repository.ready()) {
-          <h1>Title not found</h1>
-          <p>This movie, show, season, or episode is not in the catalog.</p>
         }
-      </section>
-    }
-    <router-outlet (activate)="childActive.set(true)" (deactivate)="childActive.set(false)" />
+        <section id="credits" class="panel">
+          <h2>Cast & crew</h2>
+          @for (credit of credits(); track credit.person.id + credit.role) {
+            <p>
+              <a [routerLink]="links.contributor(credit.person)">{{ credit.person.name }}</a> ·
+              {{ credit.role }}
+            </p>
+          }
+        </section>
+        <section id="history" class="panel">
+          <h2>{{ eventCount() }} recorded viewings</h2>
+          <a [routerLink]="historyUrl()">View history for {{ title.title }}</a>
+        </section>
+      } @else if (repository.ready()) {
+        <h1>Title not found</h1>
+        <p>This movie, show, season, or episode is not in the catalog.</p>
+      }
+    </section>
   `,
 })
 export class DetailPage {
   private readonly routes = inject(AppRouter);
   protected readonly repository = inject(TasteTrackRepository);
   protected readonly links = inject(CatalogLinks);
-  protected readonly childActive = signal(false);
   protected readonly viewingDate = signal(new Date().toISOString().slice(0, 10));
   protected readonly saving = signal(false);
   protected readonly saved = signal(false);
   protected readonly error = signal('');
   protected readonly ratings = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-  // activeRoute selects the first match; descendants must precede ancestors.
   private readonly context = this.routes.activeRoute({
     episode: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.EPISODES.DETAIL,
     season: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL,

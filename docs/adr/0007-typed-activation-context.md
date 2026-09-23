@@ -6,7 +6,7 @@ Status: accepted.
 
 `AppRouter.activeRoute(candidates)` accepts an explicitly named set of generated stateful route nodes. It returns a signal-oriented reference whose value is a discriminated union. Every union member contains the caller-supplied alias as `route`, the exact generated `node`, and the node's typed accumulated `params`.
 
-Navigation between candidates updates the value. Reading the value when no candidate is active throws a semantic state error. Redirect nodes are not candidates because they expose no active parameter state. `activeRoute` is reserved as an application-router-root method name; it remains a valid child route identity.
+Navigation between candidates updates the value. [ADR 0013](0013-index-routes-and-active-selection.md) specifies deepest-active-candidate selection, independent of declaration order. Reading the value when no candidate is active throws a semantic state error. Redirect nodes are not candidates because they expose no active parameter state. `activeRoute` is reserved as an application-router-root method name; it remains a valid child route identity.
 
 ## Rationale
 

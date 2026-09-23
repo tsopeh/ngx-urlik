@@ -1,5 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { Component, computed, inject } from '@angular/core';
 import { AppRouter } from './app-router';
 import { TasteTrackRepository } from './database';
 import { CatalogLinks } from './catalog-links';
@@ -7,94 +6,91 @@ import { MediaCard } from './media-card';
 import type { PageSize } from './codecs';
 
 @Component({
-  imports: [MediaCard, RouterOutlet],
+  imports: [MediaCard],
   template: `
-    @if (!detailActive()) {
-      <section class="page-stack inset">
-        <div class="section-heading">
-          <div>
-            <h2>{{ heading() }}</h2>
-            <p>{{ results().length }} titles</p>
-          </div>
+    <section class="page-stack inset">
+      <div class="section-heading">
+        <div>
+          <h2>{{ heading() }}</h2>
+          <p>{{ results().length }} titles</p>
         </div>
-        <div class="filter-panel">
-          <label
-            >Search<input
-              type="search"
-              [value]="query().search"
-              (input)="update({ search: $any($event.target).value, page: 1 })"
-              placeholder="Search titles…"
-          /></label>
-          <label
-            >Sort<select [value]="query().sort.field" (change)="sort($any($event.target).value)">
-              <option value="title">Title</option>
-              <option value="year">Year</option>
-            </select></label
+      </div>
+      <div class="filter-panel">
+        <label
+          >Search<input
+            type="search"
+            [value]="query().search"
+            (input)="update({ search: $any($event.target).value, page: 1 })"
+            placeholder="Search titles…"
+        /></label>
+        <label
+          >Sort<select [value]="query().sort.field" (change)="sort($any($event.target).value)">
+            <option value="title">Title</option>
+            <option value="year">Year</option>
+          </select></label
+        >
+        <label
+          >Direction<select
+            [value]="query().sort.direction"
+            (change)="direction($any($event.target).value)"
           >
-          <label
-            >Direction<select
-              [value]="query().sort.direction"
-              (change)="direction($any($event.target).value)"
-            >
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
-            </select></label
+            <option value="asc">Ascending</option>
+            <option value="desc">Descending</option>
+          </select></label
+        >
+        <label
+          >Page size<select
+            [value]="query().pageSize"
+            (change)="pageSize($any($event.target).value)"
           >
-          <label
-            >Page size<select
-              [value]="query().pageSize"
-              (change)="pageSize($any($event.target).value)"
-            >
-              <option>12</option>
-              <option>24</option>
-              <option>48</option>
-            </select></label
-          >
-        </div>
-        <div class="chip-row" aria-label="Quick genre filters">
-          @for (genre of genres; track genre) {
-            <button
-              type="button"
-              [class.selected]="query().genres.includes(genre)"
-              [attr.aria-pressed]="query().genres.includes(genre)"
-              (click)="toggleGenre(genre)"
-            >
-              {{ genre }}
-            </button>
-          }
-        </div>
-        <div class="media-grid">
-          @for (item of visible(); track item.id) {
-            <app-media-card
-              [item]="item"
-              [state]="stateFor(item.id)"
-              [url]="links.item(item)"
-              (favorite)="repository.toggleFavorite(item.id)"
-            />
-          } @empty {
-            <p class="empty">No titles match these filters.</p>
-          }
-        </div>
-        <nav class="anchor-links" aria-label="Pagination">
+            <option>12</option>
+            <option>24</option>
+            <option>48</option>
+          </select></label
+        >
+      </div>
+      <div class="chip-row" aria-label="Quick genre filters">
+        @for (genre of genres; track genre) {
           <button
-            class="button"
-            [disabled]="query().page <= 1"
-            (click)="update({ page: query().page - 1 })"
+            type="button"
+            [class.selected]="query().genres.includes(genre)"
+            [attr.aria-pressed]="query().genres.includes(genre)"
+            (click)="toggleGenre(genre)"
           >
-            Previous
+            {{ genre }}
           </button>
-          <span>Page {{ query().page }}</span>
-          <button
-            class="button"
-            [disabled]="query().page * query().pageSize >= results().length"
-            (click)="update({ page: query().page + 1 })"
-          >
-            Next
-          </button>
-        </nav>
-      </section>
-    }
-    <router-outlet (activate)="detailActive.set(true)" (deactivate)="detailActive.set(false)" />
+        }
+      </div>
+      <div class="media-grid">
+        @for (item of visible(); track item.id) {
+          <app-media-card
+            [item]="item"
+            [state]="stateFor(item.id)"
+            [url]="links.item(item)"
+            (favorite)="repository.toggleFavorite(item.id)"
+          />
+        } @empty {
+          <p class="empty">No titles match these filters.</p>
+        }
+      </div>
+      <nav class="anchor-links" aria-label="Pagination">
+        <button
+          class="button"
+          [disabled]="query().page <= 1"
+          (click)="update({ page: query().page - 1 })"
+        >
+          Previous
+        </button>
+        <span>Page {{ query().page }}</span>
+        <button
+          class="button"
+          [disabled]="query().page * query().pageSize >= results().length"
+          (click)="update({ page: query().page + 1 })"
+        >
+          Next
+        </button>
+      </nav>
+    </section>
   `,
 })
 export class CatalogPage {
@@ -107,7 +103,6 @@ export class CatalogPage {
     movies: this.routes.ROOT.SCREEN.MOVIES,
     shows: this.routes.ROOT.SCREEN.SHOWS,
   });
-  protected readonly detailActive = signal(false);
   protected readonly genres = ['Drama', 'Comedy', 'Science fiction', 'Mystery'];
   protected readonly query = computed(() => this.params.value().query);
   protected readonly heading = computed(

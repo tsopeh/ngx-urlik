@@ -6,7 +6,7 @@ The library intentionally implements a strict subset and wrapper model. Compared
 - Exactly one root route is required. Angular normally accepts several top-level routes.
 - Children are named object properties rather than a `Routes` array.
 - Each route has one static segment and at most one separately declared path parameter. Multi-segment paths and inline `:params` are forbidden.
-- Empty paths are root-only. Angular permits empty child routes.
+- Empty paths are root-only. Use `exactMatch` on the named route for exact-path content or redirects; the compiler creates private full-match children. Angular permits public empty child routes.
 - Named/auxiliary outlets are unsupported; only the primary outlet is modeled.
 - Custom `matcher` functions are unsupported.
 - Matrix parameters are unsupported. URL fragments are accepted as untyped, construction-only values and are not exposed through `urlParams()`.

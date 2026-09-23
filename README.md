@@ -66,6 +66,31 @@ bootstrapApplication(AppComponent, {
 
 `paramsInheritanceStrategy` is always `always`. Configure other Router options on `defineAppRouter`; `withRouterConfig()` is intentionally rejected by `provideAppRouter`.
 
+## Exact-path content and redirects
+
+Use `exactMatch` for content at a named route’s own URL, with descendants rendered separately:
+
+```ts
+ACCOUNT: {
+  path: 'account',
+  angular: { component: AccountLayout },
+  exactMatch: { angular: { component: AccountOverview } },
+  children: {
+    SETTINGS: { path: 'settings', angular: { component: AccountSettings } },
+  },
+}
+```
+
+The layout persists; its outlet shows the overview only at `/account`. Without `exactMatch`,
+its outlet is empty at that URL. Componentless routes and leaves support the same property.
+For a landing redirect, use `exactMatch: { redirectTo: ({ path, query }) => urlTree }` with a
+definite `UrlTree` return. Callback parameters include the named route’s accumulated state.
+
+Only the root may have an empty path. `exactMatch` adds no public node or parameters;
+navigate and observe state through the named route, including on descendants.
+`activeRoute()` selects the deepest active candidate regardless of candidate order.
+See the [exact-match reference](docs/design/app-router.md#exact-match-behavior) for allowed options.
+
 ## Navigate and link
 
 ```ts

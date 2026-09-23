@@ -92,6 +92,26 @@ export function compileRouteDefinitions(
   readState: ReadRouteState,
 ): { readonly roots: CompiledRoute[]; readonly routes: Routes } {
   const roots: CompiledRoute[] = [];
+  const setRedirect = (
+    route: Route,
+    info: CompiledRoute,
+    redirect: NonNullable<RouteDefinition['redirectTo']>,
+  ) => {
+    const redirectTo: NonNullable<Route['redirectTo']> = (snapshot) =>
+      redirect(
+        readState(
+          info,
+          snapshot.paramMap,
+          snapshot.queryParamMap,
+          `/${snapshot.url.map((segment) => segment.path).join('/')}`,
+        ),
+      );
+    route.pathMatch = 'full';
+    // Angular forbids canMatch on a redirect. Keep matching and its injector on
+    // this route, with the redirect in an anonymous full-match child.
+    if (route.canMatch) route.children = [{ path: '', pathMatch: 'full', redirectTo }];
+    else route.redirectTo = redirectTo;
+  };
   const compile = (
     currentDefinitions: Readonly<Record<string, RouteDefinition>>,
     parent?: CompiledRoute,
@@ -118,19 +138,18 @@ export function compileRouteDefinitions(
         ? '**'
         : definition.path + (definition.pathParam ? `/:${definition.pathParam.name}` : '');
       if (info.redirect) {
-        route.pathMatch = 'full';
-        route.redirectTo = (snapshot) => {
-          const state = readState(
-            info,
-            snapshot.paramMap,
-            snapshot.queryParamMap,
-            `/${snapshot.url.map((segment) => segment.path).join('/')}`,
-          );
-          return definition.redirectTo!(state);
-        };
-      } else if (!info.fallback && definition.children)
-        route.children = compile(definition.children, info);
-      else if (!info.fallback && !route.component && !route.loadComponent) route.children = [];
+        setRedirect(route, info, definition.redirectTo!);
+      } else if (!info.fallback) {
+        const children = definition.children ? compile(definition.children, info) : [];
+        const exact = definition.exactMatch;
+        if (exact) {
+          const exactRoute: Route = { ...exact.angular, path: '', pathMatch: 'full' };
+          if (exact.redirectTo) setRedirect(exactRoute, info, exact.redirectTo);
+          children.unshift(exactRoute);
+        }
+        if (children.length || definition.children || (!route.component && !route.loadComponent))
+          route.children = children;
+      }
       compiled.push(route);
     }
     return compiled;

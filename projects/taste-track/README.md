@@ -36,8 +36,10 @@ and `ngx-urlik/forms` entry points.
 | Credits and profiles    | Typed navigation across branches                                              |
 | Collection              | Signal Forms, repeated statuses, delimited media, exact/countless count codec |
 | Viewing history         | Reactive Forms, grouped RxJS search debounce, date filters                    |
+| Exact-match behavior    | Landing redirects and page content at existing parent URLs                    |
 | Unknown URL             | Branch-scoped wildcard                                                        |
 
+Shared pages use `activeRoute()` to select the deepest supported named route.
 The shared `paginationParams()` helper preserves inference. Atomic sort values demonstrate
 structured custom codecs. All normal navigation uses typed route nodes, without the native
 Router escape hatch. Developer explanations live here rather than in the application UI.

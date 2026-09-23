@@ -6,7 +6,13 @@ import {
   runInInjectionContext,
   signal,
 } from '@angular/core';
-import { NavigationBehaviorOptions, NavigationEnd, Router, UrlTree } from '@angular/router';
+import {
+  ActivatedRouteSnapshot,
+  NavigationBehaviorOptions,
+  NavigationEnd,
+  Router,
+  UrlTree,
+} from '@angular/router';
 import { filter } from 'rxjs';
 import { QueryWriteCoordinator, registerQueryBinding } from './query-write-coordinator';
 import { CompiledRoute, RuntimeParam, findActiveRoute } from './compiled-route';
@@ -211,25 +217,35 @@ export function createRouteTree(
   tree['activeRoute'] = (candidates: Readonly<Record<PropertyKey, object>>): ActiveRouteRef => ({
     value: computed(() => {
       navigation();
+      let selected:
+        | { key: PropertyKey; node: object; info: CompiledRoute; active: ActivatedRouteSnapshot }
+        | undefined;
       for (const key of Reflect.ownKeys(candidates)) {
         const node = candidates[key] as Record<PropertyKey, unknown>;
         const info = node[routeNodeInfo] as CompiledRoute | undefined;
         if (!info || info.redirect)
           throw new Error(`activeRoute(): candidate '${String(key)}' is not a stateful route node`);
         const active = findActiveRoute(router.routerState.snapshot.root, info.angular);
-        if (active)
-          return {
-            route: key,
-            node,
-            params: runInInjectionContext(injector, () =>
-              readState(
-                info,
-                active.paramMap,
-                active.queryParamMap,
-                router.url.split(/[?#]/, 1)[0] || '/',
-              ),
+        if (
+          active &&
+          (!selected || active.pathFromRoot.length > selected.active.pathFromRoot.length)
+        )
+          selected = { key, node, info, active };
+      }
+      if (selected) {
+        const { key, node, info, active } = selected;
+        return {
+          route: key,
+          node,
+          params: runInInjectionContext(injector, () =>
+            readState(
+              info,
+              active.paramMap,
+              active.queryParamMap,
+              router.url.split(/[?#]/, 1)[0] || '/',
             ),
-          };
+          ),
+        };
       }
       throw new Error(
         `activeRoute(): none of the candidate routes [${Reflect.ownKeys(candidates)

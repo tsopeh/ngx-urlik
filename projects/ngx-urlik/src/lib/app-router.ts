@@ -16,17 +16,13 @@ import {
   provideRouter,
   withRouterConfig,
 } from '@angular/router';
-import {
-  AnyQueryParamDefinition,
-  ArrayQueryParamDefinition,
-  PathParamDefinition,
-  QueryParamDefinition,
-} from './params';
+import { ArrayQueryParamDefinition, PathParamDefinition, QueryParamDefinition } from './params';
 import { compileRouteDefinitions } from './compiled-route';
 import { AppRouterDiagnostics, createDiagnosticReporter } from './route-diagnostics';
 import {
   AngularRedirectOptions,
   AngularRouteOptions,
+  ExactMatchDefinition,
   QueryDefinitions,
   RouteDefinition,
   validateRouteDefinitions,
@@ -109,46 +105,72 @@ export interface ActiveRouteRef<C extends Readonly<Record<PropertyKey, AnyStatef
   >;
 }
 
-type OrdinaryKey = 'path' | 'pathParam' | 'queryParams' | 'children' | 'angular' | 'isEqual';
+// Infer data throughout the tree before contextualizing callbacks. Inferring the whole
+// object directly skips nested objects containing context-sensitive functions.
+type InferDefinition<T> = {
+  [K in keyof T]: T[K] &
+    (unknown extends T[K]
+      ? unknown
+      : T[K] extends (...args: never[]) => unknown
+        ? unknown
+        : InferDefinition<T[K]>);
+};
+type OrdinaryKey =
+  'path' | 'pathParam' | 'queryParams' | 'children' | 'angular' | 'isEqual' | 'exactMatch';
 type RedirectKey = 'path' | 'pathParam' | 'queryParams' | 'redirectTo' | 'angular';
 type FallbackKey = 'path' | 'queryParams' | 'angular' | 'isEqual';
-type ContextualRoute<D, AP, AQ> = 'redirectTo' extends keyof D
-  ? D extends { readonly redirectTo: (...args: never[]) => unknown }
-    ? ContextualRouteShape<D, AP, AQ>
-    : never
-  : ContextualRouteShape<D, AP, AQ>;
-type ContextualRouteShape<D, AP, AQ> =
-  Simplify<Merge<AP, OwnPath<D>>> extends infer P
-    ? Simplify<Merge<AQ, OwnQuery<D>>> extends infer Q
-      ? D &
-          Record<
-            Exclude<
-              keyof D,
-              D extends { path: '**' }
-                ? FallbackKey
-                : D extends { redirectTo: (...args: never[]) => unknown }
-                  ? RedirectKey
-                  : OrdinaryKey
+type StrictOptions<T, Allowed> = Allowed & Record<Exclude<keyof T, keyof Allowed>, never>;
+type ContextualExact<E, State> = ExactMatchDefinition<State> &
+  Record<Exclude<keyof E, 'angular' | 'redirectTo'>, never> & {
+    angular?: E extends { angular: infer A }
+      ? StrictOptions<
+          A,
+          'redirectTo' extends keyof E ? AngularRedirectOptions : AngularRouteOptions
+        >
+      : never;
+  };
+type ContextualRoute<D, AP, AQ, Root extends boolean> = {
+  [K in keyof D]: K extends (
+    D extends { path: '**' }
+      ? FallbackKey
+      : 'redirectTo' extends keyof D
+        ? RedirectKey
+        : OrdinaryKey
+  )
+    ? K extends 'children'
+      ? ContextualRoutes<D[K], Merge<AP, OwnPath<D>>, Merge<AQ, OwnQuery<D>>, false>
+      : K extends 'redirectTo'
+        ? (
+            values: UrlParamsState<
+              Simplify<Merge<AP, OwnPath<D>>>,
+              Simplify<Merge<AQ, OwnQuery<D>>>
             >,
-            never
-          > &
-          (D extends { path: '**' }
-            ? { readonly pathParam?: never; readonly children?: never; readonly redirectTo?: never }
-            : D extends { redirectTo: (...args: never[]) => unknown }
-              ? {
-                  readonly redirectTo: (values: UrlParamsState<P, Q>) => UrlTree;
-                  readonly children?: never;
-                  readonly isEqual?: never;
-                  readonly angular?: AngularRedirectOptions;
-                }
-              : {
-                  readonly redirectTo?: never;
-                  readonly children?: D extends { children: infer C }
-                    ? ContextualRoutes<C, P, Q, false>
-                    : never;
-                })
-      : never
+          ) => UrlTree
+        : K extends 'exactMatch'
+          ? ContextualExact<
+              D[K],
+              UrlParamsState<Simplify<Merge<AP, OwnPath<D>>>, Simplify<Merge<AQ, OwnQuery<D>>>>
+            >
+          : K extends 'angular'
+            ? StrictOptions<
+                D[K],
+                'redirectTo' extends keyof D ? AngularRedirectOptions : AngularRouteOptions
+              >
+            : K extends 'isEqual'
+              ? RouteDefinition['isEqual']
+              : K extends 'path'
+                ? Root extends false
+                  ? D[K] extends ''
+                    ? never
+                    : string
+                  : string
+                : K extends keyof RouteDefinition
+                  ? D[K] extends RouteDefinition[K]
+                    ? unknown
+                    : never
+                  : never
     : never;
+} & { readonly path: string };
 type ReservedIdentity = 'navigate' | 'createUrlTree' | 'urlParams';
 type ContextualRoutes<R, AP = object, AQ = object, Root extends boolean = true> =
   R extends Readonly<Record<string, unknown>>
@@ -157,7 +179,7 @@ type ContextualRoutes<R, AP = object, AQ = object, Root extends boolean = true> 
           | ReservedIdentity
           | (Root extends true ? 'escapeHatch' | 'activeRoute' | 'globalQueryParams' : never)
           ? never
-          : ContextualRoute<R[K], AP, AQ>;
+          : ContextualRoute<R[K], AP, AQ, Root>;
       }
     : never;
 
@@ -165,7 +187,7 @@ type ChildrenOf<D> = D extends { children: infer C extends Readonly<Record<strin
   ? C
   : object;
 type IsFallback<D> = D extends { path: '**' } ? true : false;
-type IsRedirect<D> = D extends { redirectTo: (...args: never[]) => unknown } ? true : false;
+type IsRedirect<D> = 'redirectTo' extends keyof D ? true : false;
 type NodeFor<D, AP, AQ, Required extends PropertyKey> =
   Simplify<Merge<AP, OwnPath<D>>> extends infer P
     ? Simplify<Merge<AQ, OwnQuery<D>>> extends infer Q
@@ -224,22 +246,23 @@ function createProviderFunction<T>(
   };
 }
 
-export function defineAppRouter<
-  const R extends Readonly<Record<string, RouteDefinition>>,
->(options: {
-  routes: R & ContextualRoutes<R>;
+export function defineAppRouter<const R extends Readonly<Record<string, unknown>>>(options: {
+  routes: InferDefinition<R> & ContextualRoutes<NoInfer<R>>;
   routerConfig?: Omit<RouterConfigOptions, 'paramsInheritanceStrategy'>;
   diagnostics?: AppRouterDiagnostics;
 }): {
   AppRouter: InjectionToken<GeneratedAppRouter<R>>;
   provideAppRouter: (...features: ForwardedRouterFeature[]) => EnvironmentProviders;
 } {
-  const errors = validateRouteDefinitions(options.routes);
+  // The input mapping checks the public shape; runtime validation also handles
+  // JavaScript callers and values crossing untyped boundaries.
+  const definitions = options.routes as Readonly<Record<string, RouteDefinition>>;
+  const errors = validateRouteDefinitions(definitions);
   if (errors.length) throw new Error(`Invalid app router definition:\n- ${errors.join('\n- ')}`);
   let token!: InjectionToken<GeneratedAppRouter<R>>;
   const report = createDiagnosticReporter(options.diagnostics);
   const readState = createParameterReader(report);
-  const { roots, routes } = compileRouteDefinitions(options.routes, readState);
+  const { roots, routes } = compileRouteDefinitions(definitions, readState);
 
   function factory(): GeneratedAppRouter<R> {
     const router = inject(Router);
