@@ -1,7 +1,10 @@
 import { inject } from '@angular/core';
-import { Router, UrlTree, withRouterConfig } from '@angular/router';
 import { FormArray, FormControl, FormGroup } from '@angular/forms';
-import { filter } from 'rxjs';
+import { Router, UrlTree, withRouterConfig } from '@angular/router';
+// @ts-expect-error route compiler implementation types are not public API
+type InternalRouteDefinition = import('ngx-urlik').RouteDefinition;
+// @ts-expect-error generated-tree implementation types are not public API
+type InternalRouterTree = import('ngx-urlik').RouterTree;
 import {
   booleanCodec,
   defineAppRouter,
@@ -18,11 +21,7 @@ import {
   createQueryParamsFormGroup,
   createQueryParamsSignalForm,
 } from 'ngx-urlik/forms';
-
-// @ts-expect-error route compiler implementation types are not public API
-import type { RouteDefinition } from 'ngx-urlik';
-// @ts-expect-error generated-tree implementation types are not public API
-import type { RouterTree } from 'ngx-urlik';
+import { filter } from 'rxjs';
 
 const definition = defineAppRouter({
   routes: {
@@ -118,20 +117,43 @@ router.ROOT.ITEM.navigate(
     info: { transition: 'forward' },
   },
 );
-router.ROOT.ITEM.urlParams().value().path.itemId satisfies string;
-router.ROOT.ITEM.urlParams().value().query.locale satisfies string;
-router.ROOT.ITEM.urlParams().value().query.filter satisfies string | null;
-router.ROOT.ITEM.urlParams().value().query.tags satisfies readonly string[];
-router.ROOT.ITEM.urlParams().value().query.ids satisfies readonly number[];
+router.ROOT.ITEM.params().path.itemId satisfies string;
+router.ROOT.ITEM.params().query.locale satisfies string;
+router.ROOT.ITEM.params().query.filter satisfies string | null;
+router.ROOT.ITEM.params().query.tags satisfies readonly string[];
+router.ROOT.ITEM.params().query.ids satisfies readonly number[];
+router.ROOT.ITEM.patchQuery({ filter: 'active' }) satisfies Promise<boolean>;
+router.ROOT.ITEM.patchQuery((query) => ({ tags: [...query.tags, 'admin'] }));
+// @ts-expect-error patches only accept declared query keys
+router.ROOT.ITEM.patchQuery({ itemId: '1' });
+// @ts-expect-error patch values retain their codec types
+router.ROOT.ITEM.patchQuery({ tags: 'admin' });
+// @ts-expect-error functional patches retain their codec types
+router.ROOT.ITEM.patchQuery(() => ({ filter: 123 }));
+// @ts-expect-error committed route state is readonly
+router.ROOT.ITEM.params().query.filter = 'changed';
+// @ts-expect-error route state is no longer wrapped in a reference
+router.ROOT.ITEM.urlParams();
+defineAppRouter({
+  routes: {
+    ROOT: {
+      path: '',
+      children: {
+        // @ts-expect-error params is a reserved node member
+        params: { path: 'state' },
+        // @ts-expect-error patchQuery is a reserved node member
+        patchQuery: { path: 'patch' },
+      },
+    },
+  },
+});
 // @ts-expect-error fragments are construction-only URL state
-router.ROOT.ITEM.urlParams().value().fragment;
+router.ROOT.ITEM.params().fragment;
 
-const active = router
-  .activeRoute({
-    item: router.ROOT.ITEM,
-    fallback: router.ROOT.FALLBACK,
-  })
-  .value();
+const active = router.activeRoute({
+  item: router.ROOT.ITEM,
+  fallback: router.ROOT.FALLBACK,
+})();
 if (active.route === 'item') {
   active.node satisfies typeof router.ROOT.ITEM;
   active.params.path.itemId satisfies string;
@@ -280,18 +302,18 @@ const globalQueries = inject(definition.AppRouter).globalQueryParams(
   },
   { isEqual: (previous, next) => previous.count === next.count },
 );
-const globalSearch: string | null = globalQueries.value().search;
-const globalCount: number = globalQueries.value().count;
-const globalTags: readonly string[] = globalQueries.value().tags;
-const globalRef: import('ngx-urlik').GlobalQueryParamsRef<{ count: number }> = globalQueries;
+const globalSearch: string | null = globalQueries().search;
+const globalCount: number = globalQueries().count;
+const globalTags: readonly string[] = globalQueries().tags;
+const globalRef: import('@angular/core').Signal<{ readonly count: number }> = globalQueries;
 // @ts-expect-error global references are read-only
-globalQueries.updateQueryParams(() => ({}));
+globalQueries.patchQuery(() => ({}));
 // @ts-expect-error decoded properties are readonly
-globalQueries.value().count = 2;
+globalQueries().count = 2;
 // @ts-expect-error direct values have no query wrapper
-globalQueries.value().query;
+globalQueries().query;
 // @ts-expect-error only declared keys are readable
-globalQueries.value().unknown;
+globalQueries().unknown;
 inject(definition.AppRouter).globalQueryParams({
   // @ts-expect-error global definitions require query placement wrappers
   id: pathParam({ name: 'id', codec: stringCodec() }),
@@ -331,7 +353,7 @@ const exactDefinition = defineAppRouter({
 });
 declare const exactRouter: TokenValue<typeof exactDefinition.AppRouter>;
 exactRouter.ROOT.ITEM.createUrlTree({ path: { id: 1 } }) satisfies UrlTree | null;
-exactRouter.ROOT.ITEM.urlParams().value().path.id satisfies number;
+exactRouter.ROOT.ITEM.params().path.id satisfies number;
 // @ts-expect-error exactMatch is not a generated public node
 exactRouter.ROOT.ITEM.exactMatch;
 // @ts-expect-error accumulated path is still required
@@ -381,7 +403,7 @@ defineAppRouter({
   },
 });
 
-// Keep inference independent of callback/property order and annotation style.
+// The inference result must not depend on callback order or annotation style.
 const accumulatedDefinition = defineAppRouter({
   routes: {
     ROOT: {
@@ -438,7 +460,7 @@ accumulatedRouter.ROOT.ITEM.createUrlTree({ path: { accountId: 'a', id: 1 } });
 // @ts-expect-error inherited path is required for construction
 accumulatedRouter.ROOT.ITEM.createUrlTree({ path: { id: 1 } });
 // @ts-expect-error terminal redirects remain stateless
-accumulatedRouter.ROOT.ITEM.OLD.urlParams();
+accumulatedRouter.ROOT.ITEM.OLD.params();
 
 defineAppRouter({
   routes: {
@@ -574,7 +596,7 @@ defineAppRouter({
   },
 });
 
-// Route names must not change the inference algorithm.
+// Renaming a route must leave the inference algorithm unchanged.
 const namedLikeOptions = defineAppRouter({
   routes: {
     angular: {

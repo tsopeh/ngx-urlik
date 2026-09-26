@@ -18,10 +18,10 @@ export {
   type AppRouterDiagnostic,
   type AppRouterDiagnosticCode,
   type AppRouterDiagnostics,
-  type ActiveRouteRef,
-  type UrlParamsRef,
-  type GlobalQueryParamsRef,
+  type ActiveRoute,
+  type UrlParamsState,
+  type QueryPatch,
 } from './lib/app-router';
 
-// Internal bridge between package entry points.
+// Keep the internal bridge available to the forms entry point.
 export { getQueryBinding as ɵgetQueryBinding } from './lib/query-write-coordinator';

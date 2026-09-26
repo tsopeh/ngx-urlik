@@ -11,7 +11,7 @@ class TasteTrackDatabase extends Dexie {
   readonly events!: EntityTable<JournalEvent, 'id'>;
 
   constructor() {
-    // A separate dataset: the original taste-track-demo database is left untouched.
+    // Use a separate dataset so the original taste-track-demo database stays unchanged.
     super('taste-track-screen-v2');
     this.version(1).stores({
       items: 'id, kind, year, showId, [showId+seasonNumber+episodeNumber], *genres',

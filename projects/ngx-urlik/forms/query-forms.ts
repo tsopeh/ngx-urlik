@@ -1,11 +1,19 @@
-import { DestroyRef, ErrorHandler, WritableSignal, effect, inject, signal } from '@angular/core';
+import {
+  DestroyRef,
+  effect,
+  ErrorHandler,
+  inject,
+  Signal,
+  signal,
+  WritableSignal,
+} from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
-import { FieldTree, SchemaOrSchemaFn, form as signalForm } from '@angular/forms/signals';
+import { FieldTree, form as signalForm, SchemaOrSchemaFn } from '@angular/forms/signals';
+import { isEqual, ɵgetQueryBinding } from 'ngx-urlik';
 import { Observable, Subject, Subscription } from 'rxjs';
-import { isEqual, ɵgetQueryBinding, type UrlParamsRef } from 'ngx-urlik';
 
 type QueryState = Readonly<Record<string, unknown>>;
-type QueryRoute<Q extends QueryState> = { urlParams(): UrlParamsRef<unknown, Q> };
+type QueryRoute<Q extends QueryState> = { readonly params: Signal<{ readonly query: Q }> };
 
 export type QueryParamsFormControls<Q extends QueryState> = {
   [K in keyof Q]: FormControl<Q[K]>;
@@ -59,16 +67,16 @@ const bindQueryParams = <Q extends QueryState>(
 ): void => {
   const destroyRef = inject(DestroyRef);
   const errorHandler = inject(ErrorHandler);
-  const ref = route.urlParams();
-  const binding = ɵgetQueryBinding<Q>(ref);
-  let observed = binding.read() ?? ref.value().query;
+  const binding = ɵgetQueryBinding<Q>(route);
+  let observed = binding.read() ?? route.params().query;
   const owner = {};
-  const staged = new Map<keyof Q, { revision: number; value: Q[keyof Q] }>();
-  let revision = 0;
+  // Each edit identifies the draft that a write may acknowledge. Newer edits remain pending.
+  type Edit = { value: Q[keyof Q] };
+  const staged = new Map<keyof Q, Edit>();
   let destroyed = false;
   let source = new Subject<QueryParamChange<Q>>();
   let outputSubscription: Subscription;
-  type SubmittedValue = { value: Q[keyof Q]; revision: number | undefined };
+  type SubmittedValue = { value: Q[keyof Q]; edit: Edit | undefined };
   let collecting: Map<keyof Q, SubmittedValue> | undefined;
   adapter.reset(observed);
 
@@ -82,7 +90,7 @@ const bindQueryParams = <Q extends QueryState>(
     const patch = Object.fromEntries([...changes].map(([param, change]) => [param, change.value]));
     const clearSubmitted = () => {
       for (const [param, change] of changes) {
-        if (staged.get(param)?.revision === change.revision) staged.delete(param);
+        if (staged.get(param) === change.edit) staged.delete(param);
       }
     };
     void binding
@@ -106,7 +114,7 @@ const bindQueryParams = <Q extends QueryState>(
       next: (change) => {
         const submitted = {
           value: change.value,
-          revision: staged.get(change.param)?.revision,
+          edit: staged.get(change.param),
         };
         if (collecting) collecting.set(change.param, submitted);
         else submit(new Map([[change.param, submitted]]));
@@ -144,8 +152,7 @@ const bindQueryParams = <Q extends QueryState>(
     const changes: QueryParamChange<Q>[] = [];
     for (const param of Object.keys(next) as (keyof Q)[]) {
       if (isEqual(observed[param], next[param])) continue;
-      observed = { ...observed, [param]: next[param] };
-      staged.set(param, { revision: ++revision, value: next[param] });
+      staged.set(param, { value: next[param] });
       changes.push({
         param,
         value: next[param],
@@ -153,8 +160,9 @@ const bindQueryParams = <Q extends QueryState>(
         ...metadata(param),
       } as QueryParamChange<Q>);
     }
-    // Only synchronous outputs of this form notification share a navigation.
-    // Delayed or filtered fields must not be pulled in from the whole form value.
+    observed = next;
+    // Synchronous outputs from this form notification share one navigation.
+    // Delayed or filtered fields wait for their own notification.
     const batch = new Map<keyof Q, SubmittedValue>();
     const previous = collecting;
     const input = source;
@@ -167,7 +175,7 @@ const bindQueryParams = <Q extends QueryState>(
     }
   });
 
-  // Also observe injection-aware defaults that can change without navigation.
+  // Defaults can change through injection without a navigation, so observe them as well.
   const urlEffect = effect(() => synchronize(false));
   destroyRef.onDestroy(() => {
     destroyed = true;
@@ -210,7 +218,7 @@ export function createQueryParamsFormGroup<Q extends QueryState>(
   route: QueryRoute<Q>,
   options: QueryParamsBindingOptions<Q> = {},
 ): FormGroup<QueryParamsFormControls<Q>> {
-  const query = route.urlParams().value().query;
+  const query = ɵgetQueryBinding<Q>(route).read() ?? route.params().query;
   const controls = Object.fromEntries(
     Object.entries(query).map(([param, value]) => [
       param,
@@ -259,7 +267,9 @@ export function createQueryParamsSignalForm<Q extends QueryState>(
   route: QueryRoute<Q>,
   options: CreateQueryParamsSignalFormOptions<Q> = {},
 ): Readonly<{ model: WritableSignal<Q>; form: FieldTree<Q> }> {
-  const model = signal(route.urlParams().value().query) as WritableSignal<Q>;
+  const model = signal(
+    ɵgetQueryBinding<Q>(route).read() ?? route.params().query,
+  ) as WritableSignal<Q>;
   const result = options.schema ? signalForm(model, options.schema) : signalForm(model);
   bindQueryParamsToSignalForm(route, result, options);
   return { model, form: result };

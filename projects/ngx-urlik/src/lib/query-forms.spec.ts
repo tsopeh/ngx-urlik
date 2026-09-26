@@ -33,11 +33,15 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-async function setup(guard: CanActivateFn = () => true) {
+async function setup(
+  guard: CanActivateFn = () => true,
+  isEqual?: (a: unknown, b: unknown) => boolean,
+) {
   const definition = defineAppRouter({
     routes: {
       ROOT: {
         path: '',
+        isEqual,
         queryParams: {
           search: queryParam({ codec: stringCodec(), defaultValue: '' }),
           page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
@@ -153,7 +157,7 @@ describe('query form bindings', () => {
     });
     const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT));
     form.patchValue({ search: 'first', page: 2 });
-    const direct = routes.ROOT.urlParams().updateQueryParams((q) => ({ ...q, roles: ['admin'] }));
+    const direct = routes.ROOT.patchQuery((q) => ({ ...q, roles: ['admin'] }));
     form.patchValue({ search: 'second', page: 3 });
     await direct;
     await vi.waitFor(() => expect(router.url).toBe('/results?search=second&page=3&roles=admin'));
@@ -191,7 +195,7 @@ describe('query form bindings', () => {
     );
     first.controls.search.setValue('angular');
     second.controls.page.setValue(2);
-    await routes.ROOT.urlParams().updateQueryParams((q) => ({ ...q, roles: ['admin'] }));
+    await routes.ROOT.patchQuery((q) => ({ ...q, roles: ['admin'] }));
     TestBed.flushEffects();
     expect(router.url).toBe('/results?search=angular&page=2&roles=admin');
     expect(first.getRawValue()).toEqual({ search: 'angular', page: 2, roles: ['admin'] });
@@ -257,13 +261,13 @@ describe('query form bindings', () => {
       createQueryParamsFormGroup(routes.ROOT, { transformWrites: groupedDelay }),
     );
     form.controls.search.setValue('staged');
-    await routes.ROOT.urlParams().updateQueryParams((q) => ({ ...q, search: 'direct' }));
+    await routes.ROOT.patchQuery((q) => ({ ...q, search: 'direct' }));
     expect(form.controls.search.value).toBe('staged');
     await vi.advanceTimersByTimeAsync(300);
     expect(router.url).toBe('/results?search=staged');
     form.controls.search.setValue('earlier');
     await vi.advanceTimersByTimeAsync(300);
-    await routes.ROOT.urlParams().updateQueryParams((q) => ({ ...q, search: 'later' }));
+    await routes.ROOT.patchQuery((q) => ({ ...q, search: 'later' }));
     expect(form.controls.search.value).toBe('later');
   });
 
@@ -405,7 +409,7 @@ describe('query form bindings', () => {
     const context = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
     const form = runInInjectionContext(context, () => createQueryParamsFormGroup(routes.ROOT));
     form.controls.search.setValue('stale');
-    const other = routes.ROOT.urlParams().updateQueryParams((q) => ({ ...q, page: 2 }));
+    const other = routes.ROOT.patchQuery((q) => ({ ...q, page: 2 }));
     context.destroy();
     expect(await other).toBe(true);
     form.controls.search.setValue('ignored');
@@ -452,15 +456,13 @@ describe('query form bindings', () => {
     expect(router.lastSuccessfulNavigation()?.extras.replaceUrl).toBe(false);
   });
 
-  it('initializes from fresh state even when the route ref retains an older signal value', async () => {
-    const { routes } = await setup();
-    const ref = routes.ROOT.urlParams({ isEqual: () => true });
-    expect(ref.value().query.search).toBe('');
-    await ref.updateQueryParams((q) => ({ ...q, search: 'latest' }));
-    expect(ref.value().query.search).toBe('');
-    const form = TestBed.runInInjectionContext(() =>
-      createQueryParamsFormGroup({ urlParams: () => ref }),
-    );
+  it('initializes from fresh state even when route equality retains an older signal value', async () => {
+    const { routes } = await setup(undefined, () => true);
+    const ref = routes.ROOT;
+    expect(ref.params().query.search).toBe('');
+    await ref.patchQuery((q) => ({ ...q, search: 'latest' }));
+    expect(ref.params().query.search).toBe('');
+    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(ref));
     expect(form.controls.search.value).toBe('latest');
   });
 

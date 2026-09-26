@@ -1,9 +1,9 @@
 import {
+  computed,
   DestroyRef,
   EnvironmentInjector,
-  Signal,
-  computed,
   runInInjectionContext,
+  Signal,
   signal,
 } from '@angular/core';
 import {
@@ -11,57 +11,30 @@ import {
   NavigationBehaviorOptions,
   NavigationEnd,
   Router,
-  UrlTree,
 } from '@angular/router';
 import { filter } from 'rxjs';
+import { CompiledRoute, findActiveRoute, RuntimeParam } from './compiled-route';
+import { isEqual } from './is-equal';
 import { QueryWriteCoordinator, registerQueryBinding } from './query-write-coordinator';
-import { CompiledRoute, RuntimeParam, findActiveRoute } from './compiled-route';
+import { QueryDefinitions } from './route-definition';
 import { ReportParameterFailure } from './route-diagnostics';
 import { createParameterReader, createParameterSerializer } from './route-params-runtime';
-import { QueryDefinitions } from './route-definition';
-import { isEqual } from './is-equal';
+import type { AnyRecord, Simplify } from './type-utils';
 
 export const routeNodeInfo: unique symbol = Symbol('ngx-urlik route node');
 
-type AnyRecord = Readonly<Record<string, unknown>>;
-type Simplify<T> = { [K in keyof T]: T[K] };
 export type UrlParamsState<P, Q> = Readonly<{
   path: Readonly<Simplify<P>>;
   query: Readonly<Simplify<Q>>;
 }>;
-export type UrlStateEquality<P = unknown, Q = unknown> = (
-  a: UrlParamsState<P, Q>,
-  b: UrlParamsState<P, Q>,
-) => boolean;
+export type QueryPatch<Q> = Partial<Readonly<Q>> | ((query: Readonly<Q>) => Partial<Readonly<Q>>);
 export type TypedNavigationBehaviorOptions = Omit<NavigationBehaviorOptions, 'browserUrl'>;
-
-export interface UrlParamsRef<P, Q> {
-  readonly value: Signal<UrlParamsState<P, Q>>;
-  updateQueryParams(
-    updater: (previous: Readonly<Simplify<Q>>) => Simplify<Q>,
-    options?: { replaceUrl?: boolean },
-  ): Promise<boolean>;
-}
-
-export interface GlobalQueryParamsRef<Q> {
-  readonly value: Signal<Readonly<Q>>;
-}
-
-export interface ActiveRouteRef {
-  readonly value: Signal<
-    Readonly<{
-      route: PropertyKey;
-      node: object;
-      params: Readonly<{ path: AnyRecord; query: AnyRecord }>;
-    }>
-  >;
-}
 
 export function createRouteTree(
   roots: readonly CompiledRoute[],
   router: Router,
   injector: EnvironmentInjector,
-  readState: ReturnType<typeof createParameterReader>,
+  reader: ReturnType<typeof createParameterReader>,
   report: ReportParameterFailure,
 ): Record<string, unknown> {
   const destroyRef = injector.get(DestroyRef);
@@ -71,121 +44,126 @@ export function createRouteTree(
     .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
     .subscribe(() => navigation.update((value) => value + 1));
   destroyRef.onDestroy(() => navigationSubscription.unsubscribe());
+  const { readState, readQueryState } = reader;
   const { encode, serializeQuery } = createParameterSerializer(injector, report);
+
+  const createUrlTree = (
+    info: CompiledRoute,
+    values: { path?: AnyRecord; query?: AnyRecord; fragment?: string | null } = {},
+  ) => {
+    const chain: CompiledRoute[] = [];
+    for (let current: CompiledRoute | undefined = info; current; current = current.parent)
+      chain.unshift(current);
+    const commands: unknown[] = ['/'];
+    for (const part of chain) {
+      if (part.definition.path) commands.push(part.definition.path);
+      if (part.ownPath) {
+        const output = encode(part.ownPath, values.path?.[part.ownPath.name]);
+        if (output === null) return null;
+        if (output === '') {
+          report(
+            part.ownPath,
+            { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize' },
+            'produced an empty path segment',
+          );
+          return null;
+        }
+        commands.push(output);
+      }
+    }
+    const queryParams: Record<string, string | readonly string[]> = {};
+    for (const param of info.queryParams) {
+      if (!(param.name in (values.query ?? {}))) continue;
+      const output = serializeQuery(param, values.query?.[param.name]);
+      if (output !== null) queryParams[param.name] = output;
+    }
+    return router.createUrlTree(commands, {
+      queryParams,
+      fragment: values.fragment ?? undefined,
+    });
+  };
+  const readActiveState = (info: CompiledRoute, active: ActivatedRouteSnapshot) =>
+    runInInjectionContext(injector, () =>
+      readState(info, active.paramMap, active.queryParamMap, router.url.split(/[?#]/, 1)[0] || '/'),
+    );
+
+  const bindState = (info: CompiledRoute, node: Record<string, unknown>) => {
+    const read = () => {
+      const active = findActiveRoute(router.routerState.snapshot.root, info.angular);
+      return active ? readActiveState(info, active) : undefined;
+    };
+    const requireState = () => {
+      const state = read();
+      if (!state)
+        throw new Error(
+          `${info.identity}: expected active route '${info.pattern}', but the current primary route is inactive`,
+        );
+      return state;
+    };
+    node['params'] = computed(
+      () => {
+        navigation();
+        return requireState();
+      },
+      { equal: info.comparator },
+    );
+
+    const update = (
+      updater: (query: AnyRecord) => AnyRecord,
+      options?: { replaceUrl?: boolean },
+      owner?: object,
+      committed?: () => void,
+    ) =>
+      coordinator.enqueue(
+        () => {
+          const next = updater(requireState().query);
+          const tree = router.parseUrl(router.url);
+          for (const param of info.queryParams) {
+            const output = serializeQuery(param, next[param.name]);
+            if (output === null) delete tree.queryParams[param.name];
+            else tree.queryParams[param.name] = output;
+          }
+          return tree;
+        },
+        options,
+        owner,
+        committed,
+      );
+
+    node['patchQuery'] = (patch: QueryPatch<AnyRecord>, options?: { replaceUrl?: boolean }) =>
+      update((query) => {
+        const changes = typeof patch === 'function' ? patch(query) : patch;
+        const supplied = Object.entries(changes).filter(([, value]) => value !== undefined);
+        return { ...query, ...Object.fromEntries(supplied) };
+      }, options);
+    registerQueryBinding(node, {
+      coordinator,
+      read: () => {
+        navigation();
+        return read()?.query;
+      },
+      update,
+    });
+  };
 
   const makeNode = (info: CompiledRoute): Record<string, unknown> => {
     const node: Record<string, unknown> = {};
     Object.defineProperty(node, routeNodeInfo, { value: info });
     if (!info.fallback) {
-      node['createUrlTree'] = (
-        values: { path?: AnyRecord; query?: AnyRecord; fragment?: string | null } = {},
-      ) => {
-        const chain: CompiledRoute[] = [];
-        for (let current: CompiledRoute | undefined = info; current; current = current.parent)
-          chain.unshift(current);
-        const commands: unknown[] = ['/'];
-        for (const part of chain) {
-          if (part.definition.path) commands.push(part.definition.path);
-          if (part.ownPath) {
-            const output = encode(part.ownPath, values.path?.[part.ownPath.name]);
-            if (output === null) return null;
-            if (output === '') {
-              report(
-                part.ownPath,
-                { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize' },
-                'produced an empty path segment',
-              );
-              return null;
-            }
-            commands.push(output);
-          }
-        }
-        const queryParams: Record<string, string | readonly string[]> = {};
-        for (const param of info.queryParams) {
-          if (!(param.name in (values.query ?? {}))) continue;
-          const output = serializeQuery(param, values.query?.[param.name]);
-          if (output !== null) queryParams[param.name] = output;
-        }
-        return router.createUrlTree(commands, {
-          queryParams,
-          fragment: values.fragment ?? undefined,
-        });
-      };
+      node['createUrlTree'] = (values?: {
+        path?: AnyRecord;
+        query?: AnyRecord;
+        fragment?: string | null;
+      }) => createUrlTree(info, values);
       node['navigate'] = (
         values?: { path?: AnyRecord; query?: AnyRecord; fragment?: string | null },
-        navigationOptions?: TypedNavigationBehaviorOptions,
+        options?: TypedNavigationBehaviorOptions,
       ) => {
-        const tree = (node['createUrlTree'] as (value?: unknown) => UrlTree | null)(values);
-        return tree === null
-          ? Promise.resolve(false)
-          : router.navigateByUrl(tree, navigationOptions);
+        const tree = createUrlTree(info, values);
+        return tree === null ? Promise.resolve(false) : router.navigateByUrl(tree, options);
       };
     }
-    if (!info.redirect) {
-      let stable: UrlParamsRef<AnyRecord, AnyRecord> | undefined;
-      node['urlParams'] = (urlOptions?: { isEqual?: UrlStateEquality<AnyRecord, AnyRecord> }) => {
-        if (!urlOptions && stable) return stable;
-        const read = () => {
-          const active = findActiveRoute(router.routerState.snapshot.root, info.angular);
-          if (!active) return undefined;
-          return runInInjectionContext(injector, () =>
-            readState(
-              info,
-              active.paramMap,
-              active.queryParamMap,
-              router.url.split(/[?#]/, 1)[0] || '/',
-            ),
-          );
-        };
-        const requireState = () => {
-          const state = read();
-          if (!state)
-            throw new Error(
-              `${info.identity}: expected active route '${info.pattern}', but the current primary route is inactive`,
-            );
-          return state;
-        };
-        const value = computed(
-          () => {
-            navigation();
-            return requireState();
-          },
-          { equal: urlOptions?.isEqual ?? (info.comparator as never) },
-        );
-        const update = (
-          updater: (query: AnyRecord) => AnyRecord,
-          updateOptions?: { replaceUrl?: boolean },
-          owner?: object,
-          committed?: () => void,
-        ) =>
-          coordinator.enqueue(
-            () => {
-              const next = updater(requireState().query);
-              const tree = router.parseUrl(router.url);
-              for (const param of info.queryParams) {
-                const output = serializeQuery(param, next[param.name]);
-                if (output === null) delete tree.queryParams[param.name];
-                else tree.queryParams[param.name] = output;
-              }
-              return tree;
-            },
-            updateOptions,
-            owner,
-            committed,
-          );
-        const ref: UrlParamsRef<AnyRecord, AnyRecord> = { value, updateQueryParams: update };
-        registerQueryBinding(ref, {
-          coordinator,
-          read: () => {
-            navigation();
-            return read()?.query;
-          },
-          update,
-        });
-        if (!urlOptions) stable = ref;
-        return ref;
-      };
-    }
+    if (!info.redirect) bindState(info, node);
     for (const child of info.children) node[child.identity] = makeNode(child);
     return node;
   };
@@ -195,27 +173,25 @@ export function createRouteTree(
   tree['globalQueryParams'] = (
     definitions: QueryDefinitions,
     options?: { isEqual?: (previous: AnyRecord, next: AnyRecord) => boolean },
-  ): GlobalQueryParamsRef<AnyRecord> => {
+  ): Signal<AnyRecord> => {
     const params: RuntimeParam[] = Object.entries(definitions).map(([name, definition]) => ({
       name,
       definition,
       owner: { fullIdentity: 'globalQueryParams' },
       placement: 'query',
     }));
-    return {
-      value: computed(
-        () => {
-          navigation();
-          return runInInjectionContext(injector, () =>
-            readState.readQueryState(params, router.routerState.snapshot.root.queryParamMap),
-          );
-        },
-        { equal: options?.isEqual ?? isEqual },
-      ),
-    };
+    return computed(
+      () => {
+        navigation();
+        return runInInjectionContext(injector, () =>
+          readQueryState(params, router.routerState.snapshot.root.queryParamMap),
+        );
+      },
+      { equal: options?.isEqual ?? isEqual },
+    );
   };
-  tree['activeRoute'] = (candidates: Readonly<Record<PropertyKey, object>>): ActiveRouteRef => ({
-    value: computed(() => {
+  tree['activeRoute'] = (candidates: Readonly<Record<PropertyKey, object>>) =>
+    computed(() => {
       navigation();
       let selected:
         | { key: PropertyKey; node: object; info: CompiledRoute; active: ActivatedRouteSnapshot }
@@ -237,14 +213,7 @@ export function createRouteTree(
         return {
           route: key,
           node,
-          params: runInInjectionContext(injector, () =>
-            readState(
-              info,
-              active.paramMap,
-              active.queryParamMap,
-              router.url.split(/[?#]/, 1)[0] || '/',
-            ),
-          ),
+          params: readActiveState(info, active),
         };
       }
       throw new Error(
@@ -252,7 +221,6 @@ export function createRouteTree(
           .map(String)
           .join(', ')}] is active`,
       );
-    }),
-  });
+    });
   return tree;
 }

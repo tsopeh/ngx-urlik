@@ -2,6 +2,7 @@ import { ActivatedRouteSnapshot, ParamMap, Route, Routes } from '@angular/router
 import { isEqual } from './is-equal';
 import { AnyQueryParamDefinition, PathParamDefinition } from './params';
 import { RouteDefinition } from './route-definition';
+import type { AnyRecord } from './type-utils';
 
 export type ParameterPlacement = 'path' | 'query';
 
@@ -83,8 +84,8 @@ type ReadRouteState = (
   query: ParamMap,
   attemptedPath: string,
 ) => Readonly<{
-  path: Readonly<Record<string, unknown>>;
-  query: Readonly<Record<string, unknown>>;
+  path: AnyRecord;
+  query: AnyRecord;
 }>;
 
 export function compileRouteDefinitions(
@@ -107,8 +108,8 @@ export function compileRouteDefinitions(
         ),
       );
     route.pathMatch = 'full';
-    // Angular forbids canMatch on a redirect. Keep matching and its injector on
-    // this route, with the redirect in an anonymous full-match child.
+    // Angular does not allow canMatch on a redirect. Keep the matcher and injector here,
+    // then put the redirect in an unnamed child that requires a full match.
     if (route.canMatch) route.children = [{ path: '', pathMatch: 'full', redirectTo }];
     else route.redirectTo = redirectTo;
   };

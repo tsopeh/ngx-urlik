@@ -1,26 +1,26 @@
-import { Component, EnvironmentProviders, InjectionToken, inject, signal } from '@angular/core';
+import { Component, EnvironmentProviders, inject, InjectionToken, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
+  ActivatedRoute,
   NavigationEnd,
   Router,
   RouterOutlet,
-  ActivatedRoute,
   UrlTree,
   withComponentInputBinding,
   withRouterConfig,
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { filter, firstValueFrom } from 'rxjs';
+import { AppRouterDiagnostic, defineAppRouter } from './app-router';
 import {
-  UrlParamCodec,
   delimitedQueryParam,
   numberCodec,
   pathParam,
   queryParam,
   repeatedQueryParam,
   stringCodec,
+  UrlParamCodec,
 } from './params';
-import { AppRouterDiagnostic, defineAppRouter } from './app-router';
 
 @Component({ template: '' })
 class EmptyComponent {}
@@ -110,7 +110,7 @@ describe('defineAppRouter', () => {
     const [tree, options] = navigateByUrl.mock.calls.at(-1)!;
     expect(router.serializeUrl(tree as UrlTree)).toBe('/?search=term#results');
     expect(options).toEqual({ replaceUrl: true });
-    expect(appRouter.ROOT.urlParams().value()).toEqual({ path: {}, query: { search: 'term' } });
+    expect(appRouter.ROOT.params()).toEqual({ path: {}, query: { search: 'term' } });
   });
 
   it('identifies the active candidate route and returns its decoded parameters', async () => {
@@ -151,7 +151,7 @@ describe('defineAppRouter', () => {
       left: appRouter.ROOT.LEFT.DETAIL,
       right: appRouter.ROOT.RIGHT.DETAIL,
     });
-    const active = activeRoute.value();
+    const active = activeRoute();
 
     expect(active).toEqual({
       route: 'left',
@@ -161,7 +161,7 @@ describe('defineAppRouter', () => {
 
     await appRouter.ROOT.RIGHT.DETAIL.navigate({ query: { id: 7 } });
 
-    expect(activeRoute.value()).toEqual({
+    expect(activeRoute()).toEqual({
       route: 'right',
       node: appRouter.ROOT.RIGHT.DETAIL,
       params: { path: {}, query: { id: 7 } },
@@ -169,7 +169,7 @@ describe('defineAppRouter', () => {
 
     await appRouter.ROOT.navigate();
 
-    expect(() => activeRoute.value()).toThrowError(
+    expect(() => activeRoute()).toThrowError(
       'activeRoute(): none of the candidate routes [left, right] is active',
     );
   });
@@ -206,20 +206,20 @@ describe('defineAppRouter', () => {
       root: candidates.root,
     });
     await ROOT.SHOW.navigate({ path: { id: 42 } });
-    expect(forwards.value()).toEqual({
+    expect(forwards()).toEqual({
       route: 'show',
       node: ROOT.SHOW,
       params: { path: { id: 42 }, query: {} },
     });
-    expect(backwards.value()).toEqual(forwards.value());
+    expect(backwards()).toEqual(forwards());
     await ROOT.SHOW.SEASON.navigate({ path: { id: 42 } });
-    expect(forwards.value().route).toBe('season');
-    expect(backwards.value()).toEqual(forwards.value());
-    expect(ROOT.SHOW.urlParams().value().path.id).toBe(42);
+    expect(forwards().route).toBe('season');
+    expect(backwards()).toEqual(forwards());
+    expect(ROOT.SHOW.params().path.id).toBe(42);
     expect(Object.keys(ROOT.SHOW)).not.toContain('exactMatch');
     await ROOT.navigate();
-    expect(forwards.value().route).toBe('root');
-    expect(backwards.value()).toEqual(forwards.value());
+    expect(forwards().route).toBe('root');
+    expect(backwards()).toEqual(forwards());
   });
 
   it('constructs a named route with exact content and redirects only the exact landing URL', async () => {
@@ -247,17 +247,17 @@ describe('defineAppRouter', () => {
     await router.navigateByUrl('/');
     expect(router.url).toBe('/show/7?search=kept');
     const route = appRouter.ROOT.SHOW;
-    expect(route.urlParams().value()).toEqual({ path: { id: 7 }, query: { search: 'kept' } });
+    expect(route.params()).toEqual({ path: { id: 7 }, query: { search: 'kept' } });
     expect(
       router.serializeUrl(route.createUrlTree({ path: { id: 7 }, query: { search: 'next' } })!),
     ).toBe('/show/7?search=next');
-    await route.urlParams().updateQueryParams(() => ({ search: 'updated' }));
+    await route.patchQuery(() => ({ search: 'updated' }));
     expect(router.url).toBe('/show/7?search=updated');
     await router.navigateByUrl('/show/7/child');
     expect(router.url).toBe('/show/7/child');
-    expect(route.urlParams().value().path.id).toBe(7);
+    expect(route.params().path.id).toBe(7);
     await router.navigateByUrl('/unknown');
-    expect(appRouter.ROOT.FALLBACK.urlParams().value()).toEqual({ path: {}, query: {} });
+    expect(appRouter.ROOT.FALLBACK.params()).toEqual({ path: {}, query: {} });
   });
 
   it('renders exact content inside a persistent layout with page-local Angular options', async () => {
@@ -295,7 +295,7 @@ describe('defineAppRouter', () => {
     expect(harness.routeNativeElement!.textContent).toContain('deeper page');
     expect(harness.routeNativeElement!.textContent).not.toContain('exact home');
     expect(pageGuard).toHaveBeenCalledTimes(1);
-    expect(appRouter.ROOT.urlParams().value()).toEqual({ path: {}, query: {} });
+    expect(appRouter.ROOT.params()).toEqual({ path: {}, query: {} });
   });
 
   it('passes inherited and own parameters to exact redirects in their provider context', async () => {
@@ -340,7 +340,7 @@ describe('defineAppRouter', () => {
       query: { locale: 'fr', search: 'kept' },
     });
     expect(canMatch).toHaveBeenCalledTimes(1);
-    expect(appRouter.ROOT.ITEM.urlParams().value()).toEqual({
+    expect(appRouter.ROOT.ITEM.params()).toEqual({
       path: { accountId: 'alice', id: 7 },
       query: { locale: 'fr', search: 'kept' },
     });
@@ -375,7 +375,7 @@ describe('defineAppRouter', () => {
     expect(harness.routeNativeElement!.textContent!.trim()).toBe('layout');
     await harness.navigateByUrl('/leaf?unowned=1#section');
     expect(harness.routeNativeElement!.textContent).toContain('layout exact leaf');
-    expect(appRouter.ROOT.LEAF.urlParams().value()).toEqual({ path: {}, query: {} });
+    expect(appRouter.ROOT.LEAF.params()).toEqual({ path: {}, query: {} });
     await harness.navigateByUrl('/nested');
     expect(harness.routeNativeElement!.textContent).toContain('layout layout exact nested');
     await harness.navigateByUrl('/');
@@ -532,7 +532,7 @@ describe('defineAppRouter', () => {
     });
     const { appRouter, router } = setup(definition);
     await router.navigateByUrl('/?scalar=first&scalar=last&repeated=a&repeated=b&delimited=a,b');
-    expect(appRouter.ROOT.urlParams().value().query).toEqual({
+    expect(appRouter.ROOT.params().query).toEqual({
       scalar: 'last',
       repeated: ['a', 'b'],
       delimited: ['a', 'b'],
@@ -559,7 +559,7 @@ describe('defineAppRouter', () => {
     });
     const { appRouter, router } = setup(definition);
     await router.navigateByUrl('/?repeated=&delimited=a,,b');
-    expect(appRouter.ROOT.urlParams().value().query).toEqual({
+    expect(appRouter.ROOT.params().query).toEqual({
       repeated: [''],
       delimited: ['a', '', 'b'],
     });
@@ -595,7 +595,7 @@ describe('defineAppRouter', () => {
     });
     const { appRouter, router } = setup(definition);
     await router.navigateByUrl('/?empty=a&empty=b&fixed=a&fixed=b&dynamic=a&dynamic=b');
-    expect(appRouter.ROOT.urlParams().value().query).toEqual({
+    expect(appRouter.ROOT.params().query).toEqual({
       empty: [],
       fixed: ['fallback'],
       dynamic: ['current'],
@@ -627,7 +627,7 @@ describe('defineAppRouter', () => {
     });
     const { appRouter, router } = setup(definition);
     await router.navigateByUrl('/?ids=1&ids=oops&ids=3');
-    expect(appRouter.ROOT.urlParams().value().query.ids).toEqual([9]);
+    expect(appRouter.ROOT.params().query.ids).toEqual([9]);
     expect(diagnostics.map((item) => item.message)).toEqual([
       "ROOT: deserialize query parameter 'ids' at index 1 was invalid",
     ]);
@@ -760,7 +760,7 @@ describe('defineAppRouter', () => {
     });
     const { appRouter, router } = setup(definition);
     await router.navigateByUrl('/?broken=value');
-    expect(appRouter.ROOT.urlParams().value().query.broken).toBeNull();
+    expect(appRouter.ROOT.params().query.broken).toBeNull();
     expect(appRouter.ROOT.createUrlTree({ query: { broken: 'value' } })).not.toBeNull();
     expect(diagnostics).toHaveLength(2);
     expect(diagnostics.every((item) => item.code === 'PARAM_CODEC_THROWN')).toBe(true);
@@ -790,11 +790,11 @@ describe('defineAppRouter', () => {
     });
     const { appRouter, router } = setup(definition);
     await router.navigateByUrl('/other');
-    expect(() => appRouter.ROOT.ITEM.urlParams().value()).toThrow(
+    expect(() => appRouter.ROOT.ITEM.params()).toThrow(
       "ITEM: expected active route 'items/:id', but the current primary route is inactive",
     );
     await router.navigateByUrl('/items/invalid');
-    expect(() => appRouter.ROOT.ITEM.urlParams().value()).toThrow(
+    expect(() => appRouter.ROOT.ITEM.params()).toThrow(
       "ITEM: expected active route 'items/:id', attempted current path '/items/invalid' could not resolve 'id'",
     );
   });
@@ -822,9 +822,9 @@ describe('defineAppRouter', () => {
     const appRouter = TestBed.runInInjectionContext(() => inject(definition.AppRouter));
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/');
-    expect(appRouter.ROOT.urlParams().value().query.locale).toBe('en');
+    expect(appRouter.ROOT.params().query.locale).toBe('en');
     current.set('fr');
-    expect(appRouter.ROOT.urlParams().value().query.locale).toBe('fr');
+    expect(appRouter.ROOT.params().query.locale).toBe('fr');
     expect(router.serializeUrl(appRouter.ROOT.createUrlTree({ query: { locale: 'fr' } })!)).toBe(
       '/',
     );
@@ -850,7 +850,7 @@ describe('defineAppRouter', () => {
     });
     const { appRouter, router } = setup(definition);
     await router.navigateByUrl('/');
-    expect(() => appRouter.ROOT.urlParams().value()).toThrow(failure);
+    expect(() => appRouter.ROOT.params()).toThrow(failure);
   });
 
   it('canonically omits static and dynamic array defaults and empty arrays', () => {
@@ -906,7 +906,7 @@ describe('defineAppRouter', () => {
     const { appRouter, router } = setup(definition);
     await router.navigateByUrl('/child?locale=en&search=term&unknown=keep');
     let calls = 0;
-    await appRouter.ROOT.urlParams().updateQueryParams((previous) => {
+    await appRouter.ROOT.patchQuery((previous) => {
       calls++;
       expect(previous).toEqual({ locale: 'en' });
       return { locale: 'fr' };
@@ -915,31 +915,26 @@ describe('defineAppRouter', () => {
     expect(router.url).toBe('/child?locale=fr&search=term&unknown=keep');
   });
 
-  it('retains stable refs and route/call-site equality precedence', async () => {
-    const routeEquality = vi.fn(() => false);
-    const callEquality = vi.fn(() => true);
+  it('exposes one stable state signal with route-defined equality', async () => {
+    const isEqual = vi.fn(() => true);
     const definition = defineAppRouter({
       routes: {
         ROOT: {
           path: '',
           queryParams: { value: queryParam({ codec: stringCodec() }) },
-          isEqual: routeEquality,
+          isEqual,
           angular: { component: EmptyComponent },
         },
       },
     });
     const { appRouter, router } = setup(definition);
     await router.navigateByUrl('/?value=a');
-    expect(appRouter.ROOT.urlParams()).toBe(appRouter.ROOT.urlParams());
-    const inheritedRef = appRouter.ROOT.urlParams();
-    const overriddenRef = appRouter.ROOT.urlParams({ isEqual: callEquality });
-    inheritedRef.value();
-    overriddenRef.value();
+    const params = appRouter.ROOT.params;
+    expect(params().query.value).toBe('a');
     await router.navigateByUrl('/?value=b');
-    inheritedRef.value();
-    overriddenRef.value();
-    expect(routeEquality).toHaveBeenCalled();
-    expect(callEquality).toHaveBeenCalled();
+    expect(appRouter.ROOT.params).toBe(params);
+    expect(params().query.value).toBe('a');
+    expect(isEqual).toHaveBeenCalled();
   });
 
   it('requires redirect callbacks to produce a definite UrlTree and supports explicit fallback', async () => {
@@ -1206,6 +1201,24 @@ describe('route validation', () => {
     expectInvalid({ ROOT: { path: '', children: { navigate: { path: 'reserved' } } } }, [
       "ROOT.navigate: 'navigate' is a reserved router method name",
     ]);
+  });
+
+  it('reserves the direct state and query patch members', () => {
+    expectInvalid(
+      {
+        ROOT: {
+          path: '',
+          children: {
+            params: { path: 'state' },
+            patchQuery: { path: 'patch' },
+          },
+        },
+      },
+      [
+        "ROOT.params: 'params' is a reserved router method name",
+        "ROOT.patchQuery: 'patchQuery' is a reserved router method name",
+      ],
+    );
   });
 
   it('reserves application-wide router methods only at the router root', () => {

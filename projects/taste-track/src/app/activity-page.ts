@@ -1,11 +1,11 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
-import { debounceTime, groupBy, mergeMap } from 'rxjs';
-import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
 import { RouterLink } from '@angular/router';
-import { CatalogLinks } from './catalog-links';
+import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
+import { debounceTime, groupBy, mergeMap } from 'rxjs';
 import { AppRouter } from './app-router';
+import { CatalogLinks } from './catalog-links';
 import { TasteTrackRepository } from './database';
 
 @Component({
@@ -105,7 +105,7 @@ export class ActivityPage {
         mergeMap((group) => (group.key === 'search' ? group.pipe(debounceTime(250)) : group)),
       ),
   });
-  protected readonly query = computed(() => this.routes.ROOT.ACTIVITY.urlParams().value().query);
+  protected readonly query = computed(() => this.routes.ROOT.ACTIVITY.params().query);
   protected readonly matched = computed(() => {
     const query = this.query();
     const matched = this.repository.events().filter((event) => {

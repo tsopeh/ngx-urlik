@@ -24,7 +24,7 @@ type Write = {
   skipped: boolean;
 };
 
-/** Internal shared navigation machinery; forms own only their input staging. */
+/** Coordinates shared query navigations; forms keep only their local draft state. */
 export class QueryWriteCoordinator {
   readonly changes = new Subject<'external' | 'commit'>();
   private queue: Write[] = [];
@@ -77,7 +77,8 @@ export class QueryWriteCoordinator {
         event instanceof NavigationError
       ) {
         if (event.id === this.externalNavigation) {
-          // Redirect cancellation is followed by another navigation; stay blocked in between.
+          // A redirect cancellation is followed by another navigation, so keep writes blocked
+          // until that navigation finishes.
           if (
             event instanceof NavigationCancel &&
             event.code === NavigationCancellationCode.Redirect
@@ -85,7 +86,7 @@ export class QueryWriteCoordinator {
             return;
           this.externalNavigation = undefined;
           this.blocked = false;
-          // Route signals consume NavigationEnd before bindings read their new baseline.
+          // Let route signals process NavigationEnd before bindings read the new query baseline.
           queueMicrotask(() => {
             if (!this.destroyed) this.changes.next('external');
           });
@@ -148,7 +149,7 @@ export class QueryWriteCoordinator {
     this.active = write;
     try {
       const tree = write.build();
-      // An updater may itself start an external navigation.
+      // The updater can start an external navigation while it builds the URL tree.
       if (write.invalidated || this.destroyed) {
         write.resolve(false);
         return;
@@ -185,7 +186,7 @@ export function registerQueryBinding(ref: object, binding: QueryBinding<Query>):
   bindings.set(ref, binding);
 }
 
-/** @internal Bridge for the forms secondary entry point; not a supported application interface. */
+/** @internal Connects the forms entry point to a generated route node. */
 export function getQueryBinding<Q extends Query>(ref: object): QueryBinding<Q> {
   const binding = bindings.get(ref);
   if (!binding) throw new Error('Query forms require a generated ngx-urlik route node');

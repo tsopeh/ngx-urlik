@@ -76,7 +76,7 @@ export function validateRouteDefinitions(
     for (const [identity, definition] of Object.entries(siblings)) {
       const at = location ? `${location}.${identity}` : identity;
       if (!identity) errors.push(`${at}: route identity must be non-empty`);
-      if (['navigate', 'createUrlTree', 'urlParams'].includes(identity))
+      if (['navigate', 'createUrlTree', 'params', 'patchQuery'].includes(identity))
         errors.push(`${at}: '${identity}' is a reserved router method name`);
       if (root && ['escapeHatch', 'activeRoute', 'globalQueryParams'].includes(identity))
         errors.push(`${at}: '${identity}' is reserved at the router root`);

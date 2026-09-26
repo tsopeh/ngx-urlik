@@ -1,4 +1,4 @@
-import { Component, InjectionToken, computed, inject } from '@angular/core';
+import { Component, computed, inject, InjectionToken, isSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { AppRouterDiagnostic, defineAppRouter } from './app-router';
@@ -54,15 +54,15 @@ describe('globalQueryParams', () => {
   it('reads startup fallbacks outside an injection context and matches page decoding', async () => {
     const { app, router } = setup();
     const global = app.globalQueryParams(definitions);
-    expect(global.value()).toEqual({ timeRange: 'week', count: null, tags: [], ids: [] });
-    expect(Object.keys(global)).toEqual(['value']);
+    expect(global()).toEqual({ timeRange: 'week', count: null, tags: [], ids: [] });
+    expect(isSignal(global)).toBe(true);
     await router.navigateByUrl('/page?timeRange=day&count=1&count=2&tags=a&tags=b&ids=3,4');
-    expect(global.value()).toEqual(app.ROOT.PAGE.urlParams().value().query);
-    expect(global.value()).toEqual({ timeRange: 'day', count: 2, tags: ['a', 'b'], ids: [3, 4] });
+    expect(global()).toEqual(app.ROOT.PAGE.params().query);
+    expect(global()).toEqual({ timeRange: 'day', count: 2, tags: ['a', 'b'], ids: [3, 4] });
     await router.navigateByUrl('/other?timeRange=month');
-    expect(global.value()).toEqual({ timeRange: 'month', count: null, tags: [], ids: [] });
+    expect(global()).toEqual({ timeRange: 'month', count: null, tags: [], ids: [] });
     await app.ROOT.OTHER.navigate();
-    expect(global.value().timeRange).toBe('week');
+    expect(global().timeRange).toBe('week');
   });
 
   it('keeps overlapping views independent and reports malformed values without a route owner', async () => {
@@ -70,9 +70,9 @@ describe('globalQueryParams', () => {
     const global = app.globalQueryParams(definitions);
     const alternate = app.globalQueryParams({ count: queryParam({ codec: stringCodec() }) });
     await router.navigateByUrl('/page?count=oops&ids=1&ids=2');
-    expect(global.value().count).toBeNull();
-    expect(global.value().ids).toEqual([]);
-    expect(alternate.value().count).toBe('oops');
+    expect(global().count).toBeNull();
+    expect(global().ids).toEqual([]);
+    expect(alternate().count).toBe('oops');
     expect(diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -97,7 +97,7 @@ describe('globalQueryParams', () => {
         },
       }),
     });
-    expect(throwing.value().count).toBeNull();
+    expect(throwing().count).toBeNull();
     expect(diagnostics.at(-1)?.code).toBe('PARAM_CODEC_THROWN');
   });
 
@@ -107,7 +107,7 @@ describe('globalQueryParams', () => {
     let evaluations = 0;
     const observed = computed(() => {
       evaluations++;
-      return global.value();
+      return global();
     });
     await router.navigateByUrl('/page?count=1');
     const initial = observed();
@@ -123,9 +123,9 @@ describe('globalQueryParams', () => {
         a.count === b.count,
     );
     const custom = app.globalQueryParams(definitions, { isEqual: compare });
-    const previous = custom.value();
+    const previous = custom();
     await router.navigateByUrl('/other?count=2&timeRange=year');
-    expect(custom.value()).toBe(previous);
+    expect(custom()).toBe(previous);
     expect(compare).toHaveBeenCalledWith(
       previous,
       expect.objectContaining({ count: 2, timeRange: 'year' }),
@@ -136,11 +136,11 @@ describe('globalQueryParams', () => {
     const { app, router } = setup();
     await router.navigateByUrl('/page?count=1');
     const global = app.globalQueryParams(definitions);
-    const page = app.ROOT.PAGE.urlParams();
-    expect(global.value()).toEqual(page.value().query);
+    const page = app.ROOT.PAGE;
+    expect(global()).toEqual(page.params().query);
     expect(await router.navigateByUrl('/blocked?count=9')).toBe(false);
-    expect(global.value().count).toBe(1);
-    expect(global.value()).toEqual(page.value().query);
+    expect(global().count).toBe(1);
+    expect(global()).toEqual(page.params().query);
   });
 
   it('reserves the method name only at the router root', async () => {

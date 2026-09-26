@@ -1,8 +1,8 @@
 import { Component, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AppRouter } from './app-router';
-import { TasteTrackRepository } from './database';
 import { CatalogLinks } from './catalog-links';
+import { TasteTrackRepository } from './database';
 
 @Component({
   imports: [RouterLink],
@@ -40,7 +40,7 @@ export class ContributorPage {
     company: this.routes.ROOT.COMPANIES.DETAIL,
   });
   protected readonly contributor = computed(() => {
-    const active = this.active.value();
+    const active = this.active();
     const id =
       active.route === 'person' ? active.params.path.personId : active.params.path.companyId;
     return this.repository.contributors().find((contributor) => contributor.id === id);

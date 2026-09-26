@@ -1,8 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AppRouter } from './app-router';
-import { TasteTrackRepository } from './database';
 import { CatalogLinks } from './catalog-links';
+import { TasteTrackRepository } from './database';
 import type { CollectionStatus } from './domain';
 
 @Component({
@@ -121,9 +121,9 @@ export class DetailPage {
     show: this.routes.ROOT.SCREEN.SHOWS.DETAIL,
     movie: this.routes.ROOT.SCREEN.MOVIES.DETAIL,
   });
-  protected readonly isSeason = computed(() => this.context.value().route === 'season');
+  protected readonly isSeason = computed(() => this.context().route === 'season');
   protected readonly item = computed(() => {
-    const active = this.context.value();
+    const active = this.context();
     const items = this.repository.items();
     switch (active.route) {
       case 'movie':
@@ -151,7 +151,7 @@ export class DetailPage {
     }
   });
   protected readonly heading = computed(() => {
-    const active = this.context.value();
+    const active = this.context();
     return active.route === 'season'
       ? `${this.item()?.title} · Season ${active.params.path.seasonNumber}`
       : this.item()?.title;
@@ -172,7 +172,7 @@ export class DetailPage {
       }) ?? [],
   );
   protected readonly parentLink = computed(() => {
-    const active = this.context.value();
+    const active = this.context();
     if (active.route === 'episode')
       return {
         label: `Season ${active.params.path.seasonNumber}`,
@@ -192,7 +192,7 @@ export class DetailPage {
     return null;
   });
   protected readonly childrenLink = computed(() => {
-    const active = this.context.value();
+    const active = this.context();
     if (active.route === 'show')
       return {
         label: 'Browse seasons',
@@ -212,7 +212,7 @@ export class DetailPage {
     return null;
   });
   protected sectionUrl(fragment: string) {
-    const active = this.context.value();
+    const active = this.context();
     switch (active.route) {
       case 'movie':
         return active.node.createUrlTree({

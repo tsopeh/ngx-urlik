@@ -1,8 +1,8 @@
 import { Component, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AppRouter } from './app-router';
-import { TasteTrackRepository } from './database';
 import { CatalogLinks } from './catalog-links';
+import { TasteTrackRepository } from './database';
 
 @Component({
   imports: [RouterLink],
@@ -31,7 +31,7 @@ export class ContributorsPage {
     companies: this.routes.ROOT.COMPANIES,
   });
   protected readonly kind = computed(() =>
-    this.active.value().route === 'people' ? 'person' : 'company',
+    this.active().route === 'people' ? 'person' : 'company',
   );
   protected readonly contributors = computed(() =>
     this.repository.contributors().filter((contributor) => contributor.kind === this.kind()),

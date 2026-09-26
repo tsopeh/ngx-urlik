@@ -1,9 +1,10 @@
 import { Component, computed, inject } from '@angular/core';
+import type { QueryPatch } from 'ngx-urlik';
 import { AppRouter } from './app-router';
-import { TasteTrackRepository } from './database';
 import { CatalogLinks } from './catalog-links';
-import { MediaCard } from './media-card';
 import type { PageSize } from './codecs';
+import { TasteTrackRepository } from './database';
+import { MediaCard } from './media-card';
 
 @Component({
   imports: [MediaCard],
@@ -97,20 +98,19 @@ export class CatalogPage {
   private readonly routes = inject(AppRouter);
   protected readonly repository = inject(TasteTrackRepository);
   protected readonly links = inject(CatalogLinks);
-  private readonly params = this.routes.ROOT.SCREEN.urlParams();
+  private readonly route = this.routes.ROOT.SCREEN;
   private readonly active = this.routes.activeRoute({
     episodes: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.EPISODES,
     movies: this.routes.ROOT.SCREEN.MOVIES,
     shows: this.routes.ROOT.SCREEN.SHOWS,
   });
   protected readonly genres = ['Drama', 'Comedy', 'Science fiction', 'Mystery'];
-  protected readonly query = computed(() => this.params.value().query);
+  protected readonly query = computed(() => this.route.params().query);
   protected readonly heading = computed(
-    () =>
-      ({ episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' })[this.active.value().route],
+    () => ({ episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' })[this.active().route],
   );
   protected readonly results = computed(() => {
-    const active = this.active.value();
+    const active = this.active();
     const query = this.query();
     return this.repository
       .items()
@@ -139,26 +139,25 @@ export class CatalogPage {
       this.query().page * this.query().pageSize,
     ),
   );
-  protected update(patch: Partial<ReturnType<typeof this.query>>) {
-    void this.params.updateQueryParams((query) => ({ ...query, ...patch }), { replaceUrl: true });
+  protected update(patch: QueryPatch<ReturnType<typeof this.query>>) {
+    void this.route.patchQuery(patch, { replaceUrl: true });
   }
   protected sort(field: 'title' | 'year') {
-    this.update({ sort: { ...this.query().sort, field }, page: 1 });
+    this.update((query) => ({ sort: { ...query.sort, field }, page: 1 }));
   }
   protected direction(direction: 'asc' | 'desc') {
-    this.update({ sort: { ...this.query().sort, direction }, page: 1 });
+    this.update((query) => ({ sort: { ...query.sort, direction }, page: 1 }));
   }
   protected pageSize(value: string) {
     this.update({ pageSize: Number(value) as PageSize, page: 1 });
   }
   protected toggleGenre(genre: string) {
-    const genres = this.query().genres;
-    this.update({
+    this.update(({ genres }) => ({
       genres: genres.includes(genre)
         ? genres.filter((value) => value !== genre)
         : [...genres, genre],
       page: 1,
-    });
+    }));
   }
   protected stateFor(id: string) {
     return this.repository.personalStates().find((state) => state.itemId === id);

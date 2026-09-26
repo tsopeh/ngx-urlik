@@ -23,22 +23,22 @@ import { TasteTrackRepository } from './database';
 export class SeasonsPage {
   private readonly routes = inject(AppRouter);
   private readonly repository = inject(TasteTrackRepository);
-  private readonly params = this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.urlParams();
+  private readonly route = this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS;
   protected readonly showUrl = computed(() =>
     this.routes.ROOT.SCREEN.SHOWS.DETAIL.createUrlTree({
-      path: this.params.value().path,
-      query: this.params.value().query,
+      path: this.route.params().path,
+      query: this.route.params().query,
     }),
   );
   protected readonly links = computed(() =>
     this.repository
       .seasons()
-      .filter((season) => season.showId === this.params.value().path.showId)
+      .filter((season) => season.showId === this.route.params().path.showId)
       .map((season) => ({
         label: season.title,
         url: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.createUrlTree({
           path: { showId: season.showId, seasonNumber: season.number },
-          query: this.params.value().query,
+          query: this.route.params().query,
         }),
       })),
   );

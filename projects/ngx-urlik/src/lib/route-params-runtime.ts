@@ -4,8 +4,8 @@ import { CompiledRoute, RuntimeParam } from './compiled-route';
 import { isEqual } from './is-equal';
 import { AnyQueryParamDefinition, DefaultValue, UrlParamCodec } from './params';
 import { ReportParameterFailure } from './route-diagnostics';
+import type { AnyRecord } from './type-utils';
 
-type AnyRecord = Readonly<Record<string, unknown>>;
 export type RuntimeState = Readonly<{ path: AnyRecord; query: AnyRecord }>;
 
 const resolveDefault = <T>(value: DefaultValue<T> | undefined): T | undefined =>
@@ -105,7 +105,7 @@ export function createParameterReader(report: ReportParameterFailure) {
     return { path, query: readQueryState(info.queryParams, query) };
   };
 
-  return Object.assign(readState, { readQueryState });
+  return { readState, readQueryState };
 }
 
 export function createParameterSerializer(
