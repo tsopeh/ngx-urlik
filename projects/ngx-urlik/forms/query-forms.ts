@@ -68,6 +68,8 @@ const bindQueryParams = <Q extends QueryState>(
   let destroyed = false;
   let source = new Subject<QueryParamChange<Q>>();
   let outputSubscription: Subscription;
+  type SubmittedValue = { value: Q[keyof Q]; revision: number | undefined };
+  let collecting: Map<keyof Q, SubmittedValue> | undefined;
   adapter.reset(observed);
 
   const reportFailure = (failure: QueryWriteFailure) => {
@@ -75,32 +77,39 @@ const bindQueryParams = <Q extends QueryState>(
     else if (failure.kind === 'error') errorHandler.handleError(failure.error);
   };
 
+  const submit = (changes: Map<keyof Q, SubmittedValue>) => {
+    if (!changes.size || destroyed) return;
+    const patch = Object.fromEntries([...changes].map(([param, change]) => [param, change.value]));
+    const clearSubmitted = () => {
+      for (const [param, change] of changes) {
+        if (staged.get(param)?.revision === change.revision) staged.delete(param);
+      }
+    };
+    void binding
+      .update(
+        (query) => ({ ...query, ...patch }),
+        { replaceUrl: options.replaceUrl ?? true },
+        owner,
+        clearSubmitted,
+      )
+      .then((result) => {
+        if (!result && !destroyed) reportFailure({ kind: 'declined' });
+      })
+      .catch((error: unknown) => {
+        if (!destroyed) reportFailure({ kind: 'error', error });
+      });
+  };
+
   const connectOutput = () => {
     const output = options.transformWrites?.(source.asObservable()) ?? source;
     outputSubscription = output.subscribe({
       next: (change) => {
-        const pending = staged.get(change.param);
-        const submittedRevision = pending?.revision;
-        const clearSubmitted = () => {
-          if (staged.get(change.param)?.revision === submittedRevision) staged.delete(change.param);
+        const submitted = {
+          value: change.value,
+          revision: staged.get(change.param)?.revision,
         };
-        void binding
-          .update(
-            (query) => ({ ...query, [change.param]: change.value }),
-            { replaceUrl: options.replaceUrl ?? true },
-            owner,
-            clearSubmitted,
-          )
-          .then((result) => {
-            if (!result && !destroyed) {
-              reportFailure({ kind: 'declined' });
-            }
-          })
-          .catch((error: unknown) => {
-            if (!destroyed) {
-              reportFailure({ kind: 'error', error });
-            }
-          });
+        if (collecting) collecting.set(change.param, submitted);
+        else submit(new Map([[change.param, submitted]]));
       },
       error: (error: unknown) => errorHandler.handleError(error),
     });
@@ -121,6 +130,7 @@ const bindQueryParams = <Q extends QueryState>(
 
   const subscription = binding.coordinator.changes.subscribe((kind) => {
     if (kind === 'external') {
+      collecting?.clear();
       outputSubscription.unsubscribe();
       source.complete();
       source = new Subject<QueryParamChange<Q>>();
@@ -131,16 +141,29 @@ const bindQueryParams = <Q extends QueryState>(
   });
 
   const stopFormChanges = adapter.changes((next, metadata) => {
+    const changes: QueryParamChange<Q>[] = [];
     for (const param of Object.keys(next) as (keyof Q)[]) {
       if (isEqual(observed[param], next[param])) continue;
       observed = { ...observed, [param]: next[param] };
       staged.set(param, { revision: ++revision, value: next[param] });
-      source.next({
+      changes.push({
         param,
         value: next[param],
         query: next,
         ...metadata(param),
       } as QueryParamChange<Q>);
+    }
+    // Only synchronous outputs of this form notification share a navigation.
+    // Delayed or filtered fields must not be pulled in from the whole form value.
+    const batch = new Map<keyof Q, SubmittedValue>();
+    const previous = collecting;
+    const input = source;
+    collecting = batch;
+    try {
+      for (const change of changes) input.next(change);
+    } finally {
+      collecting = previous;
+      submit(batch);
     }
   });
 

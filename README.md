@@ -244,4 +244,15 @@ other external navigation cancel staged writes at navigation start and reset the
 URL baseline. Signal bindings observe the model value, so native Signal
 Forms debounce runs before `transformWrites`; avoid unintentionally delaying the same field twice.
 
+A single multi-field form edit commits in one navigation:
+
+```ts
+filters.patchValue({ search: 'angular', page: 1 });
+// Signal Forms: model.update((query) => ({ ...query, search: 'angular', page: 1 }));
+```
+
+Fields emitted synchronously by `transformWrites` for that edit share the write. Filtered or delayed
+fields are excluded; a debounced field writes separately when its delay ends. Separate Reactive
+Forms edits remain separate writes. Signal Forms group the changes observed in one model notification.
+
 See the accepted [App Router design](docs/design/app-router.md), [Angular restrictions](docs/angular-restrictions.md), and [deferred topics](docs/deferred-discussions.md).

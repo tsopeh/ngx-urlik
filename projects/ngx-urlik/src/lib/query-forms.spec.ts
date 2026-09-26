@@ -20,7 +20,7 @@ import {
   createQueryParamsFormGroup,
   createQueryParamsSignalForm,
 } from 'ngx-urlik/forms';
-import { debounceTime, groupBy, map, mergeMap, tap } from 'rxjs';
+import { debounceTime, filter, groupBy, map, mergeMap, tap } from 'rxjs';
 
 @Component({ template: '' })
 class Page {}
@@ -75,6 +75,96 @@ const groupedDelay = <T extends { param: PropertyKey }>(changes: import('rxjs').
 afterEach(() => vi.useRealTimers());
 
 describe('query form bindings', () => {
+  it('commits a multi-field reactive form edit in one navigation', async () => {
+    const { routes, router } = await setup();
+    await router.navigateByUrl('/results?search=old&page=4&unknown=keep');
+    const starts: string[] = [];
+    router.events.subscribe((event) => {
+      if (event instanceof NavigationStart) starts.push(event.url);
+    });
+    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT));
+    form.patchValue({ search: 'new', page: 1 });
+    await vi.waitFor(() => expect(router.url).toBe('/results?search=new&unknown=keep'));
+    expect(starts).toEqual(['/results?search=new&unknown=keep']);
+  });
+
+  it('commits a multi-field signal form edit in one navigation', async () => {
+    const { routes, router } = await setup();
+    await router.navigateByUrl('/results?search=old&page=4&unknown=keep');
+    const starts: string[] = [];
+    router.events.subscribe((event) => {
+      if (event instanceof NavigationStart) starts.push(event.url);
+    });
+    const binding = TestBed.runInInjectionContext(() => createQueryParamsSignalForm(routes.ROOT));
+    binding.model.update((query) => ({ ...query, search: 'new', page: 1 }));
+    TestBed.flushEffects();
+    await vi.waitFor(() => expect(router.url).toBe('/results?search=new&unknown=keep'));
+    expect(starts).toEqual(['/results?search=new&unknown=keep']);
+  });
+
+  it('batches only transformed fields emitted synchronously by one form edit', async () => {
+    const { routes, router } = await setup();
+    const starts: string[] = [];
+    router.events.subscribe((event) => {
+      if (event instanceof NavigationStart) starts.push(event.url);
+    });
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(routes.ROOT, {
+        transformWrites: (changes) =>
+          changes.pipe(
+            filter((change) => change.param !== 'roles'),
+            map((change) =>
+              change.param === 'search' ? { ...change, value: change.value.trim() } : change,
+            ),
+          ),
+      }),
+    );
+    form.patchValue({ search: ' new ', page: 2, roles: ['staged'] });
+    await vi.waitFor(() => expect(router.url).toBe('/results?search=new&page=2'));
+    expect(starts).toEqual(['/results?search=new&page=2']);
+    expect(form.getRawValue()).toEqual({ search: 'new', page: 2, roles: ['staged'] });
+  });
+
+  it('keeps a delayed field out of the immediate batch from the same edit', async () => {
+    const { routes, router } = await setup();
+    await router.navigateByUrl('/results?search=old&page=4');
+    vi.useFakeTimers();
+    const starts: string[] = [];
+    router.events.subscribe((event) => {
+      if (event instanceof NavigationStart) starts.push(event.url);
+    });
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(routes.ROOT, { transformWrites: groupedDelay }),
+    );
+    form.patchValue({ search: 'new', page: 1, roles: ['admin'] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(starts).toEqual(['/results?search=old&roles=admin']);
+    expect(form.controls.search.value).toBe('new');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(starts).toEqual(['/results?search=old&roles=admin', '/results?search=new&roles=admin']);
+    expect(router.url).toBe('/results?search=new&roles=admin');
+  });
+
+  it('preserves submission order between separate form edits and direct writes', async () => {
+    const { routes, router } = await setup();
+    const starts: string[] = [];
+    router.events.subscribe((event) => {
+      if (event instanceof NavigationStart) starts.push(event.url);
+    });
+    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(routes.ROOT));
+    form.patchValue({ search: 'first', page: 2 });
+    const direct = routes.ROOT.urlParams().updateQueryParams((q) => ({ ...q, roles: ['admin'] }));
+    form.patchValue({ search: 'second', page: 3 });
+    await direct;
+    await vi.waitFor(() => expect(router.url).toBe('/results?search=second&page=3&roles=admin'));
+    expect(starts).toEqual([
+      '/results?search=first&page=2',
+      '/results?search=first&page=2&roles=admin',
+      '/results?search=second&page=3&roles=admin',
+    ]);
+    expect(form.getRawValue()).toEqual({ search: 'second', page: 3, roles: ['admin'] });
+  });
+
   it('writes controls with replacement history and preserves interaction state', async () => {
     const { routes, router } = await setup();
     const history: (boolean | undefined)[] = [];

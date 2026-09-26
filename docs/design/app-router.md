@@ -336,10 +336,14 @@ mapped, filtered, grouped, debounced, or throttled stream. The library supplies 
 operator catalog; documentation demonstrates standard RxJS `groupBy` composition. Validation does
 not gate writes unless the transformation filters events.
 
-Automatic writes use `replaceUrl: true` by default. Each transformed emission submits only its
-changed field to the shared coordinator, merged into fresh query state at execution time. Debounced
-edits take their place in submission order when the transformation emits. Bindings do not batch
-writes or maintain a second navigation queue. Destroying a binding cancels its waiting writes but
+Automatic writes use `replaceUrl: true` by default. Synchronous transformed emissions from one form
+notification submit their changed fields together as one atomic write to the shared coordinator,
+merged into fresh query state at execution time. A Reactive Forms `patchValue` or `setValue` that
+changes several fields therefore produces one navigation; Signal Forms group the changes observed
+in one model notification. Separate notifications are not coalesced. Filtered or delayed fields are
+excluded from that write. Debounced edits take their place in submission order when the transformation
+emits and submit separately. Bindings do not maintain a second navigation queue.
+Destroying a binding cancels its waiting writes but
 does not abort an already-started navigation. Failed writes retain entered form values and are not
 retried automatically.
 
