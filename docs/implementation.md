@@ -1,22 +1,24 @@
 # Reading the code
 
-Start with `projects/ngx-urlik/src/lib/app-router.ts`. It validates the definitions, compiles the
-routes, and provides the router. The type inference lives in `app-router-types.ts`, so you can
-follow the runtime without reading the recursive types first.
+Start with `projects/ngx-urlik/src/lib/app-router.ts`. It validates the Angular route array,
+compiles Angular's routes, and provides the router. The public node types live in
+`app-router-types.ts`; they infer identifiers and parameter state from the literal route array.
 
 There are three paths through the implementation.
 
 ## Define
 
-`route-definition.ts` checks the tree. `compiled-route.ts` turns it into Angular routes and
-records each node's parents and parameters. A child inherits its parents' parameters during
-this pass. The result is the shared input for URL construction and state reads.
+`route-definition.ts` parses paths and validates every identified chain. `v2-compiled-route.ts`
+keeps the original Angular route fields, tags each Angular route configuration, and builds the
+identifier catalog. It records path and query definitions from unnamed ancestors as well as the
+identified route. The catalog is the shared input for URL construction and state reads.
 
 ## Read or construct
 
-`route-node.ts` attaches operations to each route node. `createUrlTree` walks the route's ancestry
-and encodes the values supplied by the caller. `params` finds the active Angular snapshot and
-decodes its values. `route-params-runtime.ts` handles codecs, defaults, and malformed input.
+`v2-route-node.ts` creates the flat `AppRouter.routes` catalog. `createUrlTree` walks a node's
+Angular route ancestry and encodes the values supplied by the caller. `params` finds the active
+Angular snapshot and decodes its values. `route-params-runtime.ts` handles codecs, defaults, and
+malformed input.
 
 Angular performs route matching. ngx-urlik uses the matched route to find the declared schema.
 
@@ -53,13 +55,14 @@ forms package access to fresh route state and the coordinator.
 
 Library test paths below are relative to `projects/ngx-urlik`.
 
-| Change                                     | Tests                                           |
-| ------------------------------------------ | ----------------------------------------------- |
-| Definitions, links, state, or redirects    | `src/lib/app-router.spec.ts`                    |
-| Patches, ordering, guards, or cancellation | `src/lib/query-update-concurrency.spec.ts`      |
-| Form drafts, batching, or debounce         | `src/lib/query-forms.spec.ts`                   |
-| Global query reads                         | `src/lib/global-query-params.spec.ts`           |
-| Consumer type inference                    | `type-tests/consumer.ts` at the repository root |
+| Change                                  | Tests                                              |
+| --------------------------------------- | -------------------------------------------------- |
+| V2 definitions, links, state, and forms | `src/lib/v2-app-router.spec.ts`                    |
+| Consumer type inference                 | `type-tests/v2-consumer.ts` at the repository root |
+
+The older `app-router.spec.ts`, `query-update-concurrency.spec.ts`, `query-forms.spec.ts`, and
+`global-query-params.spec.ts` still exercise shared behavior through a private v1 test harness.
+They do not test the v2 route declaration interface.
 
 Build before testing: the forms package and consumers resolve the built library in `dist`.
 Test what a caller observes so the checks survive changes to the internal structure.

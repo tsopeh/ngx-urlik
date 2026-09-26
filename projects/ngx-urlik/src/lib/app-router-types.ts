@@ -1,31 +1,13 @@
-// These types infer the public route tree. app-router.ts builds the tree at runtime.
 import type { Signal } from '@angular/core';
-import type { UrlTree } from '@angular/router';
-import type {
-  ArrayQueryParamDefinition,
-  PathParamDefinition,
-  QueryParamDefinition,
-} from './params';
-import type {
-  AngularRedirectOptions,
-  AngularRouteOptions,
-  ExactMatchDefinition,
-  QueryDefinitions,
-  RouteDefinition,
-} from './route-definition';
-import type {
-  QueryPatch,
-  routeNodeInfo,
-  TypedNavigationBehaviorOptions,
-  UrlParamsState,
-} from './route-node';
+import type { Route, UrlTree } from '@angular/router';
+import type { ArrayQueryParamDefinition, QueryParamDefinition, UrlParamCodec } from './params';
+import type { QueryDefinitions, RouteDefinition } from './route-definition';
+import type { QueryPatch, TypedNavigationBehaviorOptions, UrlParamsState } from './route-node';
+import type { routeNodeInfo } from './route-symbols';
 import type { AppRouterEscapeHatch } from './router-escape-hatch';
 import type { Simplify } from './type-utils';
 
 type Merge<A, B> = Omit<A, keyof B> & B;
-type OwnPath<D> = D extends { pathParam: PathParamDefinition<infer T, infer Name> }
-  ? Record<Name, T>
-  : object;
 type QueryValue<D> =
   D extends QueryParamDefinition<infer T, boolean, infer Defaulted>
     ? Defaulted extends true
@@ -75,8 +57,7 @@ export type ActiveRoute<C extends Readonly<Record<PropertyKey, AnyStatefulNode>>
   }>;
 }[keyof C];
 
-// Infer each route object before adding callback context. Inferring the whole object at once
-// loses the nested objects whose functions depend on the route state.
+// Infer each route object before applying contextual checks to nested fields.
 export type InferDefinition<T> = {
   [K in keyof T]: T[K] &
     (unknown extends T[K]
@@ -85,95 +66,106 @@ export type InferDefinition<T> = {
         ? unknown
         : InferDefinition<T[K]>);
 };
-type OrdinaryKey =
-  'path' | 'pathParam' | 'queryParams' | 'children' | 'angular' | 'isEqual' | 'exactMatch';
-type RedirectKey = 'path' | 'pathParam' | 'queryParams' | 'redirectTo' | 'angular';
-type FallbackKey = 'path' | 'queryParams' | 'angular' | 'isEqual';
-type StrictOptions<T, Allowed> = Allowed & Record<Exclude<keyof T, keyof Allowed>, never>;
-type ContextualExact<E, State> = ExactMatchDefinition<State> &
-  Record<Exclude<keyof E, 'angular' | 'redirectTo'>, never> & {
-    angular?: E extends { angular: infer A }
-      ? StrictOptions<
-          A,
-          'redirectTo' extends keyof E ? AngularRedirectOptions : AngularRouteOptions
-        >
-      : never;
-  };
-type ContextualRoute<D, AP, AQ, Root extends boolean> = {
-  [K in keyof D]: K extends (
-    D extends { path: '**' }
-      ? FallbackKey
-      : 'redirectTo' extends keyof D
-        ? RedirectKey
-        : OrdinaryKey
-  )
+
+type PathSegmentName<S extends string> = S extends `:${infer Name}` ? Name : never;
+type PathNames<S extends string> = S extends `${infer Head}/${infer Tail}`
+  ? PathSegmentName<Head> | PathNames<Tail>
+  : PathSegmentName<S>;
+type OwnPathNames<D> = D extends { path: infer P extends string } ? PathNames<P> : never;
+type CodecOption = Readonly<{ codec: UrlParamCodec<any> }>;
+type CodecValue<C> = C extends { codec: UrlParamCodec<infer T> } ? T : string;
+type IsUnion<T, C = T> = T extends C ? ([C] extends [T] ? false : true) : never;
+type StrictCodecOption<C> = CodecOption & Record<Exclude<keyof C, 'codec'>, never>;
+type KeyedPathConfig<Names extends string, Supplied> = {
+  readonly [K in Names]: K extends keyof Supplied ? StrictCodecOption<Supplied[K]> : CodecOption;
+} & Record<Exclude<keyof Supplied, Names>, never>;
+type PathConfig<Names extends string, Supplied> = [Names] extends [never]
+  ? never
+  : IsUnion<Names> extends true
+    ? KeyedPathConfig<Names, Supplied>
+    : StrictCodecOption<Supplied> | KeyedPathConfig<Names, Supplied>;
+type OwnPath<D> = {
+  [K in OwnPathNames<D>]: D extends { pathParam: infer P }
+    ? P extends CodecOption
+      ? CodecValue<P>
+      : K extends keyof P
+        ? CodecValue<P[K]>
+        : string
+    : string;
+};
+type V2Path<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
+type V2Query<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
+type V2RouteKey = keyof Route | 'identifier' | 'pathParam' | 'queryParams' | 'isEqual';
+
+type ContextualV2Route<D, AncestorQuery> = {
+  [K in keyof D]: K extends V2RouteKey
     ? K extends 'children'
-      ? ContextualRoutes<D[K], Merge<AP, OwnPath<D>>, Merge<AQ, OwnQuery<D>>, false>
-      : K extends 'redirectTo'
-        ? (
-            values: UrlParamsState<
-              Simplify<Merge<AP, OwnPath<D>>>,
-              Simplify<Merge<AQ, OwnQuery<D>>>
-            >,
-          ) => UrlTree
-        : K extends 'exactMatch'
-          ? ContextualExact<
-              D[K],
-              UrlParamsState<Simplify<Merge<AP, OwnPath<D>>>, Simplify<Merge<AQ, OwnQuery<D>>>>
-            >
-          : K extends 'angular'
-            ? StrictOptions<
-                D[K],
-                'redirectTo' extends keyof D ? AngularRedirectOptions : AngularRouteOptions
-              >
+      ? D[K] extends readonly unknown[]
+        ? ContextualRouteArray<D[K], V2Query<D, AncestorQuery>>
+        : never
+      : K extends 'identifier'
+        ? D extends { path: '**' } | { redirectTo: unknown }
+          ? never
+          : string
+        : K extends 'pathParam'
+          ? PathConfig<OwnPathNames<D>, D[K]>
+          : K extends 'queryParams'
+            ? D[K] extends QueryDefinitions
+              ? Record<Extract<keyof D[K], keyof AncestorQuery>, never>
+              : never
             : K extends 'isEqual'
               ? RouteDefinition['isEqual']
-              : K extends 'path'
-                ? Root extends false
-                  ? D[K] extends ''
-                    ? never
-                    : string
-                  : string
-                : K extends keyof RouteDefinition
-                  ? D[K] extends RouteDefinition[K]
-                    ? unknown
-                    : never
-                  : never
+              : K extends keyof Route
+                ? Route[K]
+                : never
     : never;
-} & { readonly path: string };
-type ReservedIdentity = 'navigate' | 'createUrlTree' | 'params' | 'patchQuery';
-export type ContextualRoutes<R, AP = object, AQ = object, Root extends boolean = true> =
-  R extends Readonly<Record<string, unknown>>
-    ? {
-        readonly [K in keyof R]: K extends
-          | ReservedIdentity
-          | (Root extends true ? 'escapeHatch' | 'activeRoute' | 'globalQueryParams' : never)
-          ? never
-          : ContextualRoute<R[K], AP, AQ, Root>;
-      }
-    : never;
+} & (D extends { matcher: unknown } ? { readonly path?: string } : { readonly path: string });
 
-type ChildrenOf<D> = D extends { children: infer C extends Readonly<Record<string, unknown>> }
-  ? C
-  : object;
-type IsFallback<D> = D extends { path: '**' } ? true : false;
-type IsRedirect<D> = 'redirectTo' extends keyof D ? true : false;
-type NodeFor<D, AP, AQ, Required extends PropertyKey> =
-  Simplify<Merge<AP, OwnPath<D>>> extends infer P
-    ? Simplify<Merge<AQ, OwnQuery<D>>> extends infer Q
-      ? (IsFallback<D> extends true
-          ? StatefulNode<P, Q>
-          : BaseNode<P, Q, Required | RequiredQueryKeys<D>> &
-              (IsRedirect<D> extends true ? object : StatefulNode<P, Q>)) &
-          RouterTree<ChildrenOf<D>, P, Q, Required | RequiredQueryKeys<D>>
-      : never
-    : never;
-type RouterTree<R, AP = object, AQ = object, Required extends PropertyKey = never> = {
-  readonly [K in keyof R]: NodeFor<R[K], AP, AQ, Required>;
-};
+/** Contextual checks for a literal Angular-shaped route array. */
+export type ContextualRouteArray<R, AncestorQuery = object> = R extends readonly unknown[]
+  ? number extends R['length']
+    ? R extends readonly Route[]
+      ? R
+      : { readonly [K in keyof R]: ContextualV2Route<R[K], AncestorQuery> }
+    : { readonly [K in keyof R]: ContextualV2Route<R[K], AncestorQuery> }
+  : never;
+
+type V2Node<D, AP, AQ, Required extends PropertyKey> = BaseNode<
+  V2Path<D, AP>,
+  V2Query<D, AQ>,
+  Required | RequiredQueryKeys<D>
+> &
+  StatefulNode<V2Path<D, AP>, V2Query<D, AQ>>;
+type V2Entries<
+  R,
+  AP = object,
+  AQ = object,
+  Required extends PropertyKey = never,
+> = R extends readonly unknown[]
+  ? R[number] extends infer D
+    ? | (D extends { path: string; identifier: infer Name extends string }
+          ? D extends { path: '**' } | { redirectTo: unknown }
+            ? never
+            : { readonly [K in Name]: V2Node<D, AP, AQ, Required> }
+          : never)
+      | (D extends { children: infer Children extends readonly unknown[] }
+          ? V2Entries<Children, V2Path<D, AP>, V2Query<D, AQ>, Required | RequiredQueryKeys<D>>
+          : never)
+    : never
+  : never;
+type UnionToIntersection<U> = (U extends unknown ? (value: U) => void : never) extends (
+  value: infer I,
+) => void
+  ? I
+  : never;
+type V2Routes<R> = [V2Entries<R>] extends [never]
+  ? object
+  : Simplify<UnionToIntersection<V2Entries<R>>>;
 type GlobalQueryValues<Q extends QueryDefinitions> = { [K in keyof Q]: QueryValue<Q[K]> };
 
-export type GeneratedAppRouter<R> = RouterTree<R> & {
+/** The flat, identifier-keyed public router generated from a v2 route array. */
+export type GeneratedAppRouterV2<R> = {
+  readonly routes: V2Routes<R>;
   globalQueryParams<const Q extends QueryDefinitions>(
     definitions: Q,
     options?: {

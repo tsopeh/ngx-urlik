@@ -4,7 +4,6 @@ export {
   delimitedQueryParam,
   enumCodec,
   numberCodec,
-  pathParam,
   queryParam,
   repeatedQueryParam,
   stringCodec,
@@ -13,8 +12,6 @@ export {
 } from './lib/params';
 export {
   defineAppRouter,
-  type AngularRedirectOptions,
-  type AngularRouteOptions,
   type AppRouterDiagnostic,
   type AppRouterDiagnosticCode,
   type AppRouterDiagnostics,

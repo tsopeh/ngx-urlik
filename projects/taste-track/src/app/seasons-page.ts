@@ -23,9 +23,9 @@ import { TasteTrackRepository } from './database';
 export class SeasonsPage {
   private readonly routes = inject(AppRouter);
   private readonly repository = inject(TasteTrackRepository);
-  private readonly route = this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS;
+  private readonly route = this.routes.routes.SEASONS;
   protected readonly showUrl = computed(() =>
-    this.routes.ROOT.SCREEN.SHOWS.DETAIL.createUrlTree({
+    this.routes.routes.SHOW_DETAIL.createUrlTree({
       path: this.route.params().path,
       query: this.route.params().query,
     }),
@@ -36,7 +36,7 @@ export class SeasonsPage {
       .filter((season) => season.showId === this.route.params().path.showId)
       .map((season) => ({
         label: season.title,
-        url: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.createUrlTree({
+        url: this.routes.routes.SEASON_DETAIL.createUrlTree({
           path: { showId: season.showId, seasonNumber: season.number },
           query: this.route.params().query,
         }),

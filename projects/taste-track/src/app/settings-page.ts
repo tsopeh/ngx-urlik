@@ -56,7 +56,7 @@ export class SettingsPage {
     this.resetting.set(true);
     try {
       await this.repository.reset();
-      await this.routes.ROOT.SCREEN.MOVIES.navigate();
+      await this.routes.routes.MOVIES.navigate();
     } finally {
       this.resetting.set(false);
     }

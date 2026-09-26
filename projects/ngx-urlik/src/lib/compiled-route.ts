@@ -1,8 +1,11 @@
 import { ActivatedRouteSnapshot, ParamMap, Route, Routes } from '@angular/router';
 import { isEqual } from './is-equal';
 import { AnyQueryParamDefinition, PathParamDefinition } from './params';
-import { RouteDefinition } from './route-definition';
+import { LegacyRouteDefinition as RouteDefinition } from './legacy-route-definition.spec-helper';
+import { routeConfigBrand } from './route-symbols';
 import type { AnyRecord } from './type-utils';
+
+export { routeConfigBrand } from './route-symbols';
 
 export type ParameterPlacement = 'path' | 'query';
 
@@ -28,8 +31,6 @@ export interface CompiledRoute {
   readonly comparator: (a: unknown, b: unknown) => boolean;
   readonly children: CompiledRoute[];
 }
-
-export const routeConfigBrand: unique symbol = Symbol('ngx-urlik route config identity');
 
 export function findActiveRoute(
   root: ActivatedRouteSnapshot,

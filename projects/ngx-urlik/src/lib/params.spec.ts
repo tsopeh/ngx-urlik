@@ -1,9 +1,9 @@
+import { pathParam } from './legacy-params.spec-helper';
 import {
   booleanCodec,
   delimitedQueryParam,
   enumCodec,
   numberCodec,
-  pathParam,
   queryParam,
   repeatedQueryParam,
   stringCodec,

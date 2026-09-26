@@ -9,7 +9,7 @@ import { ThemeService, type ThemePreference } from './theme';
   template: `
     <div class="app-frame">
       <aside class="sidebar">
-        <a class="brand" [routerLink]="routes.ROOT.SCREEN.MOVIES.createUrlTree()">
+        <a class="brand" [routerLink]="routes.routes.MOVIES.createUrlTree()">
           <span class="brand-mark" aria-hidden="true">T</span>
           <span><strong>TasteTrack</strong><small>Movies, shows, and you</small></span>
         </a>
@@ -176,11 +176,11 @@ export class Shell {
   protected readonly theme = inject(ThemeService);
   protected readonly themes: readonly ThemePreference[] = ['system', 'light', 'dark'];
   protected readonly navigation = [
-    { label: 'Browse', icon: '◉', url: this.routes.ROOT.SCREEN.MOVIES.createUrlTree() },
-    { label: 'Collection', icon: '♥', url: this.routes.ROOT.COLLECTION.createUrlTree() },
-    { label: 'History', icon: '↻', url: this.routes.ROOT.ACTIVITY.createUrlTree() },
-    { label: 'People', icon: '◎', url: this.routes.ROOT.PEOPLE.createUrlTree() },
-    { label: 'Companies', icon: '▣', url: this.routes.ROOT.COMPANIES.createUrlTree() },
-    { label: 'Settings', icon: '⚙', url: this.routes.ROOT.SETTINGS.createUrlTree() },
+    { label: 'Browse', icon: '◉', url: this.routes.routes.MOVIES.createUrlTree() },
+    { label: 'Collection', icon: '♥', url: this.routes.routes.COLLECTION.createUrlTree() },
+    { label: 'History', icon: '↻', url: this.routes.routes.ACTIVITY.createUrlTree() },
+    { label: 'People', icon: '◎', url: this.routes.routes.PEOPLE.createUrlTree() },
+    { label: 'Companies', icon: '▣', url: this.routes.routes.COMPANIES.createUrlTree() },
+    { label: 'Settings', icon: '⚙', url: this.routes.routes.SETTINGS.createUrlTree() },
   ];
 }

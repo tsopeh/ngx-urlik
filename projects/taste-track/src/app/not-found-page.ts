@@ -9,9 +9,7 @@ import { AppRouter } from './app-router';
     <p class="eyebrow">Page not found</p>
     <h1>This page isn’t in the catalog.</h1>
     <p>Try browsing movies or TV shows.</p>
-    <a class="button primary" [routerLink]="routes.ROOT.SCREEN.MOVIES.createUrlTree()"
-      >Browse movies</a
-    >
+    <a class="button primary" [routerLink]="routes.routes.MOVIES.createUrlTree()">Browse movies</a>
   </section>`,
 })
 export class NotFoundPage {

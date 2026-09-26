@@ -4,33 +4,33 @@ These names are used in the code and design notes.
 
 ## Routes
 
-**AppRouter** — The injection token returned by `defineAppRouter()`. Inject it to get the application's typed route tree.
+**AppRouter** — The injection token returned by `defineAppRouter()`. Inject it to get the flat, identifier-keyed `routes` catalog and router helpers.
 
-**Route definition** — The plain object that declares a route's path, parameters, children, and Angular options.
+**Route definition** — An Angular route object with optional typed-router metadata such as `identifier`, `pathParam`, and `queryParams`.
 
-**Route identity** — The object key used in code, such as `WORKSPACE`. It is independent of the URL segment. Uppercase is a convention.
+**Route identifier** — A unique name on an ordinary route. It adds a flat node under `AppRouter.routes`; uppercase is a convention.
 
-**Complete route identity** — The full name, such as `ROOT.ADMIN.DETAIL`, used to identify a route in diagnostics.
+**Route identity** — The identifier used to identify a route in code and parameter diagnostics. It is independent of the URL path.
 
-**Route node** — A generated object used to construct a destination, navigate, or read and patch state. Redirect and fallback nodes expose fewer operations.
+**Route node** — The generated object for an identified route. It constructs destinations, navigates, and reads or patches state.
 
-**Route chain** — A node and its ancestors, from the root down. Parameters and equality settings follow this chain.
+**Route chain** — An identified route and its ancestors, from the root down. Path and query definitions accumulate along this chain, including unnamed ancestors.
 
-**Static segment** — The literal part of a route's `path`.
+**Anonymous route** — An Angular route without an `identifier`. Angular handles it, but it adds no generated route node.
 
-**Exact-match behavior** — The content or redirect selected at a named route's own URL. It has no separate public identity.
+**Path placeholder** — A dynamic segment written as `:name` in an Angular path. A destination supplies a value for every placeholder in its identified route chain.
 
-**Fallback route** — A `path: '**'` route for unmatched paths in a branch. It has state but no single destination to construct.
+**Path parameter configuration** — An optional `{ codec }` or name-keyed map of codec options for placeholders in one route's path. Unconfigured placeholders use strings.
 
-**Angular options** — Component and activation settings under `angular`, forwarded to Angular Router.
+**Angular route options** — Angular `Route` fields declared directly on the route and forwarded to Angular Router.
 
 ## Parameters
 
 **URL parameter codec** — A pure converter between one decoded string and a non-null value. `null` reports failed conversion.
 
-**Parameter definition** — A codec combined with path or query policy through `pathParam`, `queryParam`, `repeatedQueryParam`, or `delimitedQueryParam`.
+**Parameter definition** — A codec on a path placeholder through the route's `pathParam` field, or a query definition made with `queryParam()`, `repeatedQueryParam()`, or `delimitedQueryParam()`.
 
-**Path parameter** — The dynamic segment after a route's static segment. Construction requires its value.
+**Path parameter** — The decoded value for one path placeholder. Construction requires values for all placeholders on the route chain.
 
 **Scalar query parameter** — One value from a query key. If the key repeats, the last value wins.
 
@@ -40,7 +40,7 @@ These names are used in the code and design notes.
 
 **Accumulated parameters** — All path and query definitions from a node and its ancestors.
 
-**Owned query schema** — The accumulated query fields a node can read and patch.
+**Route query schema** — The accumulated query fields a node can read and patch.
 
 **Required query input** — A field marked `required: true` that callers must supply during construction. It does not require a physical URL key.
 
@@ -70,11 +70,11 @@ These names are used in the code and design notes.
 
 **Escape hatch** — The `AppRouter.escapeHatch` object for supported native addressing methods and navigation observations.
 
-**Recoverable parameter failure** — Bad query data, failed serialization, or a codec exception handled with a diagnostic and fallback behavior.
+**Recoverable parameter failure** — Bad query data or failed query serialization handled with a diagnostic and a default or omitted URL key.
 
 **Semantic state error** — Reading an inactive route or an invalid active path. These reads throw because there is no valid parameter state to return.
 
-**Structural validation** — Checks performed by `defineAppRouter()` on the full tree, without running codecs or default factories. Errors are reported together.
+**Structural validation** — Checks performed by `defineAppRouter()` on identified route chains, without running codecs or default factories. Errors are reported together.
 
 ## TasteTrack
 

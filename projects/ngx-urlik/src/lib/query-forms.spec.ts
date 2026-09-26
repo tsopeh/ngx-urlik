@@ -8,13 +8,8 @@ import {
 import { TestBed } from '@angular/core/testing';
 import { FormControl, FormGroup, Validators } from '@angular/forms';
 import { CanActivateFn, NavigationStart, Router } from '@angular/router';
-import {
-  defineAppRouter,
-  numberCodec,
-  queryParam,
-  repeatedQueryParam,
-  stringCodec,
-} from 'ngx-urlik';
+import { numberCodec, queryParam, repeatedQueryParam, stringCodec } from 'ngx-urlik';
+import { defineLegacyAppRouter as defineAppRouter } from './legacy-app-router.spec-helper';
 import {
   bindQueryParamsToFormGroup,
   createQueryParamsFormGroup,

@@ -116,10 +116,10 @@ export class DetailPage {
   protected readonly error = signal('');
   protected readonly ratings = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   private readonly context = this.routes.activeRoute({
-    episode: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.EPISODES.DETAIL,
-    season: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL,
-    show: this.routes.ROOT.SCREEN.SHOWS.DETAIL,
-    movie: this.routes.ROOT.SCREEN.MOVIES.DETAIL,
+    episode: this.routes.routes.EPISODE_DETAIL,
+    season: this.routes.routes.SEASON_DETAIL,
+    show: this.routes.routes.SHOW_DETAIL,
+    movie: this.routes.routes.MOVIE_DETAIL,
   });
   protected readonly isSeason = computed(() => this.context().route === 'season');
   protected readonly item = computed(() => {
@@ -176,7 +176,7 @@ export class DetailPage {
     if (active.route === 'episode')
       return {
         label: `Season ${active.params.path.seasonNumber}`,
-        url: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.createUrlTree({
+        url: this.routes.routes.SEASON_DETAIL.createUrlTree({
           path: active.params.path,
           query: active.params.query,
         }),
@@ -184,7 +184,7 @@ export class DetailPage {
     if (active.route === 'season')
       return {
         label: 'Back to show',
-        url: this.routes.ROOT.SCREEN.SHOWS.DETAIL.createUrlTree({
+        url: this.routes.routes.SHOW_DETAIL.createUrlTree({
           path: { showId: active.params.path.showId },
           query: active.params.query,
         }),
@@ -196,7 +196,7 @@ export class DetailPage {
     if (active.route === 'show')
       return {
         label: 'Browse seasons',
-        url: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.createUrlTree({
+        url: this.routes.routes.SEASONS.createUrlTree({
           path: active.params.path,
           query: active.params.query,
         }),
@@ -204,7 +204,7 @@ export class DetailPage {
     if (active.route === 'season')
       return {
         label: 'Browse episodes',
-        url: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.EPISODES.createUrlTree({
+        url: this.routes.routes.EPISODES.createUrlTree({
           path: active.params.path,
           query: { ...active.params.query, search: '', genres: [], page: 1 },
         }),
@@ -241,7 +241,9 @@ export class DetailPage {
     }
   }
   protected historyUrl() {
-    return this.routes.ROOT.ACTIVITY.createUrlTree({ query: { search: this.item()?.title ?? '' } });
+    return this.routes.routes.ACTIVITY.createUrlTree({
+      query: { search: this.item()?.title ?? '' },
+    });
   }
   protected async setStatus(status: CollectionStatus) {
     const item = this.item();

@@ -20,14 +20,14 @@ import { AppRouter } from './app-router';
 })
 export class SectionPage {
   private readonly routes = inject(AppRouter);
-  private readonly route = this.routes.ROOT.SCREEN;
+  private readonly route = this.routes.routes.SCREEN;
   protected readonly moviesUrl = computed(() =>
-    this.routes.ROOT.SCREEN.MOVIES.createUrlTree({
+    this.routes.routes.MOVIES.createUrlTree({
       query: { ...this.route.params().query, page: 1 },
     }),
   );
   protected readonly showsUrl = computed(() =>
-    this.routes.ROOT.SCREEN.SHOWS.createUrlTree({
+    this.routes.routes.SHOWS.createUrlTree({
       query: { ...this.route.params().query, page: 1 },
     }),
   );

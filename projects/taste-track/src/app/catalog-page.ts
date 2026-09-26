@@ -98,11 +98,11 @@ export class CatalogPage {
   private readonly routes = inject(AppRouter);
   protected readonly repository = inject(TasteTrackRepository);
   protected readonly links = inject(CatalogLinks);
-  private readonly route = this.routes.ROOT.SCREEN;
+  private readonly route = this.routes.routes.SCREEN;
   private readonly active = this.routes.activeRoute({
-    episodes: this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.EPISODES,
-    movies: this.routes.ROOT.SCREEN.MOVIES,
-    shows: this.routes.ROOT.SCREEN.SHOWS,
+    episodes: this.routes.routes.EPISODES,
+    movies: this.routes.routes.MOVIES,
+    shows: this.routes.routes.SHOWS,
   });
   protected readonly genres = ['Drama', 'Comedy', 'Science fiction', 'Mystery'];
   protected readonly query = computed(() => this.route.params().query);

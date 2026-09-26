@@ -1,206 +1,233 @@
-import { Route, UrlTree } from '@angular/router';
-import { AnyQueryParamDefinition, PathParamDefinition } from './params';
+import { Route } from '@angular/router';
+import { AnyQueryParamDefinition, UrlParamCodec } from './params';
 
 export type QueryDefinitions = Readonly<Record<string, AnyQueryParamDefinition>>;
 
-const angularRouteFields = [
-  'component',
-  'loadComponent',
-  'canMatch',
-  'canActivate',
-  'canActivateChild',
-  'canDeactivate',
-  'resolve',
-  'data',
-  'title',
-  'providers',
-  'runGuardsAndResolvers',
-] as const satisfies readonly (keyof Route)[];
-const redirectAngularFields = [
-  'canMatch',
-  'providers',
-  'data',
-] as const satisfies readonly (keyof Route)[];
-
-export type AngularRouteOptions = Pick<Route, (typeof angularRouteFields)[number]>;
-export type AngularRedirectOptions = Pick<Route, (typeof redirectAngularFields)[number]>;
-
-export type ExactMatchDefinition<State> =
-  | {
-      readonly angular: AngularRouteOptions & {
-        component: NonNullable<AngularRouteOptions['component']>;
-        loadComponent?: never;
-      };
-      readonly redirectTo?: never;
-    }
-  | {
-      readonly angular: AngularRouteOptions & {
-        loadComponent: NonNullable<AngularRouteOptions['loadComponent']>;
-        component?: never;
-      };
-      readonly redirectTo?: never;
-    }
-  | { readonly redirectTo: (values: State) => UrlTree; readonly angular?: AngularRedirectOptions };
-
-export interface RouteDefinition {
-  readonly path: string;
-  readonly pathParam?: PathParamDefinition<unknown>;
-  readonly queryParams?: QueryDefinitions;
-  readonly children?: Readonly<Record<string, RouteDefinition>>;
-  readonly angular?: AngularRouteOptions;
-  readonly exactMatch?: ExactMatchDefinition<any>;
-  readonly isEqual?: (a: unknown, b: unknown) => boolean;
-  readonly redirectTo?: (values: any) => UrlTree;
+/** A codec attached to a placeholder already declared by an Angular route path. */
+export interface PathParamCodecDefinition<T = unknown> {
+  readonly codec: UrlParamCodec<T>;
 }
 
-const forbiddenPath = /[\/:?#;()]/;
+export type PathParamOptions =
+  PathParamCodecDefinition | Readonly<Record<string, PathParamCodecDefinition>>;
+
+/** Ordered Angular route declarations with optional typed-router metadata. */
+export interface RouteDefinition extends Omit<Route, 'children'> {
+  readonly identifier?: string;
+  readonly pathParam?: PathParamOptions;
+  readonly queryParams?: QueryDefinitions;
+  readonly children?: readonly RouteDefinition[];
+  readonly isEqual?: (a: unknown, b: unknown) => boolean;
+}
+
+export type RouteDefinitions = readonly RouteDefinition[];
+
+export type ParsedRoutePathSegment =
+  Readonly<{ kind: 'static'; value: string }> | Readonly<{ kind: 'param'; name: string }>;
+
+export interface ParsedRoutePath {
+  readonly segments: readonly ParsedRoutePathSegment[];
+  readonly placeholders: readonly string[];
+  readonly errors: readonly string[];
+}
+
 const encodedOutputCharacter = /^[A-Za-z0-9\-_.!~*'()%]$/;
 
-export function validateRouteDefinitions(
-  routes: Readonly<Record<string, RouteDefinition>>,
-): string[] {
+/** Parse the ordinary primary-outlet path syntax used for typed URL construction. */
+export function parseRoutePath(path: string): ParsedRoutePath {
+  if (typeof path !== 'string')
+    return { segments: [], placeholders: [], errors: ['path must be a string'] };
+  if (path === '') return { segments: [], placeholders: [], errors: [] };
+  const segments: ParsedRoutePathSegment[] = [];
+  const placeholders: string[] = [];
   const errors: string[] = [];
-  if (routes === null || typeof routes !== 'object' || Array.isArray(routes)) {
-    return ['routes: route collection must be a non-null object'];
+  for (const part of path.split('/')) {
+    if (part === '') {
+      errors.push('path must not contain an empty segment');
+    } else if (part === '**') {
+      errors.push("wildcard path '**' cannot be used for an identified route");
+    } else if (part.startsWith(':')) {
+      const name = part.slice(1);
+      if (!name || /[:?#;()\s]/.test(name)) errors.push(`invalid path placeholder '${part}'`);
+      else {
+        segments.push({ kind: 'param', name });
+        placeholders.push(name);
+      }
+    } else if (/[:?#;()]/.test(part)) {
+      errors.push(`invalid static path segment '${part}'`);
+    } else {
+      segments.push({ kind: 'static', value: part });
+    }
   }
-  if (Object.keys(routes).length !== 1)
-    errors.push('routes must contain exactly one named root route');
-  const visit = (
-    siblings: Readonly<Record<string, RouteDefinition>>,
-    ancestry: Set<string>,
-    location: string,
-    root: boolean,
-  ) => {
-    const patterns = new Map<string, string>();
-    let fallbackSeen = false;
-    for (const [identity, definition] of Object.entries(siblings)) {
-      const at = location ? `${location}.${identity}` : identity;
-      if (!identity) errors.push(`${at}: route identity must be non-empty`);
-      if (['navigate', 'createUrlTree', 'params', 'patchQuery'].includes(identity))
-        errors.push(`${at}: '${identity}' is a reserved router method name`);
-      if (root && ['escapeHatch', 'activeRoute', 'globalQueryParams'].includes(identity))
-        errors.push(`${at}: '${identity}' is reserved at the router root`);
-      if (definition === null || typeof definition !== 'object' || Array.isArray(definition)) {
-        errors.push(`${at}: route definition must be a non-null object`);
-        continue;
-      }
-      const fallback = definition.path === '**';
-      const hasRedirect = 'redirectTo' in definition;
-      const redirect = hasRedirect && typeof definition.redirectTo === 'function';
-      if (hasRedirect && !redirect) errors.push(`${at}: redirectTo must be a function`);
-      if (root && fallback) errors.push(`${at}: the root route cannot be a fallback`);
-      const allowed = new Set(
-        fallback
-          ? ['path', 'queryParams', 'angular', 'isEqual']
-          : redirect
-            ? ['path', 'pathParam', 'queryParams', 'redirectTo', 'angular']
-            : ['path', 'pathParam', 'queryParams', 'children', 'angular', 'isEqual', 'exactMatch'],
-      );
-      for (const key of Object.keys(definition))
-        if (!allowed.has(key)) errors.push(`${at}: unknown route property '${key}'`);
-      if (fallback) {
-        if (fallbackSeen)
-          errors.push(`${at}: only one fallback route is allowed per sibling branch`);
-        fallbackSeen = true;
-      } else if (fallbackSeen) errors.push(`${at}: fallback routes must be declared last`);
-      if (!fallback) {
-        const path = definition.path;
-        if (typeof path !== 'string' || path === '**' || forbiddenPath.test(path))
-          errors.push(`${at}: path must be ${root ? 'empty or ' : ''}one valid static segment`);
-        if (!root && path === '')
-          errors.push(
-            `${at}: empty paths are only allowed at the application root; use exactMatch`,
-          );
-        const pattern = `${path}${definition.pathParam ? '/:param' : ''}`;
-        const previous = patterns.get(pattern);
-        if (previous)
-          errors.push(`${at}: duplicates sibling URL pattern '${pattern}' from ${previous}`);
-        else patterns.set(pattern, at);
-      }
-      const angular = definition.angular;
-      if (
-        angular !== undefined &&
-        (angular === null || typeof angular !== 'object' || Array.isArray(angular))
-      )
-        errors.push(`${at}.angular: Angular options must be a non-null object`);
-      else if (angular) {
-        const allowedAngular = new Set<string>(
-          redirect ? redirectAngularFields : angularRouteFields,
-        );
-        for (const key of Object.keys(angular))
-          if (!allowedAngular.has(key))
-            errors.push(`${at}.angular: unknown Angular route property '${key}'`);
-        if (angular.component && angular.loadComponent)
-          errors.push(`${at}.angular: component and loadComponent are mutually exclusive`);
-      }
-      if (!fallback && !hasRedirect && 'exactMatch' in definition) {
-        const exact = definition.exactMatch;
-        const exactAt = `${at}.exactMatch`;
-        if (!exact || typeof exact !== 'object' || Array.isArray(exact)) {
-          errors.push(`${exactAt}: exactMatch must be a non-null object`);
-        } else {
-          for (const key of Object.keys(exact))
-            if (key !== 'angular' && key !== 'redirectTo')
-              errors.push(`${exactAt}: unknown property '${key}'`);
-          const hasRedirect = 'redirectTo' in exact;
-          if (hasRedirect && typeof exact.redirectTo !== 'function')
-            errors.push(`${exactAt}: redirectTo must be a function`);
-          const angular = exact.angular as AngularRouteOptions | undefined;
-          if (
-            angular !== undefined &&
-            (!angular || typeof angular !== 'object' || Array.isArray(angular))
-          )
-            errors.push(`${exactAt}.angular: Angular options must be a non-null object`);
-          else if (angular) {
-            const fields: readonly string[] = hasRedirect
-              ? redirectAngularFields
-              : angularRouteFields;
-            for (const key of Object.keys(angular))
-              if (!fields.includes(key))
-                errors.push(`${exactAt}.angular: unknown Angular route property '${key}'`);
-          }
-          const actions =
-            Number(hasRedirect) +
-            Number(angular?.component != null) +
-            Number(angular?.loadComponent != null);
-          if (actions !== 1)
-            errors.push(`${exactAt}: specify exactly one component, loadComponent, or redirectTo`);
-        }
-      }
-      const names = new Set(ancestry);
-      if (!fallback && definition.pathParam) {
-        if (!definition.pathParam.name) errors.push(`${at}: path parameter name must be non-empty`);
-        if (names.has(definition.pathParam.name))
-          errors.push(
-            `${at}: parameter '${definition.pathParam.name}' shadows an ancestor parameter`,
-          );
-        names.add(definition.pathParam.name);
-      }
-      for (const [name, param] of Object.entries(definition.queryParams ?? {})) {
-        if (names.has(name))
-          errors.push(
-            `${at}: parameter '${name}' shadows another path or query parameter in this ancestry`,
-          );
-        names.add(name);
-        if (param.mode === 'delimited') {
-          const separator = param.separator ?? '';
-          if (Array.from(separator).length !== 1 || encodedOutputCharacter.test(separator))
-            errors.push(
-              `${at}: query parameter '${name}' separator must be one character escaped by encodeURIComponent`,
-            );
-        }
-      }
-      if (!fallback && !redirect && definition.children) {
-        if (
-          typeof definition.children !== 'object' ||
-          definition.children === null ||
-          Array.isArray(definition.children)
-        )
-          errors.push(`${at}.children: route collection must be a non-null object`);
-        else visit(definition.children, names, at, false);
-      }
+  return { segments, placeholders, errors };
+}
+
+function isCodecDefinition(value: unknown): value is PathParamCodecDefinition {
+  if (!value || typeof value !== 'object' || Object.keys(value).length !== 1) return false;
+  const codec = (value as Partial<PathParamCodecDefinition>).codec;
+  return (
+    !!codec &&
+    typeof codec === 'object' &&
+    typeof codec.serialize === 'function' &&
+    typeof codec.deserialize === 'function'
+  );
+}
+
+/** Return explicitly configured codecs, keyed by names parsed from path. */
+export function resolvePathParamDefinitions(
+  route: Pick<RouteDefinition, 'path' | 'pathParam'>,
+): Readonly<Record<string, PathParamCodecDefinition>> {
+  const option = route.pathParam;
+  if (!option) return {};
+  if (isCodecDefinition(option)) {
+    const name = parseRoutePath(route.path ?? '').placeholders[0];
+    return name ? { [name]: option } : {};
+  }
+  return typeof option === 'object' && !Array.isArray(option)
+    ? (option as Readonly<Record<string, PathParamCodecDefinition>>)
+    : {};
+}
+
+/** Validate ordered Angular routes and the statically known chains of identified routes. */
+export function validateRouteDefinitions(routes: RouteDefinitions): string[] {
+  if (!Array.isArray(routes)) return ['routes: route collection must be an array'];
+  const errors: string[] = [];
+  const reported = new Set<string>();
+  const identifiers = new Map<string, string>();
+  const report = (message: string) => {
+    if (!reported.has(message)) {
+      errors.push(message);
+      reported.add(message);
     }
   };
-  visit(routes, new Set(), '', true);
+  const visit = (
+    siblings: RouteDefinitions,
+    ancestors: readonly RouteDefinition[],
+    location: string,
+  ) => {
+    siblings.forEach((route, index) => {
+      const at = `${location}[${index}]`;
+      if (!route || typeof route !== 'object' || Array.isArray(route)) {
+        report(`${at}: route definition must be a non-null object`);
+        return;
+      }
+      const chain = [...ancestors, route];
+      if ('identifier' in route) {
+        const identifier = route.identifier;
+        if (typeof identifier !== 'string' || !identifier.trim()) {
+          report(`${at}: identifier must be a non-empty string`);
+        } else {
+          const previous = identifiers.get(identifier);
+          if (previous) report(`${at}: identifier '${identifier}' duplicates ${previous}`);
+          else identifiers.set(identifier, at);
+          if (route.redirectTo !== undefined || route.path === '**' || route.matcher)
+            report(`${identifier}: only ordinary path routes can have an identifier`);
+          if (route.loadChildren)
+            report(`${identifier}: identified routes cannot use loadChildren`);
+          const pathOwners = new Map<string, string>();
+          const queryOwners = new Map<string, string>();
+          for (const [depth, member] of chain.entries()) {
+            const owner = depth === chain.length - 1 ? identifier : `ancestor ${depth + 1}`;
+            const knownPath = !(
+              member.matcher ||
+              member.path === undefined ||
+              member.redirectTo !== undefined ||
+              member.path === '**' ||
+              (member.outlet && member.outlet !== 'primary')
+            );
+            if (!knownPath)
+              report(`${identifier}: ${owner} must have a statically known primary path`);
+            if (depth < chain.length - 1 && member.loadChildren)
+              report(
+                `${identifier}: ${owner} cannot use loadChildren before an identified descendant`,
+              );
+            const parsed = parseRoutePath(member.path === '**' ? '' : (member.path ?? ''));
+            if (knownPath)
+              for (const error of parsed.errors) report(`${identifier}: ${owner}: ${error}`);
+            const codecOptions = member.pathParam;
+            if (codecOptions !== undefined) {
+              const definitions = resolvePathParamDefinitions(member);
+              const shorthand = isCodecDefinition(codecOptions);
+              if (
+                !shorthand &&
+                codecOptions &&
+                typeof codecOptions === 'object' &&
+                'codec' in codecOptions &&
+                codecOptions['codec'] &&
+                typeof codecOptions['codec'] === 'object' &&
+                'serialize' in codecOptions['codec'] &&
+                'deserialize' in codecOptions['codec']
+              )
+                report(`${identifier}: ${owner}: pathParam shorthand supports only 'codec'`);
+              if (shorthand && parsed.placeholders.length !== 1)
+                report(
+                  `${identifier}: ${owner}: pathParam shorthand requires exactly one path placeholder`,
+                );
+              if (
+                !shorthand &&
+                (!codecOptions || typeof codecOptions !== 'object' || Array.isArray(codecOptions))
+              )
+                report(`${identifier}: ${owner}: pathParam must be a codec or a keyed codec map`);
+              for (const name of Object.keys(definitions)) {
+                if (!parsed.placeholders.includes(name))
+                  report(`${identifier}: ${owner}: pathParam '${name}' has no path placeholder`);
+                if (!isCodecDefinition(definitions[name]))
+                  report(`${identifier}: ${owner}: pathParam '${name}' must contain a codec`);
+              }
+              if (
+                !shorthand &&
+                Object.keys(definitions).length !== new Set(parsed.placeholders).size
+              )
+                report(
+                  `${identifier}: ${owner}: pathParam map must define exactly the path placeholders`,
+                );
+            }
+            for (const name of parsed.placeholders) {
+              const previous = pathOwners.get(name);
+              if (previous)
+                report(
+                  `${identifier}: path parameter '${name}' appears in both '${previous}' and '${member.path}'. Rename one so params().path can hold both values.`,
+                );
+              else pathOwners.set(name, member.path ?? '');
+            }
+            if (member.queryParams !== undefined) {
+              if (
+                !member.queryParams ||
+                typeof member.queryParams !== 'object' ||
+                Array.isArray(member.queryParams)
+              ) {
+                report(`${identifier}: ${owner}: queryParams must be a non-null object`);
+              } else
+                for (const [name, param] of Object.entries(member.queryParams)) {
+                  const previous = queryOwners.get(name);
+                  if (previous)
+                    report(
+                      `${identifier}: query parameter '${name}' is defined in both '${previous}' and '${member.path}'`,
+                    );
+                  else queryOwners.set(name, member.path ?? '');
+                  if (param?.mode === 'delimited') {
+                    const separator = param.separator ?? '';
+                    if (
+                      typeof separator !== 'string' ||
+                      Array.from(separator).length !== 1 ||
+                      encodedOutputCharacter.test(separator)
+                    )
+                      report(
+                        `${identifier}: query parameter '${name}' separator must be one character escaped by encodeURIComponent`,
+                      );
+                  }
+                }
+            }
+          }
+        }
+      }
+      if (route.children !== undefined) {
+        if (!Array.isArray(route.children))
+          report(`${at}.children: route collection must be an array`);
+        else visit(route.children, chain, `${at}.children`);
+      }
+    });
+  };
+  visit(routes, [], 'routes');
   return errors;
 }

@@ -98,14 +98,14 @@ export class ActivityPage {
   protected readonly links = inject(CatalogLinks);
   private readonly routes = inject(AppRouter);
   private readonly repository = inject(TasteTrackRepository);
-  protected readonly form = createQueryParamsFormGroup(this.routes.ROOT.ACTIVITY, {
+  protected readonly form = createQueryParamsFormGroup(this.routes.routes.ACTIVITY, {
     transformWrites: (changes) =>
       changes.pipe(
         groupBy((change) => change.param),
         mergeMap((group) => (group.key === 'search' ? group.pipe(debounceTime(250)) : group)),
       ),
   });
-  protected readonly query = computed(() => this.routes.ROOT.ACTIVITY.params().query);
+  protected readonly query = computed(() => this.routes.routes.ACTIVITY.params().query);
   protected readonly matched = computed(() => {
     const query = this.query();
     const matched = this.repository.events().filter((event) => {

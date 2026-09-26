@@ -1,8 +1,9 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CanActivateFn, NavigationStart, Router } from '@angular/router';
-import { defineAppRouter } from './app-router';
-import { pathParam, queryParam, stringCodec } from './params';
+import { defineLegacyAppRouter as defineAppRouter } from './legacy-app-router.spec-helper';
+import { pathParam } from './legacy-params.spec-helper';
+import { queryParam, stringCodec } from './params';
 
 @Component({ template: '' })
 class Page {}

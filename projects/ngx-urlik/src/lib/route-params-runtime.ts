@@ -87,7 +87,7 @@ export function createParameterReader(report: ReportParameterFailure) {
     Object.fromEntries(params.map((param) => [param.name, readQuery(param, query)]));
 
   const readState = (
-    info: CompiledRoute,
+    info: Pick<CompiledRoute, 'identity' | 'pattern' | 'pathParams' | 'queryParams'>,
     params: ParamMap,
     query: ParamMap,
     attemptedPath: string,

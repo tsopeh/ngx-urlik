@@ -11,11 +11,12 @@ import {
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { filter, firstValueFrom } from 'rxjs';
-import { AppRouterDiagnostic, defineAppRouter } from './app-router';
+import { AppRouterDiagnostic } from './app-router';
+import { defineLegacyAppRouter as defineAppRouter } from './legacy-app-router.spec-helper';
+import { pathParam } from './legacy-params.spec-helper';
 import {
   delimitedQueryParam,
   numberCodec,
-  pathParam,
   queryParam,
   repeatedQueryParam,
   stringCodec,

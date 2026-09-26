@@ -36,8 +36,8 @@ export class ContributorPage {
   protected readonly repository = inject(TasteTrackRepository);
   protected readonly links = inject(CatalogLinks);
   private readonly active = this.routes.activeRoute({
-    person: this.routes.ROOT.PEOPLE.DETAIL,
-    company: this.routes.ROOT.COMPANIES.DETAIL,
+    person: this.routes.routes.PERSON_DETAIL,
+    company: this.routes.routes.COMPANY_DETAIL,
   });
   protected readonly contributor = computed(() => {
     const active = this.active();

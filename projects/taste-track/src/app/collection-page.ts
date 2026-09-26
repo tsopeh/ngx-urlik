@@ -152,7 +152,7 @@ export class CollectionPage {
   protected readonly statuses: readonly CollectionStatus[] = ['saved', 'in-progress', 'completed'];
   protected readonly routes = inject(AppRouter);
   private readonly repository = inject(TasteTrackRepository);
-  protected readonly binding = createQueryParamsSignalForm(this.routes.ROOT.COLLECTION);
+  protected readonly binding = createQueryParamsSignalForm(this.routes.routes.COLLECTION);
   protected readonly ratings = [6, 7, 8, 9, 10];
   protected readonly pageSizes = [12, 24, 48] as const;
   private readonly stateMap = computed(

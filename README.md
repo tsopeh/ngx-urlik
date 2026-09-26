@@ -5,7 +5,7 @@ signal, change a filter with a patch, and build links from the same route object
 handles navigation.
 
 ```ts
-const results = inject(AppRouter).ROOT.RESULTS;
+const results = inject(AppRouter).routes.RESULTS;
 
 results.params().query.search;
 await results.patchQuery({ search: 'elm', page: 1 });
@@ -19,28 +19,23 @@ The patch changes search and resets the page in one navigation. Other query fiel
 import { defineAppRouter, numberCodec, queryParam, stringCodec } from 'ngx-urlik';
 
 export const { AppRouter, provideAppRouter } = defineAppRouter({
-  routes: {
-    ROOT: {
-      path: '',
-      children: {
-        RESULTS: {
-          path: 'results',
-          queryParams: {
-            search: queryParam({ codec: stringCodec(), defaultValue: '' }),
-            page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
-          },
-          angular: {
-            loadComponent: () => import('./results-page').then((m) => m.ResultsPage),
-          },
-        },
+  routes: [
+    {
+      path: 'results',
+      identifier: 'RESULTS',
+      queryParams: {
+        search: queryParam({ codec: stringCodec(), defaultValue: '' }),
+        page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
       },
+      loadComponent: () => import('./results-page').then((m) => m.ResultsPage),
     },
-  },
+  ],
 });
 ```
 
-`RESULTS` is the name you use in code. `results` is the URL segment. Each query field declares
-how to read and write its value. Children inherit their parents' parameters.
+`RESULTS` is the identifier you use in code. `results` is the URL path. Angular route fields such
+as `loadComponent` stay at the top level. Anonymous routes keep Angular's routing behavior and do
+not add nodes to `AppRouter.routes`.
 
 Provide the router at bootstrap:
 

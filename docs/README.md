@@ -16,6 +16,10 @@ when you want to change it.
 
 Each note explains one choice and its cost.
 
+The [v2 route declaration decision](adr/0015-proposed-incremental-route-identification.md)
+describes the current interface. Earlier notes record how the first interface was designed;
+where they disagree with v2, use the [API reference](design/app-router.md).
+
 - [0001: One static route tree](adr/0001-static-route-tree.md)
 - [0002: Reusable codecs](adr/0002-parameter-model.md)
 - [0003: Destinations and current state](adr/0003-deterministic-routing-and-state.md)
@@ -29,3 +33,4 @@ Each note explains one choice and its cost.
 - [0011: One query-write queue](adr/0011-shared-query-write-coordinator.md)
 - [0012: Observe queries across pages](adr/0012-global-query-observation.md)
 - [0014: Give landing content one route identity](adr/0014-exact-match.md)
+- [0015: Identify routes in an Angular route array](adr/0015-proposed-incremental-route-identification.md)

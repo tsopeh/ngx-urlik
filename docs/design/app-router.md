@@ -8,110 +8,87 @@ The [README](../../README.md) shows a complete setup. This page gives the rules 
 
 ## Route tree and identity
 
-Declare one named root with `defineAppRouter({ routes })`. Children are named object properties:
+Pass Angular's ordered route array to `defineAppRouter()`. Add an `identifier` to each route that
+should have a typed node:
 
 ```ts
-ROOT: {
-  path: '',
-  children: {
-    USER: {
-      path: 'users',
-      pathParam: pathParam({ name: 'userId', codec: stringCodec() }),
+const { AppRouter, provideAppRouter } = defineAppRouter({
+  routes: [
+    {
+      path: 'users/:userId',
+      identifier: 'USER',
+      pathParam: { codec: stringCodec() },
+      loadComponent: () => import('./user-page').then((m) => m.UserPage),
     },
-  },
-}
+  ],
+});
+
+const user = inject(AppRouter).routes.USER;
 ```
 
-`ROOT.USER` is the identity used in code. `/users/42` is one URL it can construct. Changing a
-static segment does not require changing the identity.
+The route's Angular `path` is the source of its URL and placeholder names. `USER` is the stable
+identifier used in code. `routes` is flat even when the Angular route is nested. An identified
+descendant inherits path and query definitions from its ancestors, including unnamed ancestors.
 
-Each route contributes one static segment and at most one dynamic segment after it. Use nested
-routes for longer paths. Only the root may have `path: ''`; use `exactMatch` for landing content.
-Paths cannot contain Angular path syntax such as inline `:params` or several `/`-separated segments.
+Angular route options stay at the top level. Routes without an `identifier` remain Angular routes
+and do not appear in `AppRouter.routes`. Unnamed branches can use Angular features such as
+`loadChildren`; a branch used by an identified descendant must have statically declared children.
+Identified routes need a statically known primary-outlet path and cannot use `loadChildren`.
 
-Children inherit path and query definitions from their parents. Names share one namespace along
-a route chain, so a child cannot reuse a parent's path or query name. Sibling URL patterns must
-be distinct. Angular's generated `Routes` stay private. Components can load lazily; route
-definitions must be available when the tree is declared.
-
-Node members reserve the names `navigate`, `createUrlTree`, `params`, and `patchQuery`.
-The root also reserves `escapeHatch`, `activeRoute`, and `globalQueryParams`.
+Paths can contain static segments and named placeholders, such as `shows/:showId/seasons/:season`.
+Without `pathParam`, placeholder values are strings. Supply `{ codec }` for a single placeholder,
+or a map with one `{ codec }` entry for every placeholder on that route. Path values are required
+when constructing a destination. Names cannot repeat along an identified route chain. A path and
+query field may use the same name because state keeps them under separate `path` and `query`
+objects. Query definitions cannot repeat along that chain.
 
 ## Route kinds
 
-| Kind     | Declaration                                            | Available operations                         |
-| -------- | ------------------------------------------------------ | -------------------------------------------- |
-| Ordinary | A static `path`, with optional children and parameters | Construct, navigate, read state, patch query |
-| Redirect | `redirectTo` callback                                  | Construct and navigate                       |
-| Fallback | `path: '**'`                                           | Read state and patch query                   |
+| Kind                      | Declaration                                            | Available operations                           |
+| ------------------------- | ------------------------------------------------------ | ---------------------------------------------- |
+| Identified ordinary route | A statically known primary `path` with an `identifier` | Construct, navigate, read state, patch query   |
+| Anonymous Angular route   | Any route without an `identifier`                      | Angular Router handles matching and navigation |
 
-An ordinary route can have no component, including at a leaf.
+An identified route can have no component, including at a leaf. Angular-only redirects and
+wildcards keep Angular's ordinary configuration; they have no generated nodes. Angular's route
+order controls matching, so keep route ordering meaningful for overlapping patterns.
 
-A redirect callback receives the route's decoded `{ path, query }` and must return a definite
-`UrlTree`. Since typed construction can return `null`, choose a fallback when needed. Redirects
-accept only `canMatch`, `providers`, and `data` under `angular`. They are terminal routes and have
-no children or active parameter state.
+### Landing content
 
-A fallback matches unknown paths in its branch. Put it last among siblings, with at most one
-fallback per branch. It cannot be the root or have a path parameter, redirect, or children.
-There is no single URL to construct for a wildcard.
-
-### Exact-match behavior
-
-Use `exactMatch` when a route needs content at its own URL as well as child destinations:
+Use an empty-path child when a route needs landing content at its own URL as well as child pages:
 
 ```ts
-ACCOUNT: {
-  path: 'account',
-  angular: { component: AccountLayout },
-  exactMatch: { angular: { component: AccountOverview } },
-  children: {
-    SETTINGS: { path: 'settings', angular: { component: AccountSettings } },
-  },
+{
+  path: 'account/:accountId',
+  identifier: 'ACCOUNT',
+  pathParam: { codec: numberCodec() },
+  component: AccountLayout,
+  children: [
+    { path: '', identifier: 'ACCOUNT_OVERVIEW', component: AccountOverview },
+    { path: 'settings', identifier: 'ACCOUNT_SETTINGS', component: AccountSettings },
+  ],
 }
 ```
 
-At `/account`, the layout's outlet shows the overview. At `/account/settings`, it shows settings.
-Query parameters and fragments do not affect this choice. Without `exactMatch`, the outlet is
-empty at the layout's own URL. On a componentless route, content uses the enclosing outlet.
-The same rule works at the root and on leaves.
-
-An exact match contains one `component`, `loadComponent`, or `redirectTo`. Content accepts the
-usual `angular` options. A redirect receives accumulated state and returns a definite `UrlTree`;
-its Angular options are limited to `canMatch`, `providers`, and `data`.
-
-```ts
-exactMatch: {
-  redirectTo: ({ path, query }) => chooseDestination(path, query),
-}
-```
-
-The callback above represents application code returning a `UrlTree`. Unlike a terminal redirect,
-an exact-match redirect leaves deeper destinations accessible.
-
-Parameters, equality, and navigation belong to the named route. `exactMatch` cannot declare its
-own path, parameters, children, or state. Wildcards and terminal redirects cannot use it.
-
-Angular receives a private empty child with full matching. Guards and providers on `exactMatch`
-belong to that child. A guarded redirect adds another private child because Angular does not allow
-`canMatch` directly on a redirect. If an exact-match guard rejects, Angular can try other children,
-including a local wildcard.
+At `/account/7`, Angular activates the empty-path child and the account route. `ACCOUNT` and
+`ACCOUNT_OVERVIEW` are both active; `activeRoute()` reports the deeper candidate. At
+`/account/7/settings`, `ACCOUNT_SETTINGS` is deeper. The empty child constructs the same URL as its
+parent.
 
 ## Angular options
 
-Put component and activation options under `angular`:
+Put Angular component and activation options directly on each route:
 
 ```ts
-angular: {
-  loadComponent: () => import('./user-page').then(m => m.UserPage),
-  canActivate: [requireSession],
-  title: 'User',
-}
+loadComponent: () => import('./user-page').then(m => m.UserPage),
+canActivate: [requireSession],
+title: 'User',
 ```
 
-Supported fields are `component`, `loadComponent`, `canMatch`, `canActivate`, `canActivateChild`,
-`canDeactivate`, `resolve`, `data`, `title`, `providers`, and `runGuardsAndResolvers`.
-Choose either `component` or `loadComponent`. ngx-urlik forwards these options to Angular.
+Angular's `Route` fields are forwarded to Router. ngx-urlik uses `identifier`, `pathParam`,
+`queryParams`, and `isEqual` as typed-router metadata. Choose `component` or `loadComponent` as
+Angular requires. Redirects, wildcards, matchers, and named outlets are supported only on
+anonymous routes.
 
 ## Codecs and placement
 
@@ -127,18 +104,26 @@ interface UrlParamCodec<T> {
 `null` means conversion failed. The value type `T` cannot contain `null` or `undefined`.
 Codecs are pure; calling Angular `inject()` inside them is unsupported.
 
-The same codec can be used in different positions:
+The same codec can configure a path placeholder or a query field:
 
 ```ts
 const id = stringCodec();
-pathParam({ name: 'userId', codec: id });
-queryParam({ codec: id });
-repeatedQueryParam({ codec: id });
-delimitedQueryParam({ codec: id, separator: ',' });
+const route = {
+  path: 'users/:userId',
+  identifier: 'USER',
+  pathParam: { codec: id },
+  queryParams: {
+    search: queryParam({ codec: id }),
+    tags: repeatedQueryParam({ codec: id }),
+    ids: delimitedQueryParam({ codec: id, separator: ',' }),
+  },
+};
 ```
 
-The wrapper sets URL policy. Path parameters name required segments. Query parameters can specify
-`defaultValue` and `required`. Array wrappers choose how several values share a query key.
+For one placeholder, `pathParam` can be `{ codec }` or `{ userId: { codec } }`. For several
+placeholders, use a keyed map with exactly one codec entry per placeholder. The path supplies each
+parameter name. Query definitions can specify `defaultValue` and `required`; array definitions
+choose how several values share a query key.
 
 ### Built-in scalar semantics
 
@@ -191,7 +176,7 @@ its non-null value type. Path parameters are always required and non-null.
 ## Deterministic construction
 
 ```ts
-const user = inject(AppRouter).ROOT.USER;
+const user = inject(AppRouter).routes.USER;
 const link = user.createUrlTree({ path: { userId: '42' }, fragment: 'profile' });
 await user.navigate({ path: { userId: '42' } }, { replaceUrl: true });
 ```
@@ -214,7 +199,7 @@ there is no library-specific link directive.
 ## Reactive state and updates
 
 ```ts
-const results = inject(AppRouter).ROOT.RESULTS;
+const results = inject(AppRouter).routes.RESULTS;
 const query = computed(() => results.params().query);
 
 await results.patchQuery({ search: 'elm', page: 1 });
@@ -342,8 +327,8 @@ A component shared by several routes can name the routes it supports:
 
 ```ts
 const detail = router.activeRoute({
-  movie: router.ROOT.MOVIE,
-  episode: router.ROOT.EPISODE,
+  movie: router.routes.MOVIE,
+  episode: router.routes.EPISODE,
 });
 
 const current = detail();
@@ -356,9 +341,9 @@ The result is a readonly signal containing `route`, `node`, and `params`. The al
 other two fields. The deepest active named candidate wins, regardless of declaration order.
 Aliases for the same node use the first declared alias.
 
-Candidates must be generated stateful nodes. Redirects and private exact-match children cannot
-be selected. Reading while no candidate is active throws. This keeps a shared component's
-contract limited to the routes it understands.
+Candidates must be generated identified nodes. Anonymous Angular routes cannot be selected.
+Reading while no candidate is active throws. This keeps a shared component's contract limited to
+the routes it understands.
 
 ## Equality
 
@@ -377,22 +362,23 @@ on `defineAppRouter` with `diagnostics: { warn }`; the default uses `console.war
 
 `AppRouterDiagnostic` contains `code`, `message`, `route`, `parameter`, and `operation`, plus
 `index` and `cause` when available. Codes are `PARAM_DESERIALIZE_FAILED`, `PARAM_SERIALIZE_FAILED`,
-`PARAM_CODEC_THROWN`, and `INVALID_ARRAY_REPRESENTATION`. The route is the full identity, such as
-`ROOT.ADMIN.DETAIL`. Global reads use `globalQueryParams` as their source.
+`PARAM_CODEC_THROWN`, and `INVALID_ARRAY_REPRESENTATION`. The route field contains the identifier,
+such as `ADMIN_DETAIL`. Global reads use `globalQueryParams` as their source.
 
-Codec exceptions are caught and treated as invalid data. Errors from consumer callbacks, such
-as default factories and redirects, propagate. Invalid active path values and inactive route
-reads throw because there is no valid state to return.
+Codec exceptions are caught and treated as invalid data. Errors from default factories propagate.
+Invalid active path values and inactive route reads throw because there is no valid state to return.
 
-`defineAppRouter()` also validates the tree and throws all structural errors together. TypeScript
-checks local shapes and usage; runtime validation checks relationships such as shadowed names,
-duplicate sibling paths, and wildcard placement. See the [validation decision](../adr/0009-structural-route-diagnostics.md).
+`defineAppRouter()` validates identified route chains and throws structural errors together.
+Runtime validation checks unique identifiers, known paths, path codec maps, repeated parameter
+names, and duplicate query definitions along those chains. Angular validates and matches its route
+configuration. See the [validation decision](../adr/0009-structural-route-diagnostics.md).
 
 ## Angular runtime relationship
 
 `provideAppRouter(...features)` returns `EnvironmentProviders` that register the routes and typed
-token. Set router options on `defineAppRouter({ routerConfig })`. Parameter inheritance is always
-`'always'`; passing `withRouterConfig()` to the provider is rejected.
+token. Set router options on `defineAppRouter({ routerConfig })`; this preserves Angular's router
+configuration, including its parameter inheritance strategy. Passing `withRouterConfig()` to the
+provider is rejected.
 
 For native addressing outside the typed tree, use `router.escapeHatch`:
 

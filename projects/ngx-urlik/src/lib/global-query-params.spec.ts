@@ -1,7 +1,8 @@
 import { Component, computed, inject, InjectionToken, isSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { AppRouterDiagnostic, defineAppRouter } from './app-router';
+import { AppRouterDiagnostic } from './app-router';
+import { defineLegacyAppRouter as defineAppRouter } from './legacy-app-router.spec-helper';
 import {
   delimitedQueryParam,
   numberCodec,

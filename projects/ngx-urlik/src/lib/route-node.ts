@@ -19,9 +19,10 @@ import { QueryWriteCoordinator, registerQueryBinding } from './query-write-coord
 import { QueryDefinitions } from './route-definition';
 import { ReportParameterFailure } from './route-diagnostics';
 import { createParameterReader, createParameterSerializer } from './route-params-runtime';
+import { routeNodeInfo } from './route-symbols';
 import type { AnyRecord, Simplify } from './type-utils';
 
-export const routeNodeInfo: unique symbol = Symbol('ngx-urlik route node');
+export { routeNodeInfo } from './route-symbols';
 
 export type UrlParamsState<P, Q> = Readonly<{
   path: Readonly<Simplify<P>>;

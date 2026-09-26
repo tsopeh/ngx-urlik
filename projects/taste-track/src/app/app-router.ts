@@ -1,11 +1,10 @@
 import { inject } from '@angular/core';
-import type { UrlTree } from '@angular/router';
+import { Router } from '@angular/router';
 import {
   defineAppRouter,
   delimitedQueryParam,
   enumCodec,
   numberCodec,
-  pathParam,
   queryParam,
   repeatedQueryParam,
   stringCodec,
@@ -45,114 +44,139 @@ const loadSection = () => import('./section-page').then((module) => module.Secti
 const loadCatalog = () => import('./catalog-page').then((module) => module.CatalogPage);
 const loadDetail = () => import('./detail-page').then((module) => module.DetailPage);
 
+const redirectToMovies = ({ queryParams }: { queryParams: Record<string, unknown> }) =>
+  inject(Router).createUrlTree(['/screen/movies'], { queryParams });
+
 export const { AppRouter, provideAppRouter } = defineAppRouter({
-  routes: {
-    ROOT: {
+  routes: [
+    {
       path: '',
-      angular: { loadComponent: loadShell },
-      exactMatch: { redirectTo: redirectToMovies },
-      children: {
-        SCREEN: {
+      loadComponent: loadShell,
+      children: [
+        { path: '', pathMatch: 'full', redirectTo: redirectToMovies },
+        {
           path: 'screen',
+          identifier: 'SCREEN',
           queryParams: catalogQueryParams(),
-          angular: { loadComponent: loadSection },
-          exactMatch: { redirectTo: redirectToMovies },
-          children: {
-            MOVIES: {
+          loadComponent: loadSection,
+          children: [
+            { path: '', pathMatch: 'full', redirectTo: redirectToMovies },
+            {
               path: 'movies',
-              exactMatch: { angular: { loadComponent: loadCatalog } },
-              children: {
-                DETAIL: {
-                  path: 'movie',
-                  pathParam: pathParam({ name: 'movieId', codec: prefixedIdCodec('mov') }),
-                  angular: { loadComponent: loadDetail },
+              children: [
+                {
+                  path: '',
+                  pathMatch: 'full',
+                  identifier: 'MOVIES',
+                  loadComponent: loadCatalog,
                 },
-              },
+                {
+                  path: 'movie/:movieId',
+                  identifier: 'MOVIE_DETAIL',
+                  pathParam: { codec: prefixedIdCodec('mov') },
+                  loadComponent: loadDetail,
+                },
+              ],
             },
-            SHOWS: {
+            {
               path: 'shows',
-              exactMatch: { angular: { loadComponent: loadCatalog } },
-              children: {
-                DETAIL: {
-                  path: 'show',
-                  pathParam: pathParam({ name: 'showId', codec: prefixedIdCodec('tv') }),
-                  exactMatch: { angular: { loadComponent: loadDetail } },
-                  children: {
-                    SEASONS: {
-                      path: 'seasons',
-                      angular: {
-                        loadComponent: () =>
-                          import('./seasons-page').then((module) => module.SeasonsPage),
-                      },
-                      children: {
-                        DETAIL: {
-                          path: 'season',
-                          pathParam: pathParam({
-                            name: 'seasonNumber',
-                            codec: positiveIntegerCodec(),
-                          }),
-                          exactMatch: { angular: { loadComponent: loadDetail } },
-                          children: {
-                            EPISODES: {
-                              path: 'episodes',
-                              exactMatch: { angular: { loadComponent: loadCatalog } },
-                              children: {
-                                DETAIL: {
-                                  path: 'episode',
-                                  pathParam: pathParam({
-                                    name: 'episodeNumber',
-                                    codec: positiveIntegerCodec(),
-                                  }),
-                                  angular: { loadComponent: loadDetail },
-                                },
-                              },
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
+              children: [
+                {
+                  path: '',
+                  pathMatch: 'full',
+                  identifier: 'SHOWS',
+                  loadComponent: loadCatalog,
                 },
-              },
+                {
+                  path: 'show/:showId',
+                  pathParam: { codec: prefixedIdCodec('tv') },
+                  children: [
+                    {
+                      path: '',
+                      pathMatch: 'full',
+                      identifier: 'SHOW_DETAIL',
+                      loadComponent: loadDetail,
+                    },
+                    {
+                      path: 'seasons',
+                      identifier: 'SEASONS',
+                      loadComponent: () =>
+                        import('./seasons-page').then((module) => module.SeasonsPage),
+                      children: [
+                        {
+                          path: 'season/:seasonNumber',
+                          pathParam: { codec: positiveIntegerCodec() },
+                          children: [
+                            {
+                              path: '',
+                              pathMatch: 'full',
+                              identifier: 'SEASON_DETAIL',
+                              loadComponent: loadDetail,
+                            },
+                            {
+                              path: 'episodes',
+                              children: [
+                                {
+                                  path: '',
+                                  pathMatch: 'full',
+                                  identifier: 'EPISODES',
+                                  loadComponent: loadCatalog,
+                                },
+                                {
+                                  path: 'episode/:episodeNumber',
+                                  identifier: 'EPISODE_DETAIL',
+                                  pathParam: { codec: positiveIntegerCodec() },
+                                  loadComponent: loadDetail,
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
             },
-          },
+          ],
         },
-        PEOPLE: {
+        {
           path: 'people',
-          exactMatch: {
-            angular: {
+          children: [
+            {
+              path: '',
+              pathMatch: 'full',
+              identifier: 'PEOPLE',
               loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
             },
-          },
-          children: {
-            DETAIL: {
-              path: 'profile',
-              pathParam: pathParam({ name: 'personId', codec: prefixedIdCodec('per') }),
-              angular: {
-                loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
-              },
+            {
+              path: 'profile/:personId',
+              identifier: 'PERSON_DETAIL',
+              pathParam: { codec: prefixedIdCodec('per') },
+              loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
             },
-          },
+          ],
         },
-        COMPANIES: {
+        {
           path: 'companies',
-          exactMatch: {
-            angular: {
+          children: [
+            {
+              path: '',
+              pathMatch: 'full',
+              identifier: 'COMPANIES',
               loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
             },
-          },
-          children: {
-            DETAIL: {
-              path: 'profile',
-              pathParam: pathParam({ name: 'companyId', codec: prefixedIdCodec('co') }),
-              angular: {
-                loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
-              },
+            {
+              path: 'profile/:companyId',
+              identifier: 'COMPANY_DETAIL',
+              pathParam: { codec: prefixedIdCodec('co') },
+              loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
             },
-          },
+          ],
         },
-        COLLECTION: {
+        {
           path: 'collection',
+          identifier: 'COLLECTION',
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
             media: delimitedQueryParam({ codec: mediaKindCodec, separator: ',' }),
@@ -165,13 +189,11 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
               defaultValue: { field: 'title', direction: 'asc' },
             }),
           },
-          angular: {
-            loadComponent: () =>
-              import('./collection-page').then((module) => module.CollectionPage),
-          },
+          loadComponent: () => import('./collection-page').then((module) => module.CollectionPage),
         },
-        ACTIVITY: {
+        {
           path: 'activity',
+          identifier: 'ACTIVITY',
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
             from: queryParam({ codec: stringCodec() }),
@@ -182,27 +204,18 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
               defaultValue: { field: 'date', direction: 'desc' },
             }),
           },
-          angular: {
-            loadComponent: () => import('./activity-page').then((module) => module.ActivityPage),
-          },
+          loadComponent: () => import('./activity-page').then((module) => module.ActivityPage),
         },
-        SETTINGS: {
+        {
           path: 'settings',
-          angular: {
-            loadComponent: () => import('./settings-page').then((module) => module.SettingsPage),
-          },
+          identifier: 'SETTINGS',
+          loadComponent: () => import('./settings-page').then((module) => module.SettingsPage),
         },
-        NOT_FOUND: {
+        {
           path: '**',
-          angular: {
-            loadComponent: () => import('./not-found-page').then((module) => module.NotFoundPage),
-          },
+          loadComponent: () => import('./not-found-page').then((module) => module.NotFoundPage),
         },
-      },
+      ],
     },
-  },
+  ],
 });
-
-function redirectToMovies(values: { query: object }): UrlTree {
-  return inject(AppRouter).ROOT.SCREEN.MOVIES.createUrlTree({ query: values.query })!;
-}

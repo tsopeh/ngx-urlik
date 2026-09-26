@@ -37,12 +37,6 @@ export interface ArrayQueryParamDefinition<T, Required extends boolean = false> 
 export type AnyQueryParamDefinition =
   QueryParamDefinition<unknown, boolean, boolean> | ArrayQueryParamDefinition<unknown, boolean>;
 
-export function pathParam<T, const Name extends string>(
-  options: { name: Name; codec: UrlParamCodec<T> } & NonNullish<T>,
-): PathParamDefinition<T, Name> {
-  return { kind: 'path', ...options };
-}
-
 type QueryOptions<T, Required extends boolean> = {
   codec: UrlParamCodec<T>;
   required?: Required;

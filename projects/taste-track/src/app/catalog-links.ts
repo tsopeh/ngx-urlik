@@ -8,11 +8,11 @@ export class CatalogLinks {
   item(item: CatalogItem) {
     switch (item.kind) {
       case 'movie':
-        return this.routes.ROOT.SCREEN.MOVIES.DETAIL.createUrlTree({ path: { movieId: item.id } });
+        return this.routes.routes.MOVIE_DETAIL.createUrlTree({ path: { movieId: item.id } });
       case 'show':
-        return this.routes.ROOT.SCREEN.SHOWS.DETAIL.createUrlTree({ path: { showId: item.id } });
+        return this.routes.routes.SHOW_DETAIL.createUrlTree({ path: { showId: item.id } });
       case 'episode':
-        return this.routes.ROOT.SCREEN.SHOWS.DETAIL.SEASONS.DETAIL.EPISODES.DETAIL.createUrlTree({
+        return this.routes.routes.EPISODE_DETAIL.createUrlTree({
           path: {
             showId: item.showId,
             seasonNumber: item.seasonNumber,
@@ -23,7 +23,7 @@ export class CatalogLinks {
   }
   contributor(contributor: Contributor) {
     return contributor.kind === 'person'
-      ? this.routes.ROOT.PEOPLE.DETAIL.createUrlTree({ path: { personId: contributor.id } })
-      : this.routes.ROOT.COMPANIES.DETAIL.createUrlTree({ path: { companyId: contributor.id } });
+      ? this.routes.routes.PERSON_DETAIL.createUrlTree({ path: { personId: contributor.id } })
+      : this.routes.routes.COMPANY_DETAIL.createUrlTree({ path: { companyId: contributor.id } });
   }
 }
