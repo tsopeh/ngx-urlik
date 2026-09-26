@@ -1,17 +1,15 @@
-# ADR 0014: Keep exact-path behavior on the named route
+# 0014: Give a layout and its landing page one route identity
 
-Status: accepted. Supersedes ADR 0013's public index routes; preserves deepest active selection.
+At `/account`, a layout may show an overview. At `/account/settings`, the same layout shows settings.
+The overview needs a place to render, but it does not need a separate public address.
 
-Only the application root may have an empty path. Ordinary routes use `exactMatch` to select
-content or a redirect at their own exact path. Angular components on the containing route
-retain their usual layout semantics. The compiler generates a private full-match child,
-without another public route identity. This preserves simple page rendering while keeping
-navigation and state attached to meaningful named routes.
+`exactMatch` puts that landing content on the named account route. The compiler creates a private
+full-match child for Angular's outlet. Navigation, parameters, and equality stay on the named route,
+which remains active while its descendants are active.
 
-Parameters and equality remain on the named route, whose state stays readable on descendants.
-Exact content may have its own Angular guards, resolvers, providers, data and title; exact
-redirects retain the existing narrower Angular options and typed accumulated input. Neither
-variant introduces parameters, children, or an independently observable node. This deliberately
-gives up exact-page-only parameter ownership from public indexes. The same configuration
-works at application root, on componentless branches, and on leaves. Existing terminal
-redirects and wildcards remain separate kinds and reject `exactMatch`.
+Exact-match content can have its own Angular guards, providers, resolvers, data, and title. It can
+also be a redirect with the narrower redirect options. It cannot add parameters, children, or a
+separate state signal. This keeps one identity for one destination.
+
+Only the root may declare an empty path. `exactMatch` works on roots, componentless routes, and
+leaves; terminal redirects and wildcards cannot use it.

@@ -1,19 +1,16 @@
-# ADR 0004: Keep a clear Angular runtime boundary
+# 0004: Let Angular run the router
 
-Status: accepted.
+Angular already handles matching, guards, activation, browser history, and URL encoding.
+ngx-urlik supplies the typed route definitions and state reads. It uses Angular for navigation.
 
-## Decision
+The `angular` object groups the options that pass through to Angular, such as components,
+guards, resolvers, and providers. The extra nesting makes ownership visible: ngx-urlik describes
+the address; Angular decides how to activate it.
 
-Angular Router remains the matching and navigation engine. `provideAppRouter(...features)` supplies generated routes and forwards supported Angular router features. The native `Router` remains technically injectable, but application code is expected to use `AppRouter`; selected native operations are provided through its bounded `escapeHatch`.
+`provideAppRouter()` registers the generated routes and forwards supported router features.
+Router configuration belongs on `defineAppRouter({ routerConfig })`. The library sets
+`paramsInheritanceStrategy` to `'always'` so children can read accumulated parent parameters.
+It rejects a separate `withRouterConfig()` feature that could override that rule.
 
-Angular-owned per-route fields are grouped under an `angular` object. ngx-urlik owns `path`, `pathParam`, `queryParams`, `children`, `redirectTo`, fallback semantics, and equality. The supported Angular subset includes components, guards, resolvers, data, title, providers, and guard/resolver rerun behavior. Redirects receive the narrower `canMatch`, `providers`, and `data` subset.
-
-Router configuration belongs on `defineAppRouter({ routerConfig })`. The library forces `paramsInheritanceStrategy: 'always'` and rejects `withRouterConfig()` passed to `provideAppRouter`.
-
-## Rationale
-
-The nested object makes framework ownership visible and lets the compiler forward Angular capabilities as one unit. Reusing Angular preserves directives, SSR behavior, activation, history, location strategy, parsing, and encoding without recreating a second runtime router.
-
-## Consequences
-
-Route definitions have one additional nesting level for component and guard configuration. Consumers can still bypass typed safety by injecting Angular Router; runtime exclusivity is intentionally unenforced. A future ESLint rule may enforce the application boundary statically.
+The native `Router` remains injectable. Applications use the generated router for typed work and
+its `escapeHatch` for the supported native operations.

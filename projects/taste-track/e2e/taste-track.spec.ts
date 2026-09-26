@@ -187,7 +187,7 @@ test('browser back cancels a staged search instead of replaying it on forward', 
     .getByRole('link', { name: /History/ })
     .click();
   const search = page.getByRole('searchbox', { name: 'Search history' });
-  // Trigger input and history in the same browser task, before the debounce can emit.
+  // Start the input and history change in one browser task, before debounce emits the value.
   await search.evaluate((element: HTMLInputElement) => {
     element.value = 'stale';
     element.dispatchEvent(new Event('input', { bubbles: true }));

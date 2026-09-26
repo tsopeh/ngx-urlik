@@ -1,111 +1,97 @@
-# Domain glossary
+# Glossary
 
-**AppRouter** — The application-specific injection token returned by `defineAppRouter()`, and colloquially the typed route tree obtained by injecting it.
+These names are used in the code and design notes.
 
-**Route definition** — A plain object in the complete static route tree. Ordinary, redirect, and fallback routes are discriminated by their fields.
+## Routes
 
-**Route identity** — The stable object key used in a chain such as `ROOT.WORKSPACE`. It is independent of the URL path; uppercase is only a convention.
+**AppRouter** — The injection token returned by `defineAppRouter()`. Inject it to get the application's typed route tree.
 
-**Complete route identity** — The dot-separated chain of route identities from the generated router root to a node, such as `ROOT.ADMIN.DETAIL`. Diagnostics use the complete identity so repeated leaf identities in different branches remain unambiguous.
+**Route definition** — The plain object that declares a route's path, parameters, children, and Angular options.
 
-**Exact-match behavior** — Content or a redirect selected by `exactMatch` at a named route’s own exact path. It has no separate public identity; parameters and navigation belong to the named route.
+**Route identity** — The object key used in code, such as `WORKSPACE`. It is independent of the URL segment. Uppercase is a convention.
 
-**Route node** — One property in the generated typed router tree. Ordinary nodes expose construction, navigation, and state; redirect and fallback nodes expose reduced capabilities.
+**Complete route identity** — The full name, such as `ROOT.ADMIN.DETAIL`, used to identify a route in diagnostics.
 
-**Route chain** — The ordered root-to-node ancestry. Parameter definitions and equality configuration accumulate along it.
+**Route node** — A generated object used to construct a destination, navigate, or read and patch state. Redirect and fallback nodes expose fewer operations.
 
-**Static segment** — The literal URL segment contributed by a route's `path`.
+**Route chain** — A node and its ancestors, from the root down. Parameters and equality settings follow this chain.
 
-**Fallback route** — A branch-scoped route identified by `path: '**'`. It can observe state but has no canonical URL to construct.
+**Static segment** — The literal part of a route's `path`.
 
-**Angular options** — The supported Angular-owned route fields grouped under a definition's `angular` property and forwarded to Angular Router.
+**Exact-match behavior** — The content or redirect selected at a named route's own URL. It has no separate public identity.
 
-**URL parameter codec** — A pure, reusable `UrlParamCodec<T>` converting between one decoded string and a non-null domain value. `null` signals invalid conversion. Calling Angular `inject()` inside a codec is unsupported.
+**Fallback route** — A `path: '**'` route for unmatched paths in a branch. It has state but no single destination to construct.
 
-**Parameter definition** — A placement wrapper combining a codec with path/query policy. The wrappers are `pathParam`, `queryParam`, `repeatedQueryParam`, and `delimitedQueryParam`.
+**Angular options** — Component and activation settings under `angular`, forwarded to Angular Router.
 
-**Path parameter** — The optional single dynamic segment contributed after a route's static segment. It is required for construction and non-null when successfully resolved.
+## Parameters
 
-**Scalar query parameter** — A query property defined by `queryParam`. When a physical key repeats, the final value wins.
+**URL parameter codec** — A pure converter between one decoded string and a non-null value. `null` reports failed conversion.
 
-**Repeated query parameter** — An array parameter represented by repeated physical keys, such as `?tag=a&tag=b`.
+**Parameter definition** — A codec combined with path or query policy through `pathParam`, `queryParam`, `repeatedQueryParam`, or `delimitedQueryParam`.
 
-**Delimited query parameter** — An array parameter represented by one physical key, such as `?tag=a,b`. Elements receive an inner URI-encoding layer before joining.
+**Path parameter** — The dynamic segment after a route's static segment. Construction requires its value.
 
-**Accumulated parameters** — The union of all path and query definitions from the root through a selected node.
+**Scalar query parameter** — One value from a query key. If the key repeats, the last value wins.
 
-**Owned query schema** — The accumulated query keys visible at a selected node. Updates replace or remove these keys while preserving descendant-only and unknown keys.
+**Repeated query parameter** — An array stored as repeated keys, such as `?tag=a&tag=b`.
 
-**Required query input** — A query property marked `{ required: true }` that construction callers must explicitly provide. It does not require a physical key: `null` and `[]` remain valid explicit decisions.
+**Delimited query parameter** — An array stored under one key, such as `?tag=a,b`. Items receive their own encoding before joining.
 
-**Default value** — A value or injection-aware synchronous factory used for missing or malformed query input. Values equal to the current default are omitted from canonical URLs.
+**Accumulated parameters** — All path and query definitions from a node and its ancestors.
 
-**URL parameters** — The combined `{ path, query }` typed state returned by a route node's `urlParams()` reference.
+**Owned query schema** — The accumulated query fields a node can read and patch.
 
-**UrlParamsRef** — A stable, readonly signal-oriented view of one route node's accumulated state plus `updateQueryParams()`.
+**Required query input** — A field marked `required: true` that callers must supply during construction. It does not require a physical URL key.
 
-**Query form binding** — An injection-context-owned synchronization between one active route node's
-accumulated query state and an Angular Reactive Form or Signal Form. Path parameters are not part of
-the binding.
+**Default value** — A value, or synchronous injection-aware factory, used for missing or malformed query input. Values equal to the default are omitted from constructed URLs.
 
-**Query write stream** — The typed RxJS stream of per-parameter form changes that a query form
-binding may transform before values are written to the URL.
+## State and writes
 
-**External URL update** — A successful navigation not originated by the current query form binding.
-It is authoritative: staged form writes are cancelled and the form is reset to the URL value as a
-new pristine baseline.
+**URL parameters** — The `{ path, query }` value read from a route's `params` signal.
 
-**Typed activation context** — A signal-oriented discriminated union identifying which member of an explicitly selected set of stateful route nodes is active, together with the exact node and its typed accumulated parameters.
+**Query patch** — A partial query object, or a function returning one from committed state. Omitted and `undefined` fields stay unchanged.
 
-**Activation candidate set** — The alias-to-route-node object supplied to `AppRouter.activeRoute()`. Its aliases become the discriminants of the resulting typed activation context. The deepest active named node wins; aliases of the same node retain declaration order.
+**Query form binding** — Synchronization between an active route's query state and an Angular form. The form holds the draft; the URL holds committed state.
 
-**Deterministic construction** — Creating an absolute target solely from the selected route and supplied values, without inheriting the current URL.
+**Query write stream** — Per-field form changes passed through `transformWrites` before submission to the URL write queue.
 
-**Construction fragment** — An optional typed `string | null` anchor supplied when constructing or navigating to a typed route. It is construction-only: it is not part of declared parameter state and does not appear in `urlParams()`.
+**External URL update** — Navigation outside the shared query-write coordinator, including browser history. It cancels waiting writes and staged form edits when it starts.
 
-**Escape hatch** — The bounded `AppRouter.escapeHatch` object exposing selected native Angular route-addressing operations and readonly observations. It marks an intentional departure from typed route construction without exposing the complete native `Router`.
+**Typed activation context** — The alias, node, and parameter state selected by `activeRoute()`. The alias narrows the types of the other fields.
 
-**Recoverable parameter failure** — Invalid query input, failed query serialization, or a codec exception. It emits an `AppRouterDiagnostic` and uses absence/default semantics rather than throwing.
+**Activation candidate set** — The alias-to-node map supplied to `activeRoute()`. The deepest active named candidate wins.
 
-**Semantic state error** — An attempt to read an inactive route or an invalid active path parameter. These are the only library-owned runtime parameter-state errors that throw.
+**Deterministic construction** — Building an absolute destination from the selected node and supplied values, without borrowing current URL state.
 
-**Structural validation** — Aggregated synchronous validation performed by `defineAppRouter()` without executing codecs or default factories.
+**Construction fragment** — The optional string or `null` anchor supplied to construction or navigation. It is not part of `params()`.
 
-## TasteTrack demo domain
+## Errors and native operations
 
-**TasteTrack** — The browser-local demonstration application for organizing screen, music, and
-theatre catalog data and recording one anonymous profile's experiences.
+**Escape hatch** — The `AppRouter.escapeHatch` object for supported native addressing methods and navigation observations.
 
-**Catalog item** — Readonly seeded metadata for a movie, show, episode, album, song, theatre work,
-production, or performance. Each kind remains a first-class entity rather than a generic media-item
-subtype.
+**Recoverable parameter failure** — Bad query data, failed serialization, or a codec exception handled with a diagnostic and fallback behavior.
 
-**Media summary** — A shared projection used when different catalog-item kinds appear together in
-search, collection, dashboard, or activity views.
+**Semantic state error** — Reading an inactive route or an invalid active path. These reads throw because there is no valid parameter state to return.
 
-**Person** — A contributor who may receive role-specific credits across screen, music, and theatre.
+**Structural validation** — Checks performed by `defineAppRouter()` on the full tree, without running codecs or default factories. Errors are reported together.
 
-**Group** — A credited band, orchestra, ensemble, theatre company, or production company.
+## TasteTrack
 
-**Theatre work** — The underlying play or musical independent of any particular staging.
+**TasteTrack** — The browser-local movie and TV journal used to demonstrate the library.
 
-**Production** — One staging of a theatre work by a particular company and creative team.
+**Catalog item** — Readonly metadata for a movie, show, or episode.
 
-**Performance** — One dated occurrence of a production at a venue. Theatre attendance records refer
-to performances.
+**Season** — A numbered set of episodes belonging to a show. Episode addresses include the show ID, season number, and episode number.
 
-**Personal state** — The editable status, favorite marker, rating, notes, experience count, and tags
-associated with a catalog item in the local profile.
+**Contributor** — A person or production company credited on a title.
 
-**Journal event** — A dated movie watch, episode watch, album listen, song listen, or theatre
-attendance. Events may include a rating and note and do not replace an item's overall rating.
+**Credit** — A contributor's role on a title: actor, director, writer, or production.
 
-**Experience count** — Either an exact non-negative number or the reversible `countless` value,
-displayed as “More than I can count.” Dated journal events may describe only part of the aggregate
-experience history.
+**Personal state** — An item's editable status, favorite marker, rating, and experience count.
 
-**Collection status** — The shared `saved`, `in-progress`, `completed`, `paused`, or `abandoned`
-state. TasteTrack presents medium-specific labels such as Watchlist, Listen later, or Want to attend.
+**Journal event** — A dated viewing with an optional rating. Its rating is separate from the item's overall rating.
 
-**Personal tag** — A reusable browser-local label with a name and color. Unlike seeded genres, it
-describes the profile's relationship with catalog items.
+**Experience count** — An exact non-negative number or `countless`. Dated events may account for only part of it.
+
+**Collection status** — Saved, in progress, or completed.

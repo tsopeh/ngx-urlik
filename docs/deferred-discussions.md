@@ -1,19 +1,22 @@
-# Deferred discussions
+# Open questions
 
-These topics were deliberately left for later rather than implicitly rejected forever:
+These ideas are outside the implemented contract. Add one when a real use case justifies its
+cost in concepts, types, and runtime behavior.
 
-- Supported Angular version range beyond the current Angular 22 target.
-- Migration and release compatibility policy for future releases.
-- Comparator-specific `urlParams()` reference caching.
-- Updating query parameters through `globalQueryParams()` references; the accepted initial API is read-only (ADR 0012).
-- Expanding `isEqual()` for cycles, `Map`, `Set`, and other specialized values.
-- Broader runtime validation of custom codec domain values beyond checking serialized output.
-- Built-in date and other structured codecs beyond repeated and delimited arrays.
-- Query-key aliases distinct from logical TypeScript property names.
-- Revisit whether `escapeHatch.events`, `currentNavigation`, `lastSuccessfulNavigation`, `navigated`, and related observations should remain native-shaped or receive a smaller first-party model.
-- Relative navigation remains confined to the escape hatch; fragments are supported only as typed, construction-only values unless concrete state-modeling needs emerge.
-- Named outlets, custom matchers, matrix parameters, empty child routes, and lazy route definitions.
-- More navigation/update behavior options if concrete use cases require them.
-- Development diagnostic and tracing facilities beyond the current validation errors.
-- Optional ESLint rules warning when application code bypasses the typed API through Angular `Router` or raw route constructs.
-- Whether route-level equality callbacks can receive perfectly inferred accumulated state in all recursive TypeScript contexts; the desired public contract remains fully typed.
+| Question                                                                           | Current choice                                                                             |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Support other Angular versions?                                                    | The library targets Angular 22.                                                            |
+| Let global observers write?                                                        | They return readonly signals. Route nodes own query writes.                                |
+| Compare cycles, maps, sets, and other collections?                                 | `isEqual` covers ordinary values, arrays, dates, and objects.                              |
+| Validate custom domain values more deeply?                                         | Codecs own conversion; the runtime checks their serialized output.                         |
+| Add date or structured codecs?                                                     | Applications supply custom codecs.                                                         |
+| Separate TypeScript query names from URL keys?                                     | Each property name is also its URL key.                                                    |
+| Give native navigation observations a smaller interface?                           | The escape hatch uses Angular's shapes.                                                    |
+| Read fragments or support typed relative navigation?                               | Fragments are construction-only; relative navigation uses the escape hatch.                |
+| Support outlets, matchers, matrix parameters, empty children, or lazy route trees? | Typed routes use one static tree and the primary outlet.                                   |
+| Expose more write options?                                                         | Query patches accept `replaceUrl`.                                                         |
+| Add tracing or editor diagnostics?                                                 | Runtime validation and parameter diagnostics are available.                                |
+| Warn about bypassing the typed router?                                             | There is no library ESLint rule.                                                           |
+| Infer accumulated state in route equality callbacks?                               | Equality callbacks currently receive `unknown`; construction and state reads are inferred. |
+
+The [reference](design/app-router.md) describes what callers can rely on today.

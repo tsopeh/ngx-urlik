@@ -1,26 +1,17 @@
-# ADR 0002: Separate codecs, placement, presence, and cardinality
+# 0002: Reuse codecs across parameter kinds
 
-Status: accepted.
+A number means the same thing in a path, a query field, or an array. A codec handles that conversion
+once: one string to one value, and back. It returns `null` when conversion fails. Its value type
+cannot contain `null` or `undefined`.
 
-## Decision
+The parameter definition decides where the value goes and what absence means. `pathParam` names
+a required segment. `queryParam` describes one value. `repeatedQueryParam` and
+`delimitedQueryParam` describe arrays with different URL representations.
 
-Pure `UrlParamCodec<T>` values convert one decoded string to or from a non-null domain value. Codecs are reusable and do not support Angular injection. The built-ins are `stringCodec()`, `numberCodec()`, `booleanCodec()`, and `enumCodec()`.
+This separation lets a custom codec work in each position. Codecs stay pure; query defaults can
+use Angular injection. Defaults and `required` belong to the parameter definition because they
+describe URL policy, not string conversion.
 
-Placement wrappers own URL policy:
-
-- `pathParam({ name, codec })` defines a required dynamic segment.
-- `queryParam({ codec, ... })` defines a scalar query property.
-- `repeatedQueryParam({ codec, ... })` defines an array using repeated physical keys.
-- `delimitedQueryParam({ codec, separator, ... })` defines an array using one delimited physical key.
-
-`null` and `undefined` are forbidden in codec value types. Optional scalar query state introduces `null`; array state uses `[]` for absence. Required query input controls construction-property presence independently from physical URL presence. Defaults may be values or injection-aware synchronous factories and are canonically omitted.
-
-## Rationale
-
-The earlier path/query-specific helper families duplicated scalar parsing and prevented natural composition into collections. Orthogonal codecs and placement wrappers reduce the conceptual surface while making custom values reusable. Stable defined state aligns with Angular Signal Forms, where `undefined` means a field is absent.
-
-Repeated and delimited arrays remain separate because they are materially different wire contracts. Delimited values URI-encode each item before joining so separator collisions are unambiguous.
-
-## Consequences
-
-The previous `stringPathParam`, `stringQueryParam`, and corresponding number, boolean, and enum families are removed. Array defaults resolve to `readonly T[]`; one malformed item invalidates the entire collection. Scalar duplicate keys use the last physical value. Delimited parameters reject repeated physical keys.
+Repeated and delimited arrays remain separate choices. `?tag=a&tag=b` and `?tag=a,b` need different
+encoding rules. A malformed element rejects the whole array, so callers never receive a silently
+shortened result. See [parameter rules](../design/app-router.md#codecs-and-placement).

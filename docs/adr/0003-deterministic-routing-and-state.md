@@ -1,26 +1,18 @@
-# ADR 0003: Make construction deterministic and parameter failures recoverable
+# 0003: Separate building a destination from editing the URL
 
-Status: accepted.
+A link to a search page should mean the same thing wherever it is rendered. `createUrlTree()`
+and `navigate()` therefore use only the values supplied by the caller. They build absolute URLs.
 
-## Decision
+`patchQuery()` edits the current URL. It merges the supplied fields and preserves the path,
+fragment, and unrelated query fields. A function can compute its patch from the latest committed
+query when its turn in the queue starts.
 
-`createUrlTree()` and `navigate()` always build absolute targets from explicit accumulated values. They never inherit current query state. `urlParams()` returns readonly signal state, while `updateQueryParams()` performs complete functional query updates scoped to the selected node.
+Both operations live on the route node, beside its readonly `params` signal. Equality controls
+when that signal notifies readers. Writes read fresh state even when equality retains an older
+signal value.
 
-Parameter data failures are recoverable and reported through structured `AppRouterDiagnostic` values. Diagnostics are configurable on `defineAppRouter` and default to `console.warn`.
-
-- Invalid query reads use their current default, `null`, or `[]`.
-- Invalid query construction omits the complete property and continues.
-- Codec exceptions are caught, warned, and treated as invalid parameter data.
-- Invalid path construction makes `createUrlTree()` return `null`; `navigate()` resolves `false` without calling Angular.
-- Reading inactive route state or an invalid active path remains a semantic error and throws.
-- Exceptions from consumer callbacks such as default factories and redirects remain consumer-owned and propagate.
-
-## Rationale
-
-Pure construction is predictable in components, services, guards, and templates. Malformed external URL data and imperfect construction values should not crash an application when a safe absence behavior exists. Path construction is explicitly nullable because inventing a valid segment would be dishonest.
-
-Structured diagnostics preserve visibility without coupling applications to console text. Redirect callbacks still require a definite `UrlTree`; application code must explicitly choose a fallback when typed construction returns `null`.
-
-## Consequences
-
-Consumers must account for `UrlTree | null` from construction. Angular's `routerLink` accepts the null-like no-target state. Query update remains functional and complete-state only. Concurrent updates are not queued and must be awaited when ordering matters.
+Malformed query input can fall back to an absent value or default. A malformed path cannot name
+a destination, so construction returns `null` and navigation resolves `false`. Reading an inactive
+route or an invalid active path throws. These distinctions let the library recover where it can
+without inventing a route. The [reference](../design/app-router.md#diagnostics-and-errors) gives the
+full error rules.
