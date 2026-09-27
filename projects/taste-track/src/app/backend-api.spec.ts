@@ -2,10 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { ActivityApiService } from './activity-api';
-import { CatalogApiService } from './catalog-api';
-import { CollectionApiService } from './collection-api';
-import { ContributorApiService } from './contributor-api';
+import { BackendApi } from './backend-api';
 import { TasteTrackRepository } from './database';
 import type { CatalogItem, PersonalState } from './domain';
 import { tasteTrackSeed } from './seed';
@@ -79,27 +76,24 @@ class MockTasteTrackRepository {
   }
 }
 
-describe('TasteTrack API services', () => {
+describe('BackendApi', () => {
   function setup() {
     TestBed.configureTestingModule({
       providers: [{ provide: TasteTrackRepository, useClass: MockTasteTrackRepository }],
     });
 
     const repository = TestBed.inject(TasteTrackRepository) as unknown as MockTasteTrackRepository;
-    const catalogApi = TestBed.inject(CatalogApiService);
-    const collectionApi = TestBed.inject(CollectionApiService);
-    const activityApi = TestBed.inject(ActivityApiService);
-    const contributorApi = TestBed.inject(ContributorApiService);
+    const api = TestBed.inject(BackendApi);
 
-    return { repository, catalogApi, collectionApi, activityApi, contributorApi };
+    return { repository, api };
   }
 
-  describe('CatalogApiService', () => {
+  describe('catalog queries', () => {
     it('returns an observable that resolves asynchronously', async () => {
-      const { catalogApi } = setup();
+      const { api } = setup();
       let resolvedSynchronously = false;
 
-      const obs$ = catalogApi.getCatalog({
+      const obs$ = api.getCatalog({
         route: 'movies',
         search: '',
         genres: [],
@@ -112,8 +106,7 @@ describe('TasteTrack API services', () => {
         resolvedSynchronously = true;
       });
 
-      // Because the service enforces async resolution via delay(0),
-      // the synchronous call to subscribe must NOT immediately execute the next callback.
+      // Enforces async resolution via delay(0)
       expect(resolvedSynchronously).toBe(false);
 
       const response = await firstValueFrom(obs$);
@@ -122,10 +115,10 @@ describe('TasteTrack API services', () => {
     });
 
     it('filters movies by search and genres, and sorts them', async () => {
-      const { catalogApi } = setup();
+      const { api } = setup();
 
       const response = await firstValueFrom(
-        catalogApi.getCatalog({
+        api.getCatalog({
           route: 'movies',
           search: 'Algorithm',
           genres: [],
@@ -141,10 +134,10 @@ describe('TasteTrack API services', () => {
     });
 
     it('resolves item details including joined credits and season headings', async () => {
-      const { catalogApi } = setup();
+      const { api } = setup();
 
       const movieDetail = await firstValueFrom(
-        catalogApi.getItemDetail({
+        api.getItemDetail({
           route: 'movie',
           movieId: 'mov_the-last-algorithm',
         }),
@@ -156,7 +149,7 @@ describe('TasteTrack API services', () => {
       expect(movieDetail?.credits[0].person.name).toBeDefined();
 
       const showDetail = await firstValueFrom(
-        catalogApi.getItemDetail({
+        api.getItemDetail({
           route: 'season',
           showId: 'tv_only-mergers',
           seasonNumber: 2,
@@ -169,20 +162,20 @@ describe('TasteTrack API services', () => {
     });
 
     it('retrieves seasons for a show', async () => {
-      const { catalogApi } = setup();
+      const { api } = setup();
 
-      const seasons = await firstValueFrom(catalogApi.getSeasons('tv_only-mergers'));
+      const seasons = await firstValueFrom(api.getSeasons('tv_only-mergers'));
       expect(seasons.length).toBeGreaterThanOrEqual(2);
       expect(seasons[0].showId).toBe('tv_only-mergers');
     });
   });
 
-  describe('CollectionApiService', () => {
+  describe('collection queries', () => {
     it('returns an observable that resolves asynchronously and filters collection items', async () => {
-      const { collectionApi } = setup();
+      const { api } = setup();
       let resolvedSynchronously = false;
 
-      const obs$ = collectionApi.getCollection({
+      const obs$ = api.getCollection({
         search: '',
         media: [],
         statuses: [],
@@ -205,10 +198,10 @@ describe('TasteTrack API services', () => {
     });
 
     it('filters by status and min rating', async () => {
-      const { collectionApi } = setup();
+      const { api } = setup();
 
       const response = await firstValueFrom(
-        collectionApi.getCollection({
+        api.getCollection({
           search: '',
           media: [],
           statuses: ['completed'],
@@ -225,12 +218,12 @@ describe('TasteTrack API services', () => {
     });
   });
 
-  describe('ActivityApiService', () => {
+  describe('activity queries', () => {
     it('returns an observable that resolves asynchronously and joins catalog items', async () => {
-      const { activityApi } = setup();
+      const { api } = setup();
       let resolvedSynchronously = false;
 
-      const obs$ = activityApi.getActivity({
+      const obs$ = api.getActivity({
         search: '',
         from: null,
         to: null,
@@ -251,10 +244,10 @@ describe('TasteTrack API services', () => {
     });
 
     it('filters viewing history by title search', async () => {
-      const { activityApi } = setup();
+      const { api } = setup();
 
       const response = await firstValueFrom(
-        activityApi.getActivity({
+        api.getActivity({
           search: 'The Last Algorithm',
           from: null,
           to: null,
@@ -271,12 +264,12 @@ describe('TasteTrack API services', () => {
     });
   });
 
-  describe('ContributorApiService', () => {
+  describe('contributor queries', () => {
     it('returns an observable that resolves asynchronously and filters by kind', async () => {
-      const { contributorApi } = setup();
+      const { api } = setup();
       let resolvedSynchronously = false;
 
-      const obs$ = contributorApi.getContributors('person');
+      const obs$ = api.getContributors('person');
       obs$.subscribe(() => {
         resolvedSynchronously = true;
       });
@@ -289,9 +282,9 @@ describe('TasteTrack API services', () => {
     });
 
     it('resolves contributor profile and filmography', async () => {
-      const { contributorApi } = setup();
+      const { api } = setup();
 
-      const profile = await firstValueFrom(contributorApi.getContributorProfile('per_wes'));
+      const profile = await firstValueFrom(api.getContributorProfile('per_wes'));
 
       expect(profile).not.toBeNull();
       expect(profile?.contributor.name).toBe('Wes Andersonville');

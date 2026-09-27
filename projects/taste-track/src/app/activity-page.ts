@@ -5,7 +5,7 @@ import { ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
 import { debounceTime, groupBy, mergeMap, switchMap } from 'rxjs';
-import { ActivityApiService, type ActivityEntry, type ActivityQuery } from './activity-api';
+import { BackendApi, type ActivityEntry, type ActivityQuery } from './backend-api';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
 
@@ -97,7 +97,7 @@ import { CatalogLinks } from './catalog-links';
 export class ActivityPage {
   protected readonly links = inject(CatalogLinks);
   private readonly routes = inject(AppRouter);
-  private readonly activityApi = inject(ActivityApiService);
+  private readonly backendApi = inject(BackendApi);
   protected readonly form = createQueryParamsFormGroup(this.routes.routes.ACTIVITY, {
     transformWrites: (changes) =>
       changes.pipe(
@@ -110,7 +110,7 @@ export class ActivityPage {
   private readonly request = computed<ActivityQuery>(() => this.query());
 
   protected readonly response = toSignal(
-    toObservable(this.request).pipe(switchMap((req) => this.activityApi.getActivity(req))),
+    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getActivity(req))),
     {
       initialValue: {
         entries: [] as readonly ActivityEntry[],

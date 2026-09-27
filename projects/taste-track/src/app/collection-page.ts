@@ -5,11 +5,7 @@ import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
 import { experienceCountCodec } from './codecs';
-import {
-  CollectionApiService,
-  type CollectionItemCard,
-  type CollectionQuery,
-} from './collection-api';
+import { BackendApi, type CollectionItemCard, type CollectionQuery } from './backend-api';
 import type { CatalogItem, CollectionStatus, MediaKind } from './domain';
 import { MediaCard } from './media-card';
 
@@ -156,7 +152,7 @@ export class CollectionPage {
   protected readonly kinds: readonly MediaKind[] = ['movie', 'show', 'episode'];
   protected readonly statuses: readonly CollectionStatus[] = ['saved', 'in-progress', 'completed'];
   protected readonly routes = inject(AppRouter);
-  private readonly collectionApi = inject(CollectionApiService);
+  private readonly backendApi = inject(BackendApi);
   protected readonly binding = createQueryParamsSignalForm(this.routes.routes.COLLECTION);
   protected readonly ratings = [6, 7, 8, 9, 10];
   protected readonly pageSizes = [12, 24, 48] as const;
@@ -164,7 +160,7 @@ export class CollectionPage {
   private readonly request = computed<CollectionQuery>(() => this.binding.model());
 
   protected readonly response = toSignal(
-    toObservable(this.request).pipe(switchMap((req) => this.collectionApi.getCollection(req))),
+    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getCollection(req))),
     {
       initialValue: {
         items: [] as readonly CollectionItemCard[],
@@ -233,6 +229,6 @@ export class CollectionPage {
     }));
   }
   protected toggleFavorite(id: CatalogItem['id']) {
-    void this.collectionApi.toggleFavorite(id);
+    void this.backendApi.toggleFavorite(id);
   }
 }

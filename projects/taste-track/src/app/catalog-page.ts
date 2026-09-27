@@ -3,7 +3,7 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import type { RouteQueryPatch } from 'ngx-urlik';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import { CatalogApiService, type CatalogItemCard, type CatalogQuery } from './catalog-api';
+import { BackendApi, type CatalogItemCard, type CatalogQuery } from './backend-api';
 import { CatalogLinks } from './catalog-links';
 import type { PageSize } from './codecs';
 import type { CatalogItem } from './domain';
@@ -99,7 +99,7 @@ import { MediaCard } from './media-card';
 })
 export class CatalogPage {
   private readonly routes = inject(AppRouter);
-  private readonly catalogApi = inject(CatalogApiService);
+  private readonly backendApi = inject(BackendApi);
   protected readonly links = inject(CatalogLinks);
   private readonly route = this.routes.routes.SCREEN;
   private readonly active = this.routes.activeRoute({
@@ -124,7 +124,7 @@ export class CatalogPage {
   });
 
   protected readonly response = toSignal(
-    toObservable(this.request).pipe(switchMap((req) => this.catalogApi.getCatalog(req))),
+    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getCatalog(req))),
     {
       initialValue: {
         items: [] as readonly CatalogItemCard[],
@@ -154,6 +154,6 @@ export class CatalogPage {
     }));
   }
   protected toggleFavorite(id: CatalogItem['id']) {
-    void this.catalogApi.toggleFavorite(id);
+    void this.backendApi.toggleFavorite(id);
   }
 }

@@ -3,7 +3,7 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import { CatalogApiService } from './catalog-api';
+import { BackendApi } from './backend-api';
 import type { Season } from './domain';
 
 @Component({
@@ -25,7 +25,7 @@ import type { Season } from './domain';
 })
 export class SeasonsPage {
   private readonly routes = inject(AppRouter);
-  private readonly catalogApi = inject(CatalogApiService);
+  private readonly backendApi = inject(BackendApi);
   private readonly route = this.routes.routes.SEASONS;
   protected readonly showUrl = computed(() =>
     this.routes.routes.SHOW_DETAIL.createUrlTree({
@@ -35,7 +35,7 @@ export class SeasonsPage {
   );
   private readonly showId = computed(() => this.route.params().path.showId);
   private readonly seasons = toSignal(
-    toObservable(this.showId).pipe(switchMap((showId) => this.catalogApi.getSeasons(showId))),
+    toObservable(this.showId).pipe(switchMap((showId) => this.backendApi.getSeasons(showId))),
     { initialValue: [] as readonly Season[] },
   );
   protected readonly links = computed(() =>

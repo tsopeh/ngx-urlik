@@ -44,6 +44,32 @@ Shared pages use `activeRoute()` to select their route. `paginationParams()` sha
 across pages. Sort order is one structured codec value, so a field and direction travel together.
 Normal navigation uses typed nodes throughout.
 
+## Backend API
+
+`BackendApi` (`projects/taste-track/src/app/backend-api.ts`) encapsulates all querying,
+filtering, data joins, and mutations. Components do not wrangle data or read from the
+database directly.
+
+### Querying and asynchronous timing
+
+Every query method (`getCatalog`, `getItemDetail`, `getSeasons`, `getCollection`, `getActivity`,
+`getContributors`, `getContributorProfile`) returns an `Observable<T>`.
+
+Even though filtering evaluates against in-memory repository arrays, queries enforce an
+asynchronous boundary using `delay(0)`. Components handle asynchronous streams through
+RxJS pipes and Angular signal interop (`toObservable` → `switchMap` → `toSignal`).
+
+```ts
+protected readonly response = toSignal(
+  toObservable(this.request).pipe(switchMap((query) => this.backendApi.getCatalog(query))),
+  { initialValue: { items: [], total: 0 } },
+);
+```
+
+When database mutations happen (`toggleFavorite`, `updatePersonal`, `logViewing`),
+`TasteTrackRepository` reloads its tables and increments its `dataVersion` signal.
+Active query subscriptions observe `dataVersion` and re-emit automatically with updated data.
+
 ## Data and reset
 
 Dexie stores the data in `taste-track`. The deterministic seed contains 30 movies,

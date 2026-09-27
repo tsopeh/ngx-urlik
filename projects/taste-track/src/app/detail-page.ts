@@ -3,7 +3,7 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import { CatalogApiService, type ItemDetail, type ItemDetailRequest } from './catalog-api';
+import { BackendApi, type ItemDetail, type ItemDetailRequest } from './backend-api';
 import { CatalogLinks } from './catalog-links';
 import type { CollectionStatus } from './domain';
 
@@ -110,7 +110,7 @@ import type { CollectionStatus } from './domain';
 })
 export class DetailPage {
   private readonly routes = inject(AppRouter);
-  private readonly catalogApi = inject(CatalogApiService);
+  private readonly backendApi = inject(BackendApi);
   protected readonly links = inject(CatalogLinks);
   protected readonly viewingDate = signal(new Date().toISOString().slice(0, 10));
   protected readonly saving = signal(false);
@@ -148,7 +148,7 @@ export class DetailPage {
   });
 
   protected readonly detail = toSignal(
-    toObservable(this.request).pipe(switchMap((req) => this.catalogApi.getItemDetail(req))),
+    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getItemDetail(req))),
   );
 
   protected readonly item = computed(() => this.detail()?.item);
@@ -208,13 +208,13 @@ export class DetailPage {
   }
   protected async setStatus(status: CollectionStatus) {
     const item = this.item();
-    if (item) await this.persist(() => this.catalogApi.updatePersonal(item.id, { status }));
+    if (item) await this.persist(() => this.backendApi.updatePersonal(item.id, { status }));
   }
   protected async setRating(value: string) {
     const item = this.item();
     if (item)
       await this.persist(() =>
-        this.catalogApi.updatePersonal(item.id, { rating: value ? Number(value) : null }),
+        this.backendApi.updatePersonal(item.id, { rating: value ? Number(value) : null }),
       );
   }
   protected async logViewing() {
@@ -222,7 +222,7 @@ export class DetailPage {
     if (!item) return;
     this.saved.set(false);
     await this.persist(async () => {
-      await this.catalogApi.logViewing(item, this.viewingDate());
+      await this.backendApi.logViewing(item, this.viewingDate());
       this.saved.set(true);
     });
   }

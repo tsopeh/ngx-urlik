@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
-import { ContributorApiService } from './contributor-api';
+import { BackendApi } from './backend-api';
 import type { Contributor } from './domain';
 
 @Component({
@@ -27,7 +27,7 @@ import type { Contributor } from './domain';
 })
 export class ContributorsPage {
   private readonly routes = inject(AppRouter);
-  private readonly contributorApi = inject(ContributorApiService);
+  private readonly backendApi = inject(BackendApi);
   protected readonly links = inject(CatalogLinks);
   private readonly active = this.routes.activeRoute({
     people: this.routes.routes.PEOPLE,
@@ -37,7 +37,7 @@ export class ContributorsPage {
     this.active().route === 'people' ? 'person' : 'company',
   );
   protected readonly contributors = toSignal(
-    toObservable(this.kind).pipe(switchMap((kind) => this.contributorApi.getContributors(kind))),
+    toObservable(this.kind).pipe(switchMap((kind) => this.backendApi.getContributors(kind))),
     { initialValue: [] as readonly Contributor[] },
   );
 }
