@@ -12,12 +12,20 @@ export {
 } from './lib/params';
 export {
   defineAppRouter,
+  type ActiveRoute,
   type AppRouterDiagnostic,
   type AppRouterDiagnosticCode,
   type AppRouterDiagnostics,
-  type ActiveRoute,
-  type UrlParamsState,
+  type GeneratedAppRouter,
+  type PathParamsOf,
+  type QueryParamsOf,
   type QueryPatch,
+  type RouteDefinition,
+  type RouteDefinitions,
+  type RouteNode,
+  type RouteQueryPatch,
+  type RouteStateOf,
+  type UrlParamsState,
 } from './lib/app-router';
 
 // Keep the internal bridge available to the forms entry point.

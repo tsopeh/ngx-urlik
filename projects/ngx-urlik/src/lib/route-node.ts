@@ -9,16 +9,22 @@ import {
 import { NavigationBehaviorOptions, NavigationEnd, Router, UrlTree } from '@angular/router';
 import { filter } from 'rxjs';
 import type { CompiledRoute, RuntimeParam } from './compiled-route';
+import {
+  activePathParams,
+  assertRouteConfig,
+  findActiveRoute,
+  findLastResult,
+  getPrimaryActiveChain,
+} from './compiled-route';
 import { isEqual } from './is-equal';
 import { QueryWriteCoordinator, registerQueryBinding } from './query-write-coordinator';
 import { QueryDefinitions } from './route-definition';
 import { ReportParameterFailure } from './route-diagnostics';
 import { createParameterReader, createParameterSerializer } from './route-params-runtime';
-import { routeNodeInfo } from './route-symbols';
+import { routeConfigBrand, routeNodeInfo } from './route-symbols';
 import { createRouterEscapeHatch } from './router-escape-hatch';
-import { AnyRecord } from './type-utils';
-import { activePathParams, assertRouteConfig, findActiveRoute } from './compiled-route';
 import type { Simplify } from './type-utils';
+import { AnyRecord } from './type-utils';
 
 export type UrlParamsState<P, Q> = Readonly<{
   path: Readonly<Simplify<P>>;
@@ -58,31 +64,23 @@ export function createAppRouter(
   const requireCurrent = (info: CompiledRoute) => assertRouteConfig(router.config, info);
   const createUrlTree = (info: CompiledRoute, values: ConstructionValues = {}): UrlTree | null => {
     requireCurrent(info);
-    const chain: CompiledRoute[] = [];
-    for (let current: CompiledRoute | undefined = info; current; current = current.parent)
-      chain.unshift(current);
     const commands: unknown[] = ['/'];
-    for (const part of chain) {
-      for (const segment of part.segments) {
-        if (segment.kind === 'static') {
-          commands.push(segment.value);
-          continue;
-        }
-        const param = part.pathParams.find(
-          (item) => item.owner === part && item.name === segment.name,
-        )!;
-        const output = encode(param, values.path?.[segment.name]);
-        if (output === null) return null;
-        if (output === '') {
-          report(
-            param,
-            { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize' },
-            'produced an empty path segment',
-          );
-          return null;
-        }
-        commands.push(output);
+    for (const segment of info.fullSegments) {
+      if (segment.kind === 'static') {
+        commands.push(segment.value);
+        continue;
       }
+      const output = encode(segment.param, values.path?.[segment.name]);
+      if (output === null) return null;
+      if (output === '') {
+        report(
+          segment.param,
+          { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize' },
+          'produced an empty path segment',
+        );
+        return null;
+      }
+      commands.push(output);
     }
     const queryParams: Record<string, string | readonly string[]> = {};
     for (const param of info.queryParams) {
@@ -125,9 +123,24 @@ export function createAppRouter(
       return state;
     };
     node['createUrlTree'] = (values?: ConstructionValues) => createUrlTree(info, values);
-    node['navigate'] = (values?: ConstructionValues, options?: TypedNavigationBehaviorOptions) => {
+    node['navigate'] = (
+      valuesOrOptions?: ConstructionValues | TypedNavigationBehaviorOptions,
+      options?: TypedNavigationBehaviorOptions,
+    ) => {
+      let values: ConstructionValues | undefined;
+      let navOptions = options;
+      if (
+        options === undefined &&
+        valuesOrOptions &&
+        !('path' in valuesOrOptions || 'query' in valuesOrOptions || 'fragment' in valuesOrOptions)
+      ) {
+        values = undefined;
+        navOptions = valuesOrOptions as TypedNavigationBehaviorOptions;
+      } else {
+        values = valuesOrOptions as ConstructionValues;
+      }
       const tree = createUrlTree(info, values);
-      return tree === null ? Promise.resolve(false) : router.navigateByUrl(tree, options);
+      return tree === null ? Promise.resolve(false) : router.navigateByUrl(tree, navOptions);
     };
     node['params'] = checkedSignal(
       computed(
@@ -226,19 +239,37 @@ export function createAppRouter(
             }
           | undefined;
         checkCandidates();
-        for (const key of Reflect.ownKeys(candidates)) {
-          const node = candidates[key] as Record<PropertyKey, unknown>;
-          const info = node[routeNodeInfo] as CompiledRoute;
-          const active = findActiveRoute(router.routerState.snapshot.root, info);
-          if (
-            active &&
-            (!selected || active.pathFromRoot.length > selected.active.pathFromRoot.length)
-          )
-            selected = { key, node, info, active };
-        }
+        const root = router.routerState.snapshot.root;
+        const activeChain = getPrimaryActiveChain(root);
+        const match = findLastResult(activeChain, (snap) => {
+          const info = (snap.routeConfig as Record<PropertyKey, unknown> | null)?.[
+            routeConfigBrand
+          ] as CompiledRoute | undefined;
+          if (!info) return null;
+          const entry = Object.entries(candidates).find(
+            ([_, c]) => (c as any)[routeNodeInfo] === info,
+          );
+          return entry ? { key: entry[0], node: entry[1], info, active: snap } : null;
+        });
+        if (match) selected = match;
         if (selected) {
           const { key, node, info, active } = selected;
-          return { route: key, node, params: readActiveState(info, active) };
+          const params = readActiveState(info, active);
+          return {
+            route: key,
+            node,
+            params,
+            createUrlTree: (patch?: { query?: AnyRecord; fragment?: string | null }) =>
+              createUrlTree(info, {
+                path: params.path,
+                query: patch?.query ? { ...params.query, ...patch.query } : params.query,
+                fragment: patch?.fragment,
+              }),
+            patchQuery: (
+              patch: Partial<AnyRecord> | ((query: AnyRecord) => Partial<AnyRecord>),
+              options?: { replaceUrl?: boolean },
+            ) => (node as Record<string, Function>)['patchQuery'](patch, options),
+          };
         }
         throw new Error(
           `activeRoute(): none of the candidate routes [${Reflect.ownKeys(candidates)

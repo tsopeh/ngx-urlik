@@ -83,8 +83,13 @@ export function createParameterReader(report: ReportParameterFailure) {
     return invalid ? queryFallback(definition) : values;
   };
 
-  const readQueryState = (params: readonly RuntimeParam[], query: ParamMap): AnyRecord =>
-    Object.fromEntries(params.map((param) => [param.name, readQuery(param, query)]));
+  const readQueryState = (params: readonly RuntimeParam[], query: ParamMap): AnyRecord => {
+    const result: Record<string, unknown> = {};
+    for (const param of params) {
+      result[param.name] = readQuery(param, query);
+    }
+    return result;
+  };
 
   const readState = (
     info: Pick<CompiledRoute, 'identity' | 'pattern' | 'pathParams' | 'queryParams'>,

@@ -25,7 +25,16 @@ export type {
   AppRouterDiagnosticCode,
   AppRouterDiagnostics,
 } from './route-diagnostics';
-export type { ActiveRoute } from './app-router-types';
+export type {
+  ActiveRoute,
+  GeneratedAppRouter,
+  PathParamsOf,
+  QueryParamsOf,
+  RouteNode,
+  RouteQueryPatch,
+  RouteStateOf,
+} from './app-router-types';
+export type { RouteDefinition, RouteDefinitions } from './route-definition';
 export type { QueryPatch, UrlParamsState } from './route-node';
 
 type ForwardedRouterFeature = Exclude<RouterFeatures, RouterConfigurationFeature>;
@@ -39,16 +48,25 @@ const routerConfigurationFeatureKind = 5;
  * `redirectTo`, `**`, `loadChildren`, or a named outlet. Those Angular routes can stay unnamed
  * and still work.
  * Named paths use static segments and `:name` placeholders, not matrix parameters or custom
- * matching. Keep `path` and `routeName` as literal values so TypeScript can infer the nodes.
+ * matching. Pass a route names map or enum as the first argument, such as `RouteNames`, and assign
+ * each named route a string name, such as `routeName: RouteNames.MOVIE_DETAIL`.
+ * This lets Go to Definition take you from `router.routes.MOVIE_DETAIL` to the route name
+ * declaration. Keep `path` and the route name literal so TypeScript can infer the nodes.
  * Route names must be unique; this function throws during definition if they are not. The typed
  * catalog is fixed at definition time, so replacing it with `Router.resetConfig()` is unsupported.
  */
-export function defineAppRouter<const R extends readonly unknown[]>(options: {
-  routes: InferDefinition<R> & ContextualRouteArray<NoInfer<R>>;
-  routerConfig?: RouterConfigOptions;
-  diagnostics?: AppRouterDiagnostics;
-}): {
-  AppRouter: InjectionToken<GeneratedAppRouter<R>>;
+export function defineAppRouter<
+  const E extends Record<string, string>,
+  const R extends readonly unknown[],
+>(
+  routeNames: E,
+  options: {
+    routes: InferDefinition<R> & ContextualRouteArray<NoInfer<R>>;
+    routerConfig?: RouterConfigOptions;
+    diagnostics?: AppRouterDiagnostics;
+  },
+): {
+  AppRouter: InjectionToken<GeneratedAppRouter<E, R>>;
   provideAppRouter: (...features: ForwardedRouterFeature[]) => EnvironmentProviders;
 } {
   const definitions = options.routes as RouteDefinitions;
@@ -58,12 +76,12 @@ export function defineAppRouter<const R extends readonly unknown[]>(options: {
   const report = createDiagnosticReporter(options.diagnostics);
   const reader = createParameterReader(report);
   const { routes, catalog } = compileRoutes(definitions);
-  const AppRouter = new InjectionToken<GeneratedAppRouter<R>>('AppRouter');
+  const AppRouter = new InjectionToken<GeneratedAppRouter<E, R>>('AppRouter');
 
   function provideAppRouter(...features: ForwardedRouterFeature[]): EnvironmentProviders {
     if (features.some((feature) => (feature.ɵkind as number) === routerConfigurationFeatureKind))
       throw new Error(
-        'withRouterConfig() is not accepted by provideAppRouter(); use defineAppRouter({ routerConfig })',
+        'withRouterConfig() is not accepted by provideAppRouter(); use defineAppRouter(routeNames, { routerConfig })',
       );
     return makeEnvironmentProviders([
       provideRouter(
@@ -80,7 +98,7 @@ export function defineAppRouter<const R extends readonly unknown[]>(options: {
             inject(EnvironmentInjector),
             reader,
             report,
-          ) as GeneratedAppRouter<R>,
+          ) as GeneratedAppRouter<E, R>,
       },
     ]);
   }

@@ -5,8 +5,8 @@ import {
   Route,
   Routes,
 } from '@angular/router';
-import type { AnyQueryParamDefinition, UrlParamCodec } from './params';
 import { isEqual } from './is-equal';
+import type { AnyQueryParamDefinition, UrlParamCodec } from './params';
 import { stringCodec } from './params';
 import { parseRoutePath, resolvePathParamDefinitions, RouteDefinition } from './route-definition';
 import { routeConfigBrand } from './route-symbols';
@@ -29,6 +29,9 @@ export interface CompiledRoute {
   readonly queryParams: RuntimeParam[];
   readonly segments: readonly (
     { kind: 'static'; value: string } | { kind: 'param'; name: string }
+  )[];
+  readonly fullSegments: readonly (
+    { kind: 'static'; value: string } | { kind: 'param'; name: string; param: RuntimeParam }
   )[];
   readonly pattern: string;
   readonly comparator: (a: unknown, b: unknown) => boolean;
@@ -81,6 +84,7 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
         pathParams: [...(parent?.pathParams ?? [])],
         queryParams: [...(parent?.queryParams ?? [])],
         segments: parsed.segments,
+        fullSegments: [], // Populated below
         pattern,
         comparator: comparator ?? parent?.comparator ?? isEqual,
       };
@@ -95,6 +99,16 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
       for (const [name, definition] of Object.entries(queryParams ?? {})) {
         info.queryParams.push({ name, definition, owner: info, placement: 'query' });
       }
+      const localSegments = parsed.segments.map((segment) => {
+        if (segment.kind === 'static') return segment;
+        return {
+          kind: 'param' as const,
+          name: segment.name,
+          param: info.pathParams.find((p) => p.name === segment.name && p.owner === info)!,
+        };
+      });
+      (info as any).fullSegments = [...(parent?.fullSegments ?? []), ...localSegments];
+
       (angular as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
       if (routeName) catalog.set(routeName, info);
       if (children) angular.children = compile(children, info, `${at}.children`);
@@ -121,17 +135,36 @@ export function findActiveRoute(
   return null;
 }
 
+export function getPrimaryActiveChain(root: ActivatedRouteSnapshot): ActivatedRouteSnapshot[] {
+  const chain = [root];
+  let current = root;
+  while (current.children.length) {
+    const primary = current.children.find((c) => c.outlet === 'primary');
+    if (!primary) break;
+    current = primary;
+    chain.push(current);
+  }
+  return chain;
+}
+
+export function findLastResult<T, R>(
+  items: readonly T[],
+  mapper: (item: T) => R | null | undefined,
+): R | undefined {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const result = mapper(items[i]);
+    if (result !== null && result !== undefined) return result;
+  }
+  return undefined;
+}
+
 export function activePathParams(target: CompiledRoute, active: ActivatedRouteSnapshot): ParamMap {
   const path: Record<string, string> = {};
   for (const param of target.pathParams) {
-    const owner = param.owner as CompiledRoute;
-    const snapshot = active.pathFromRoot.find(
-      (part) =>
-        part.routeConfig === owner.angular ||
-        (part.routeConfig as Record<PropertyKey, unknown> | null)?.[routeConfigBrand] === owner,
-    );
-    const value = snapshot?.paramMap.get(param.name);
-    if (value !== null && value !== undefined) path[param.name] = value;
+    const val = findLastResult(active.pathFromRoot, (snap) => snap.paramMap.get(param.name));
+    if (val !== undefined) {
+      path[param.name] = val;
+    }
   }
   return convertToParamMap(path);
 }

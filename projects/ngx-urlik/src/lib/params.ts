@@ -115,16 +115,21 @@ export function booleanCodec(): UrlParamCodec<boolean> {
 }
 
 type StringRecord = Readonly<Record<string, string>>;
-type EnumValue<Values extends StringRecord> = Values[keyof Values];
+type EnumValue<Values> = Values extends readonly string[]
+  ? Values[number]
+  : Values extends StringRecord
+    ? Values[keyof Values]
+    : never;
 
-export function enumCodec<const Values extends StringRecord>(
+export function enumCodec<const Values extends readonly string[] | StringRecord>(
   values: Values,
 ): UrlParamCodec<EnumValue<Values>> {
-  if (Object.values(values).some((value) => typeof value !== 'string'))
+  const list = Array.isArray(values) ? values : Object.values(values);
+  if (list.some((value) => typeof value !== 'string'))
     throw new Error('enum codec values must all be strings');
-  const allowed = new Set(Object.values(values));
+  const allowed = new Set(list);
   return {
-    serialize: (value) => (allowed.has(value) ? value : null),
+    serialize: (value) => (allowed.has(value as string) ? (value as string) : null),
     deserialize: (raw) => (allowed.has(raw) ? (raw as EnumValue<Values>) : null),
   };
 }

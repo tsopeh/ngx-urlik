@@ -35,25 +35,53 @@ type MethodArgs<P, Q, Required extends PropertyKey> = keyof P extends never
     ? [values?: ConstructionArgs<P, Q, Required>]
     : [values: ConstructionArgs<P, Q, Required>]
   : [values: ConstructionArgs<P, Q, Required>];
-type BaseNode<P, Q, Required extends PropertyKey> = {
-  createUrlTree(...args: MethodArgs<P, Q, Required>): UrlTree | null;
-  navigate(
-    ...args: [...MethodArgs<P, Q, Required>, options?: TypedNavigationBehaviorOptions]
-  ): Promise<boolean>;
-};
-type StatefulNode<P, Q> = {
+type NavigateArgs<P, Q, Required extends PropertyKey> = keyof P extends never
+  ? [Required] extends [never]
+    ? | [values?: ConstructionArgs<P, Q, Required>, options?: TypedNavigationBehaviorOptions]
+      | [options: TypedNavigationBehaviorOptions]
+    : [values: ConstructionArgs<P, Q, Required>, options?: TypedNavigationBehaviorOptions]
+  : [values: ConstructionArgs<P, Q, Required>, options?: TypedNavigationBehaviorOptions];
+
+export type RouteNode<P = unknown, Q = unknown, Required extends PropertyKey = never> = {
+  createUrlTree(
+    ...args: MethodArgs<P, Q, Required>
+  ): keyof P extends never ? UrlTree : UrlTree | null;
+  navigate(...args: NavigateArgs<P, Q, Required>): Promise<boolean>;
   readonly [routeNodeInfo]: unknown;
   readonly params: Signal<UrlParamsState<P, Q>>;
   patchQuery(patch: QueryPatch<Q>, options?: { replaceUrl?: boolean }): Promise<boolean>;
 };
 
-type AnyStatefulNode = StatefulNode<any, any>;
-type StateOfNode<N> = N extends StatefulNode<infer P, infer Q> ? UrlParamsState<P, Q> : never;
+type AnyStatefulNode = {
+  readonly [routeNodeInfo]: unknown;
+  readonly params: Signal<UrlParamsState<unknown, unknown>>;
+  patchQuery(patch: never, options?: { replaceUrl?: boolean }): Promise<boolean>;
+};
+type StateOfNode<N> = N extends { params: Signal<infer S> } ? S : never;
+type QueryOfNode<N> = N extends {
+  patchQuery(patch: QueryPatch<infer Q>, ...args: unknown[]): unknown;
+}
+  ? Q
+  : never;
+
+export type QueryParamsOf<N> = QueryOfNode<N>;
+export type PathParamsOf<N> = N extends RouteNode<infer P, infer Q, infer R> ? P : never;
+export type RouteStateOf<N> = StateOfNode<N>;
+export type RouteQueryPatch<N> = QueryPatch<QueryParamsOf<N>>;
+
 export type ActiveRoute<C extends Readonly<Record<PropertyKey, AnyStatefulNode>>> = {
   readonly [K in keyof C]: Readonly<{
     route: K;
     node: C[K];
     params: StateOfNode<C[K]>;
+    createUrlTree(patch?: {
+      query?: Partial<QueryOfNode<C[K]>>;
+      fragment?: string | null;
+    }): UrlTree | null;
+    patchQuery(
+      patch: QueryPatch<QueryOfNode<C[K]>>,
+      options?: { replaceUrl?: boolean },
+    ): Promise<boolean>;
   }>;
 }[keyof C];
 
@@ -72,7 +100,7 @@ type PathNames<S extends string> = S extends `${infer Head}/${infer Tail}`
   ? PathSegmentName<Head> | PathNames<Tail>
   : PathSegmentName<S>;
 type OwnPathNames<D> = D extends { path: infer P extends string } ? PathNames<P> : never;
-type CodecOption = Readonly<{ codec: UrlParamCodec<any> }>;
+type CodecOption = Readonly<{ codec: UrlParamCodec<unknown> }>;
 type CodecValue<C> = C extends { codec: UrlParamCodec<infer T> } ? T : string;
 type IsUnion<T, C = T> = T extends C ? ([C] extends [T] ? false : true) : never;
 type StrictCodecOption<C> = CodecOption & Record<Exclude<keyof C, 'codec'>, never>;
@@ -106,7 +134,11 @@ type ContextualRoute<D, AncestorQuery> = {
       : K extends 'routeName'
         ? D extends { path: '**' } | { redirectTo: unknown }
           ? never
-          : string
+          : D[K] extends string
+            ? string extends D[K]
+              ? never
+              : D[K]
+            : never
         : K extends 'pathParam'
           ? PathConfig<OwnPathNames<D>, D[K]>
           : K extends 'queryParams'
@@ -130,47 +162,44 @@ export type ContextualRouteArray<R, AncestorQuery = object> = R extends readonly
     : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery> }
   : never;
 
-type RouteNode<D, AP, AQ, Required extends PropertyKey> = BaseNode<
+type CompiledRouteNode<D, AP, AQ, Required extends PropertyKey> = RouteNode<
   AccumulatedPath<D, AP>,
   AccumulatedQuery<D, AQ>,
   Required | RequiredQueryKeys<D>
-> &
-  StatefulNode<AccumulatedPath<D, AP>, AccumulatedQuery<D, AQ>>;
+>;
+type NamedNode<D, AP, AQ, Required extends PropertyKey> = D extends {
+  path: string;
+  routeName: infer Name extends string;
+}
+  ? D extends { path: '**' } | { redirectTo: unknown }
+    ? object
+    : { readonly [K in Name]: CompiledRouteNode<D, AP, AQ, Required> }
+  : object;
 type RouteEntries<
   R,
   AP = object,
   AQ = object,
   Required extends PropertyKey = never,
-> = R extends readonly unknown[]
-  ? R[number] extends infer D
-    ? | (D extends { path: string; routeName: infer Name extends string }
-          ? D extends { path: '**' } | { redirectTo: unknown }
-            ? never
-            : { readonly [K in Name]: RouteNode<D, AP, AQ, Required> }
-          : never)
-      | (D extends { children: infer Children extends readonly unknown[] }
-          ? RouteEntries<
-              Children,
-              AccumulatedPath<D, AP>,
-              AccumulatedQuery<D, AQ>,
-              Required | RequiredQueryKeys<D>
-            >
-          : never)
-    : never
-  : never;
-type UnionToIntersection<U> = (U extends unknown ? (value: U) => void : never) extends (
-  value: infer I,
-) => void
-  ? I
-  : never;
-type NamedRoutes<R> = [RouteEntries<R>] extends [never]
-  ? object
-  : Simplify<UnionToIntersection<RouteEntries<R>>>;
+> = R extends readonly [infer D, ...infer Rest]
+  ? NamedNode<D, AP, AQ, Required> &
+      (D extends { children: infer Children extends readonly unknown[] }
+        ? RouteEntries<
+            Children,
+            AccumulatedPath<D, AP>,
+            AccumulatedQuery<D, AQ>,
+            Required | RequiredQueryKeys<D>
+          >
+        : object) &
+      RouteEntries<Rest, AP, AQ, Required>
+  : object;
+type NamedRoutes<R> = Simplify<RouteEntries<R>>;
 type GlobalQueryValues<Q extends QueryDefinitions> = { [K in keyof Q]: QueryValue<Q[K]> };
 
 /** The flat router keyed by route name. */
-export type GeneratedAppRouter<R> = {
-  readonly routes: NamedRoutes<R>;
+export type GeneratedAppRouter<E extends Record<string, string>, R> = {
+  readonly routes: {
+    readonly [K in keyof E]: E[K] extends keyof NamedRoutes<R> ? NamedRoutes<R>[E[K]] : never;
+  };
   globalQueryParams<const Q extends QueryDefinitions>(
     definitions: Q,
     options?: {

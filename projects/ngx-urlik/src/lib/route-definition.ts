@@ -14,8 +14,8 @@ export type PathParamOptions =
 /** An Angular route with optional fields for typed URLs and URL state. */
 export interface RouteDefinition extends Omit<Route, 'children'> {
   /**
-   * Adds this route to `AppRouter.routes` under this name. Names must be unique across the
-   * route array. `defineAppRouter()` throws if a name is repeated.
+   * Adds this route to `AppRouter.routes` using the assigned string.
+   * Names must be unique across the route array. `defineAppRouter()` throws if one is repeated.
    */
   readonly routeName?: string;
   /**
