@@ -93,15 +93,15 @@ type OwnPath<D> = {
         : string
     : string;
 };
-type V2Path<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
-type V2Query<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
-type V2RouteKey = keyof Route | 'identifier' | 'pathParam' | 'queryParams' | 'isEqual';
+type AccumulatedPath<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
+type AccumulatedQuery<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
+type RouteKey = keyof Route | 'identifier' | 'pathParam' | 'queryParams' | 'isEqual';
 
-type ContextualV2Route<D, AncestorQuery> = {
-  [K in keyof D]: K extends V2RouteKey
+type ContextualRoute<D, AncestorQuery> = {
+  [K in keyof D]: K extends RouteKey
     ? K extends 'children'
       ? D[K] extends readonly unknown[]
-        ? ContextualRouteArray<D[K], V2Query<D, AncestorQuery>>
+        ? ContextualRouteArray<D[K], AccumulatedQuery<D, AncestorQuery>>
         : never
       : K extends 'identifier'
         ? D extends { path: '**' } | { redirectTo: unknown }
@@ -126,17 +126,17 @@ export type ContextualRouteArray<R, AncestorQuery = object> = R extends readonly
   ? number extends R['length']
     ? R extends readonly Route[]
       ? R
-      : { readonly [K in keyof R]: ContextualV2Route<R[K], AncestorQuery> }
-    : { readonly [K in keyof R]: ContextualV2Route<R[K], AncestorQuery> }
+      : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery> }
+    : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery> }
   : never;
 
-type V2Node<D, AP, AQ, Required extends PropertyKey> = BaseNode<
-  V2Path<D, AP>,
-  V2Query<D, AQ>,
+type RouteNode<D, AP, AQ, Required extends PropertyKey> = BaseNode<
+  AccumulatedPath<D, AP>,
+  AccumulatedQuery<D, AQ>,
   Required | RequiredQueryKeys<D>
 > &
-  StatefulNode<V2Path<D, AP>, V2Query<D, AQ>>;
-type V2Entries<
+  StatefulNode<AccumulatedPath<D, AP>, AccumulatedQuery<D, AQ>>;
+type RouteEntries<
   R,
   AP = object,
   AQ = object,
@@ -146,10 +146,15 @@ type V2Entries<
     ? | (D extends { path: string; identifier: infer Name extends string }
           ? D extends { path: '**' } | { redirectTo: unknown }
             ? never
-            : { readonly [K in Name]: V2Node<D, AP, AQ, Required> }
+            : { readonly [K in Name]: RouteNode<D, AP, AQ, Required> }
           : never)
       | (D extends { children: infer Children extends readonly unknown[] }
-          ? V2Entries<Children, V2Path<D, AP>, V2Query<D, AQ>, Required | RequiredQueryKeys<D>>
+          ? RouteEntries<
+              Children,
+              AccumulatedPath<D, AP>,
+              AccumulatedQuery<D, AQ>,
+              Required | RequiredQueryKeys<D>
+            >
           : never)
     : never
   : never;
@@ -158,14 +163,14 @@ type UnionToIntersection<U> = (U extends unknown ? (value: U) => void : never) e
 ) => void
   ? I
   : never;
-type V2Routes<R> = [V2Entries<R>] extends [never]
+type IdentifiedRoutes<R> = [RouteEntries<R>] extends [never]
   ? object
-  : Simplify<UnionToIntersection<V2Entries<R>>>;
+  : Simplify<UnionToIntersection<RouteEntries<R>>>;
 type GlobalQueryValues<Q extends QueryDefinitions> = { [K in keyof Q]: QueryValue<Q[K]> };
 
-/** The flat, identifier-keyed public router generated from a v2 route array. */
-export type GeneratedAppRouterV2<R> = {
-  readonly routes: V2Routes<R>;
+/** The flat, identifier-keyed public router generated from a route array. */
+export type GeneratedAppRouter<R> = {
+  readonly routes: IdentifiedRoutes<R>;
   globalQueryParams<const Q extends QueryDefinitions>(
     definitions: Q,
     options?: {

@@ -13,16 +13,12 @@ import {
   RouterFeatures,
   withRouterConfig,
 } from '@angular/router';
-import type {
-  ContextualRouteArray,
-  GeneratedAppRouterV2,
-  InferDefinition,
-} from './app-router-types';
+import type { ContextualRouteArray, GeneratedAppRouter, InferDefinition } from './app-router-types';
 import { RouteDefinitions, validateRouteDefinitions } from './route-definition';
 import { AppRouterDiagnostics, createDiagnosticReporter } from './route-diagnostics';
+import { compileRoutes } from './compiled-route';
+import { createAppRouter } from './route-node';
 import { createParameterReader } from './route-params-runtime';
-import { compileV2Routes } from './v2-compiled-route';
-import { createV2AppRouter } from './v2-route-node';
 
 export type {
   AppRouterDiagnostic,
@@ -40,7 +36,7 @@ export function defineAppRouter<const R extends readonly unknown[]>(options: {
   routerConfig?: RouterConfigOptions;
   diagnostics?: AppRouterDiagnostics;
 }): {
-  AppRouter: InjectionToken<GeneratedAppRouterV2<R>>;
+  AppRouter: InjectionToken<GeneratedAppRouter<R>>;
   provideAppRouter: (...features: ForwardedRouterFeature[]) => EnvironmentProviders;
 } {
   const definitions = options.routes as RouteDefinitions;
@@ -49,8 +45,8 @@ export function defineAppRouter<const R extends readonly unknown[]>(options: {
 
   const report = createDiagnosticReporter(options.diagnostics);
   const reader = createParameterReader(report);
-  const { routes, catalog } = compileV2Routes(definitions);
-  const AppRouter = new InjectionToken<GeneratedAppRouterV2<R>>('AppRouter');
+  const { routes, catalog } = compileRoutes(definitions);
+  const AppRouter = new InjectionToken<GeneratedAppRouter<R>>('AppRouter');
 
   function provideAppRouter(...features: ForwardedRouterFeature[]): EnvironmentProviders {
     if (features.some((feature) => (feature.ɵkind as number) === routerConfigurationFeatureKind))
@@ -66,13 +62,13 @@ export function defineAppRouter<const R extends readonly unknown[]>(options: {
       {
         provide: AppRouter,
         useFactory: () =>
-          createV2AppRouter(
+          createAppRouter(
             catalog,
             inject(Router),
             inject(EnvironmentInjector),
             reader,
             report,
-          ) as GeneratedAppRouterV2<R>,
+          ) as GeneratedAppRouter<R>,
       },
     ]);
   }

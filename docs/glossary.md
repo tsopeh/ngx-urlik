@@ -1,6 +1,6 @@
 # Glossary
 
-These names are used in the code and design notes.
+These names are used in the code and reference.
 
 ## Routes
 

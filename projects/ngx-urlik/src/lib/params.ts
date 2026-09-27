@@ -7,12 +7,6 @@ export type DefaultValue<T> = T | (() => T);
 
 type NonNullish<T> = null extends T ? never : undefined extends T ? never : unknown;
 
-export interface PathParamDefinition<T, Name extends string = string> {
-  readonly kind: 'path';
-  readonly name: Name;
-  readonly codec: UrlParamCodec<T>;
-}
-
 export interface QueryParamDefinition<
   T,
   Required extends boolean = false,

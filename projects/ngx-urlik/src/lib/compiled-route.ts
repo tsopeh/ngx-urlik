@@ -1,45 +1,116 @@
-import { ActivatedRouteSnapshot, ParamMap, Route, Routes } from '@angular/router';
+import {
+  ActivatedRouteSnapshot,
+  convertToParamMap,
+  ParamMap,
+  Route,
+  Routes,
+} from '@angular/router';
+import type { AnyQueryParamDefinition, UrlParamCodec } from './params';
 import { isEqual } from './is-equal';
-import { AnyQueryParamDefinition, PathParamDefinition } from './params';
-import { LegacyRouteDefinition as RouteDefinition } from './legacy-route-definition.spec-helper';
+import { stringCodec } from './params';
+import { parseRoutePath, resolvePathParamDefinitions, RouteDefinition } from './route-definition';
 import { routeConfigBrand } from './route-symbols';
-import type { AnyRecord } from './type-utils';
-
-export { routeConfigBrand } from './route-symbols';
-
-export type ParameterPlacement = 'path' | 'query';
 
 export interface RuntimeParam {
   readonly name: string;
-  readonly definition: PathParamDefinition<unknown> | AnyQueryParamDefinition;
+  readonly definition: { readonly codec: UrlParamCodec<unknown> } | AnyQueryParamDefinition;
   readonly owner: Pick<CompiledRoute, 'fullIdentity'>;
-  readonly placement: ParameterPlacement;
+  readonly placement: 'path' | 'query';
 }
 
 export interface CompiledRoute {
+  readonly identifier?: string;
   readonly identity: string;
   readonly fullIdentity: string;
   readonly definition: RouteDefinition;
   readonly angular: Route;
   readonly parent?: CompiledRoute;
-  ownPath?: RuntimeParam;
   readonly pathParams: RuntimeParam[];
   readonly queryParams: RuntimeParam[];
+  readonly segments: readonly (
+    { kind: 'static'; value: string } | { kind: 'param'; name: string }
+  )[];
   readonly pattern: string;
-  readonly fallback: boolean;
-  readonly redirect: boolean;
   readonly comparator: (a: unknown, b: unknown) => boolean;
-  readonly children: CompiledRoute[];
+}
+
+const defaultPathCodec = stringCodec();
+
+export function compileRoutes(definitions: readonly RouteDefinition[]): {
+  readonly routes: Routes;
+  readonly catalog: ReadonlyMap<string, CompiledRoute>;
+} {
+  const catalog = new Map<string, CompiledRoute>();
+  const hasLibraryFields = (routes: readonly RouteDefinition[]): boolean =>
+    routes.some(
+      (route) =>
+        'identifier' in route ||
+        'pathParam' in route ||
+        'queryParams' in route ||
+        'isEqual' in route ||
+        (route.children ? hasLibraryFields(route.children) : false),
+    );
+  if (!hasLibraryFields(definitions)) return { routes: definitions as Routes, catalog };
+
+  const compile = (
+    definitions: readonly RouteDefinition[],
+    parent?: CompiledRoute,
+    location = 'routes',
+  ): Routes =>
+    definitions.map((definition, index) => {
+      const at = `${location}[${index}]`;
+      const {
+        identifier,
+        pathParam,
+        queryParams,
+        isEqual: comparator,
+        children,
+        ...angularFields
+      } = definition;
+      const angular: Route = { ...angularFields };
+      const parsed = parseRoutePath(definition.path ?? '');
+      const configured = resolvePathParamDefinitions(definition);
+      const pattern = [parent?.pattern, definition.path].filter(Boolean).join('/');
+      const info: CompiledRoute = {
+        identifier,
+        identity: identifier ?? at,
+        fullIdentity: identifier ?? at,
+        definition,
+        angular,
+        parent,
+        pathParams: [...(parent?.pathParams ?? [])],
+        queryParams: [...(parent?.queryParams ?? [])],
+        segments: parsed.segments,
+        pattern,
+        comparator: comparator ?? parent?.comparator ?? isEqual,
+      };
+      for (const name of parsed.placeholders) {
+        info.pathParams.push({
+          name,
+          definition: { codec: configured[name]?.codec ?? defaultPathCodec },
+          owner: info,
+          placement: 'path',
+        });
+      }
+      for (const [name, definition] of Object.entries(queryParams ?? {})) {
+        info.queryParams.push({ name, definition, owner: info, placement: 'query' });
+      }
+      (angular as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
+      if (identifier) catalog.set(identifier, info);
+      if (children) angular.children = compile(children, info, `${at}.children`);
+      return angular;
+    });
+
+  return { routes: compile(definitions), catalog };
 }
 
 export function findActiveRoute(
   root: ActivatedRouteSnapshot,
-  target: Route,
+  target: CompiledRoute,
 ): ActivatedRouteSnapshot | null {
   if (
-    root.routeConfig === target ||
-    (root.routeConfig as Record<PropertyKey, unknown> | null)?.[routeConfigBrand] ===
-      (target as Record<PropertyKey, unknown>)[routeConfigBrand]
+    root.routeConfig === target.angular ||
+    (root.routeConfig as Record<PropertyKey, unknown> | null)?.[routeConfigBrand] === target
   )
     return root;
   for (const child of root.children) {
@@ -50,111 +121,29 @@ export function findActiveRoute(
   return null;
 }
 
-export function createCompiledRoute(
-  identity: string,
-  definition: RouteDefinition,
-  parent?: CompiledRoute,
-): CompiledRoute {
-  const fallback = definition.path === '**';
-  return {
-    identity,
-    fullIdentity: parent ? `${parent.fullIdentity}.${identity}` : identity,
-    definition,
-    parent,
-    angular: { ...(definition.angular ?? {}) },
-    pathParams: [...(parent?.pathParams ?? [])],
-    queryParams: [...(parent?.queryParams ?? [])],
-    pattern: [
-      ...(parent ? [parent.pattern] : []),
-      fallback
-        ? '**'
-        : definition.path + (definition.pathParam ? `/:${definition.pathParam.name}` : ''),
-    ]
-      .filter(Boolean)
-      .join('/'),
-    fallback,
-    redirect: typeof definition.redirectTo === 'function',
-    comparator: definition.isEqual ?? parent?.comparator ?? isEqual,
-    children: [],
-  };
+export function activePathParams(target: CompiledRoute, active: ActivatedRouteSnapshot): ParamMap {
+  const path: Record<string, string> = {};
+  for (const param of target.pathParams) {
+    const owner = param.owner as CompiledRoute;
+    const snapshot = active.pathFromRoot.find(
+      (part) =>
+        part.routeConfig === owner.angular ||
+        (part.routeConfig as Record<PropertyKey, unknown> | null)?.[routeConfigBrand] === owner,
+    );
+    const value = snapshot?.paramMap.get(param.name);
+    if (value !== null && value !== undefined) path[param.name] = value;
+  }
+  return convertToParamMap(path);
 }
 
-type ReadRouteState = (
-  route: CompiledRoute,
-  params: ParamMap,
-  query: ParamMap,
-  attemptedPath: string,
-) => Readonly<{
-  path: AnyRecord;
-  query: AnyRecord;
-}>;
-
-export function compileRouteDefinitions(
-  definitions: Readonly<Record<string, RouteDefinition>>,
-  readState: ReadRouteState,
-): { readonly roots: CompiledRoute[]; readonly routes: Routes } {
-  const roots: CompiledRoute[] = [];
-  const setRedirect = (
-    route: Route,
-    info: CompiledRoute,
-    redirect: NonNullable<RouteDefinition['redirectTo']>,
-  ) => {
-    const redirectTo: NonNullable<Route['redirectTo']> = (snapshot) =>
-      redirect(
-        readState(
-          info,
-          snapshot.paramMap,
-          snapshot.queryParamMap,
-          `/${snapshot.url.map((segment) => segment.path).join('/')}`,
-        ),
-      );
-    route.pathMatch = 'full';
-    // Angular does not allow canMatch on a redirect. Keep the matcher and injector here,
-    // then put the redirect in an unnamed child that requires a full match.
-    if (route.canMatch) route.children = [{ path: '', pathMatch: 'full', redirectTo }];
-    else route.redirectTo = redirectTo;
-  };
-  const compile = (
-    currentDefinitions: Readonly<Record<string, RouteDefinition>>,
-    parent?: CompiledRoute,
-  ): Routes => {
-    const compiled: Route[] = [];
-    for (const [identity, definition] of Object.entries(currentDefinitions)) {
-      const info = createCompiledRoute(identity, definition, parent);
-      if (!info.fallback && definition.pathParam) {
-        info.ownPath = {
-          name: definition.pathParam.name,
-          definition: definition.pathParam,
-          owner: info,
-          placement: 'path',
-        };
-        info.pathParams.push(info.ownPath);
-      }
-      for (const [name, param] of Object.entries(definition.queryParams ?? {}))
-        info.queryParams.push({ name, definition: param, owner: info, placement: 'query' });
-      if (parent) parent.children.push(info);
-      else roots.push(info);
-      const route = info.angular;
-      (route as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
-      route.path = info.fallback
-        ? '**'
-        : definition.path + (definition.pathParam ? `/:${definition.pathParam.name}` : '');
-      if (info.redirect) {
-        setRedirect(route, info, definition.redirectTo!);
-      } else if (!info.fallback) {
-        const children = definition.children ? compile(definition.children, info) : [];
-        const exact = definition.exactMatch;
-        if (exact) {
-          const exactRoute: Route = { ...exact.angular, path: '', pathMatch: 'full' };
-          if (exact.redirectTo) setRedirect(exactRoute, info, exact.redirectTo);
-          children.unshift(exactRoute);
-        }
-        if (children.length || definition.children || (!route.component && !route.loadComponent))
-          route.children = children;
-      }
-      compiled.push(route);
-    }
-    return compiled;
-  };
-  return { roots, routes: compile(definitions) };
+export function assertRouteConfig(routerRoutes: Routes, target: CompiledRoute): void {
+  const contains = (routes: Routes): boolean =>
+    routes.some((route) => {
+      if ((route as Record<PropertyKey, unknown>)[routeConfigBrand] === target) return true;
+      return route.children ? contains(route.children) : false;
+    });
+  if (!contains(routerRoutes))
+    throw new Error(
+      `${target.identity}: its route configuration was replaced. Recreate the app router instead of calling Router.resetConfig().`,
+    );
 }

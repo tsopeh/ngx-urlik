@@ -1,4 +1,3 @@
-import { pathParam } from './legacy-params.spec-helper';
 import {
   booleanCodec,
   delimitedQueryParam,
@@ -47,9 +46,8 @@ describe('parameter codecs and definitions', () => {
     );
   });
 
-  it('keeps placement, defaults, and collection representation outside codecs', () => {
+  it('keeps query defaults and collection representation outside codecs', () => {
     const codec = stringCodec();
-    expect(pathParam({ name: 'id', codec })).toEqual({ kind: 'path', name: 'id', codec });
     expect(queryParam({ codec, required: true, defaultValue: 'all' })).toMatchObject({
       kind: 'query',
       mode: 'scalar',

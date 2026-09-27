@@ -80,26 +80,10 @@ test('restores Signal Forms and writes array and structured query values', async
   );
 });
 
-test('persists ratings and viewings, filters history, and resets only the new database', async ({
+test('persists ratings and viewings, filters history, and resets the database', async ({
   page,
 }) => {
   await page.goto('/settings');
-  await page.evaluate(async () => {
-    await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open('taste-track-demo');
-      request.onupgradeneeded = () => request.result.createObjectStore('legacy');
-      request.onsuccess = () => {
-        const db = request.result;
-        const tx = db.transaction('legacy', 'readwrite');
-        tx.objectStore('legacy').put('keep me', 'sentinel');
-        tx.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-      };
-      request.onerror = () => reject(request.error);
-    });
-  });
   await page.locator('#main-content').getByRole('button', { name: 'dark', exact: true }).click();
   await page.goto(movieUrl);
   await page.getByRole('combobox', { name: 'Rating', exact: true }).selectOption('9');
@@ -127,22 +111,6 @@ test('persists ratings and viewings, filters history, and resets only the new da
   await expect(page.getByRole('combobox', { name: 'Rating', exact: true })).toHaveValue('6');
   await expect(page.getByRole('heading', { name: '2 recorded viewings' })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  const sentinel = await page.evaluate(
-    () =>
-      new Promise((resolve, reject) => {
-        const request = indexedDB.open('taste-track-demo');
-        request.onsuccess = () => {
-          const db = request.result;
-          const get = db.transaction('legacy').objectStore('legacy').get('sentinel');
-          get.onsuccess = () => {
-            db.close();
-            resolve(get.result);
-          };
-        };
-        request.onerror = () => reject(request.error);
-      }),
-  );
-  expect(sentinel).toBe('keep me');
 });
 
 test('unknown paths and missing entities have useful empty states', async ({ page }) => {

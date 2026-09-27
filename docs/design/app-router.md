@@ -230,7 +230,7 @@ The returned promise reports the navigation result. Timing matters:
 | Router is destroyed                         | Waiting and active callers settle as `false`                                                |
 
 External navigation cancels waiting work even if its guard later rejects. A canceled edit must
-not reappear after the user tries to leave the page. See [why writes share a queue](../adr/0011-shared-query-write-coordinator.md).
+not reappear after the user tries to leave the page.
 
 ### Global query observation
 
@@ -371,7 +371,7 @@ Invalid active path values and inactive route reads throw because there is no va
 `defineAppRouter()` validates identified route chains and throws structural errors together.
 Runtime validation checks unique identifiers, known paths, path codec maps, repeated parameter
 names, and duplicate query definitions along those chains. Angular validates and matches its route
-configuration. See the [validation decision](../adr/0009-structural-route-diagnostics.md).
+configuration.
 
 ## Angular runtime relationship
 

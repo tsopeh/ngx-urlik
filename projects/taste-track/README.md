@@ -37,7 +37,7 @@ The server builds the library first. The app imports only the public `ngx-urlik`
 | Credits and contributor profiles | Typed navigation across branches                                            |
 | Collection                       | Signal Forms, repeated statuses, delimited media, structured viewing counts |
 | Viewing history                  | Reactive Forms and per-field RxJS debounce                                  |
-| Landing pages                    | Exact-match content and redirects                                           |
+| Landing pages                    | Empty-path children and redirects                                           |
 | Unknown URLs                     | Wildcard routes                                                             |
 
 Shared pages use `activeRoute()` to select their route. `paginationParams()` shares definitions
@@ -46,7 +46,7 @@ Normal navigation uses typed nodes throughout.
 
 ## Data and reset
 
-Dexie stores the data in `taste-track-screen-v2`. The deterministic seed contains 30 movies,
+Dexie stores the data in `taste-track`. The deterministic seed contains 30 movies,
 4 shows, 8 seasons, 32 episodes, 4 people, and 2 production companies. Catalog data is readonly.
 Ratings, statuses, favorites, counts, and viewing events survive reloads.
 
@@ -63,5 +63,3 @@ npm test
 npm run typecheck
 npm run e2e
 ```
-
-The [design note](../../docs/adr/0010-tastetrack-demo.md) explains why the demo has this scope.
