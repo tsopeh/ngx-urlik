@@ -1,6 +1,11 @@
 import type { Routes, UrlTree } from '@angular/router';
-import { defineAppRouter } from 'ngx-urlik';
-import { numberCodec, queryParam, repeatedQueryParam, stringCodec } from 'ngx-urlik';
+import {
+  defineAppRouter,
+  numberCodec,
+  queryParam,
+  repeatedQueryParam,
+  stringCodec,
+} from 'ngx-urlik';
 
 type TokenValue<T> = T extends import('@angular/core').InjectionToken<infer Value> ? Value : never;
 

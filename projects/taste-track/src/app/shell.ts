@@ -1,8 +1,8 @@
 import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { TasteTrackRepository } from './database';
 import { AppRouter } from './app-router';
-import { ThemeService, type ThemePreference } from './theme';
+import { TasteTrackRepository } from './database';
+import { type ThemePreference, ThemeService } from './theme';
 
 @Component({
   imports: [RouterLink, RouterLinkActive, RouterOutlet],

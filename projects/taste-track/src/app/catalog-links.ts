@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { AppRouter } from './app-router';
 import type { CatalogItem, Contributor } from './domain';
 
