@@ -1,8 +1,11 @@
 import { Component, computed, inject } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
+import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
-import { TasteTrackRepository } from './database';
+import { ContributorApiService } from './contributor-api';
+import type { Contributor } from './domain';
 
 @Component({
   imports: [RouterLink],
@@ -24,7 +27,7 @@ import { TasteTrackRepository } from './database';
 })
 export class ContributorsPage {
   private readonly routes = inject(AppRouter);
-  private readonly repository = inject(TasteTrackRepository);
+  private readonly contributorApi = inject(ContributorApiService);
   protected readonly links = inject(CatalogLinks);
   private readonly active = this.routes.activeRoute({
     people: this.routes.routes.PEOPLE,
@@ -33,7 +36,8 @@ export class ContributorsPage {
   protected readonly kind = computed(() =>
     this.active().route === 'people' ? 'person' : 'company',
   );
-  protected readonly contributors = computed(() =>
-    this.repository.contributors().filter((contributor) => contributor.kind === this.kind()),
+  protected readonly contributors = toSignal(
+    toObservable(this.kind).pipe(switchMap((kind) => this.contributorApi.getContributors(kind))),
+    { initialValue: [] as readonly Contributor[] },
   );
 }

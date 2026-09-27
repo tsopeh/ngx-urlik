@@ -1,12 +1,13 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
-import { debounceTime, groupBy, mergeMap } from 'rxjs';
+import { debounceTime, groupBy, mergeMap, switchMap } from 'rxjs';
+import { ActivityApiService, type ActivityEntry, type ActivityQuery } from './activity-api';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
-import { TasteTrackRepository } from './database';
 
 @Component({
   imports: [DatePipe, ReactiveFormsModule, RouterLink],
@@ -55,24 +56,23 @@ import { TasteTrackRepository } from './database';
         >
       </form>
       <section class="activity-list" aria-label="Journal entries">
-        @for (event of visible(); track event.id) {
-          @let item = itemFor(event.itemId);
+        @for (entry of response().entries; track entry.event.id) {
           <article>
-            <time [attr.datetime]="event.occurredAt">{{
-              event.occurredAt | date: 'mediumDate'
+            <time [attr.datetime]="entry.event.occurredAt">{{
+              entry.event.occurredAt | date: 'mediumDate'
             }}</time
             ><span class="activity-icon">▶</span>
             <div>
-              <p class="eyebrow">{{ event.kind }}</p>
+              <p class="eyebrow">{{ entry.event.kind }}</p>
               <h3>
-                @if (item) {
+                @if (entry.item; as item) {
                   <a [routerLink]="links.item(item)">{{ item.title }}</a>
                 }
               </h3>
-              <p>{{ item?.subtitle }}</p>
+              <p>{{ entry.item?.subtitle }}</p>
             </div>
-            @if (event.rating) {
-              <strong>★ {{ event.rating }}</strong>
+            @if (entry.event.rating) {
+              <strong>★ {{ entry.event.rating }}</strong>
             }
           </article>
         } @empty {
@@ -85,7 +85,7 @@ import { TasteTrackRepository } from './database';
         ><span>Page {{ query().page }}</span
         ><button
           class="button"
-          [disabled]="query().page * query().pageSize >= matched().length"
+          [disabled]="query().page * query().pageSize >= response().total"
           (click)="setPage(query().page + 1)"
         >
           Next
@@ -97,7 +97,7 @@ import { TasteTrackRepository } from './database';
 export class ActivityPage {
   protected readonly links = inject(CatalogLinks);
   private readonly routes = inject(AppRouter);
-  private readonly repository = inject(TasteTrackRepository);
+  private readonly activityApi = inject(ActivityApiService);
   protected readonly form = createQueryParamsFormGroup(this.routes.routes.ACTIVITY, {
     transformWrites: (changes) =>
       changes.pipe(
@@ -106,30 +106,19 @@ export class ActivityPage {
       ),
   });
   protected readonly query = computed(() => this.routes.routes.ACTIVITY.params().query);
-  protected readonly matched = computed(() => {
-    const query = this.query();
-    const matched = this.repository.events().filter((event) => {
-      const item = this.repository.items().find((candidate) => candidate.id === event.itemId);
-      return (
-        (!query.search || item?.title.toLowerCase().includes(query.search.toLowerCase())) &&
-        (!query.from || event.occurredAt >= query.from) &&
-        (!query.to || event.occurredAt <= `${query.to}T23:59:59.999Z`)
-      );
-    });
-    return matched.sort(
-      (a, b) =>
-        (query.sort.field === 'date'
-          ? a.occurredAt.localeCompare(b.occurredAt)
-          : (a.rating ?? 0) - (b.rating ?? 0)) * (query.sort.direction === 'asc' ? 1 : -1),
-    );
-  });
-  protected readonly visible = computed(() => {
-    const query = this.query();
-    return this.matched().slice((query.page - 1) * query.pageSize, query.page * query.pageSize);
-  });
-  protected itemFor(id: string) {
-    return this.repository.items().find((item) => item.id === id);
-  }
+
+  private readonly request = computed<ActivityQuery>(() => this.query());
+
+  protected readonly response = toSignal(
+    toObservable(this.request).pipe(switchMap((req) => this.activityApi.getActivity(req))),
+    {
+      initialValue: {
+        entries: [] as readonly ActivityEntry[],
+        total: 0,
+      },
+    },
+  );
+
   protected setPage(page: number) {
     this.form.controls.page.setValue(page);
   }

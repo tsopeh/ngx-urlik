@@ -44,6 +44,7 @@ export class TasteTrackRepository {
   readonly events = this.eventState.asReadonly();
   readonly ready = signal(false);
   readonly error = signal<string | null>(null);
+  readonly dataVersion = signal(0);
 
   constructor() {
     void this.reload().catch(() =>
@@ -66,6 +67,7 @@ export class TasteTrackRepository {
     this.eventState.set(events);
     this.ready.set(true);
     this.error.set(null);
+    this.dataVersion.update((v) => v + 1);
   }
 
   async updatePersonal(

@@ -1,14 +1,16 @@
 import { Component, computed, inject } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
+import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
-import { TasteTrackRepository } from './database';
+import { ContributorApiService, type ContributorProfile } from './contributor-api';
 
 @Component({
   imports: [RouterLink],
   template: `
     <section class="page-stack">
-      @if (contributor(); as person) {
+      @if (profile()?.contributor; as person) {
         <header class="page-header">
           <div>
             <p class="eyebrow">{{ person.kind }}</p>
@@ -18,14 +20,14 @@ import { TasteTrackRepository } from './database';
         </header>
         <section class="panel">
           <h2>Filmography</h2>
-          @for (credit of credits(); track credit.item.id) {
+          @for (credit of profile()?.credits ?? []; track credit.item.id) {
             <p>
               <a [routerLink]="links.item(credit.item)">{{ credit.item.title }}</a> ·
               {{ credit.roles.join(', ') }}
             </p>
           }
         </section>
-      } @else if (repository.ready()) {
+      } @else if (profile() === null) {
         <h1>Profile not found</h1>
       }
     </section>
@@ -33,27 +35,19 @@ import { TasteTrackRepository } from './database';
 })
 export class ContributorPage {
   private readonly routes = inject(AppRouter);
-  protected readonly repository = inject(TasteTrackRepository);
+  private readonly contributorApi = inject(ContributorApiService);
   protected readonly links = inject(CatalogLinks);
   private readonly active = this.routes.activeRoute({
     person: this.routes.routes.PERSON_DETAIL,
     company: this.routes.routes.COMPANY_DETAIL,
   });
-  protected readonly contributor = computed(() => {
+  private readonly contributorId = computed(() => {
     const active = this.active();
-    const id =
-      active.route === 'person' ? active.params.path.personId : active.params.path.companyId;
-    return this.repository.contributors().find((contributor) => contributor.id === id);
+    return active.route === 'person' ? active.params.path.personId : active.params.path.companyId;
   });
-  protected readonly credits = computed(() =>
-    this.repository
-      .items()
-      .filter((item) => item.kind !== 'episode')
-      .flatMap((item) => {
-        const roles = item.credits
-          .filter((credit) => credit.contributorId === this.contributor()?.id)
-          .map((credit) => credit.role);
-        return roles.length ? [{ item, roles }] : [];
-      }),
+  protected readonly profile = toSignal(
+    toObservable(this.contributorId).pipe(
+      switchMap((id) => this.contributorApi.getContributorProfile(id)),
+    ),
   );
 }

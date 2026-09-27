@@ -1,12 +1,17 @@
 import { Component, computed, inject } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
+import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import { TasteTrackRepository } from './database';
-import type { CatalogItem } from './domain';
-import { MediaCard } from './media-card';
 import { CatalogLinks } from './catalog-links';
 import { experienceCountCodec } from './codecs';
-import type { CollectionStatus, MediaKind } from './domain';
+import {
+  CollectionApiService,
+  type CollectionItemCard,
+  type CollectionQuery,
+} from './collection-api';
+import type { CatalogItem, CollectionStatus, MediaKind } from './domain';
+import { MediaCard } from './media-card';
 
 @Component({
   imports: [MediaCard],
@@ -112,16 +117,16 @@ import type { CollectionStatus, MediaKind } from './domain';
       <div class="section-heading">
         <div>
           <p class="eyebrow">Your titles</p>
-          <h2>{{ filtered().length }} collected titles</h2>
+          <h2>{{ response().total }} collected titles</h2>
         </div>
       </div>
       <div id="favorites" class="media-grid">
-        @for (item of visible(); track item.id) {
+        @for (card of response().items; track card.item.id) {
           <app-media-card
-            [item]="item"
-            [state]="stateFor(item.id)"
-            [url]="links.item(item)"
-            (favorite)="toggleFavorite(item.id)"
+            [item]="card.item"
+            [state]="card.state"
+            [url]="links.item(card.item)"
+            (favorite)="toggleFavorite(card.item.id)"
           />
         } @empty {
           <p class="empty">No collection items match these filters.</p>
@@ -137,7 +142,7 @@ import type { CollectionStatus, MediaKind } from './domain';
         ><span>Page {{ binding.model().page }}</span
         ><button
           class="button"
-          [disabled]="binding.model().page * binding.model().pageSize >= filtered().length"
+          [disabled]="binding.model().page * binding.model().pageSize >= response().total"
           (click)="setPage(binding.model().page + 1)"
         >
           Next
@@ -151,51 +156,23 @@ export class CollectionPage {
   protected readonly kinds: readonly MediaKind[] = ['movie', 'show', 'episode'];
   protected readonly statuses: readonly CollectionStatus[] = ['saved', 'in-progress', 'completed'];
   protected readonly routes = inject(AppRouter);
-  private readonly repository = inject(TasteTrackRepository);
+  private readonly collectionApi = inject(CollectionApiService);
   protected readonly binding = createQueryParamsSignalForm(this.routes.routes.COLLECTION);
   protected readonly ratings = [6, 7, 8, 9, 10];
   protected readonly pageSizes = [12, 24, 48] as const;
-  private readonly stateMap = computed(
-    () => new Map(this.repository.personalStates().map((state) => [state.itemId, state])),
+
+  private readonly request = computed<CollectionQuery>(() => this.binding.model());
+
+  protected readonly response = toSignal(
+    toObservable(this.request).pipe(switchMap((req) => this.collectionApi.getCollection(req))),
+    {
+      initialValue: {
+        items: [] as readonly CollectionItemCard[],
+        total: 0,
+      },
+    },
   );
-  protected readonly filtered = computed(() => {
-    const query = this.binding.model();
-    return this.repository
-      .items()
-      .filter((item) => {
-        const state = this.stateMap().get(item.id);
-        if (!state) return false;
-        if (
-          query.search &&
-          !`${item.title} ${item.subtitle}`.toLowerCase().includes(query.search.toLowerCase())
-        )
-          return false;
-        if (query.media.length && !query.media.includes(item.kind)) return false;
-        if (query.statuses.length && !query.statuses.includes(state.status)) return false;
-        if (query.minRating !== null && (state.rating ?? 0) < query.minRating) return false;
-        if (
-          query.replayCount &&
-          (query.replayCount.kind !== state.count.kind ||
-            (query.replayCount.kind === 'exact' &&
-              state.count.kind === 'exact' &&
-              query.replayCount.value !== state.count.value))
-        )
-          return false;
-        return true;
-      })
-      .sort(
-        (a, b) =>
-          (query.sort.field === 'title'
-            ? a.title.localeCompare(b.title)
-            : (this.stateMap().get(a.id)?.rating ?? 0) - (this.stateMap().get(b.id)?.rating ?? 0)) *
-          (query.sort.direction === 'asc' ? 1 : -1),
-      );
-  });
-  protected readonly visible = computed(() => {
-    const query = this.binding.model();
-    const start = (query.page - 1) * query.pageSize;
-    return this.filtered().slice(start, start + query.pageSize);
-  });
+
   protected countValue() {
     const count = this.binding.model().replayCount;
     return count ? experienceCountCodec().serialize(count) : '';
@@ -255,10 +232,7 @@ export class CollectionPage {
       page: 1,
     }));
   }
-  protected stateFor(id: string) {
-    return this.stateMap().get(id as CatalogItem['id']);
-  }
   protected toggleFavorite(id: CatalogItem['id']) {
-    void this.repository.toggleFavorite(id);
+    void this.collectionApi.toggleFavorite(id);
   }
 }

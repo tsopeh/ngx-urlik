@@ -1,9 +1,12 @@
 import { Component, computed, inject } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import type { RouteQueryPatch } from 'ngx-urlik';
+import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
+import { CatalogApiService, type CatalogItemCard, type CatalogQuery } from './catalog-api';
 import { CatalogLinks } from './catalog-links';
 import type { PageSize } from './codecs';
-import { TasteTrackRepository } from './database';
+import type { CatalogItem } from './domain';
 import { MediaCard } from './media-card';
 
 @Component({
@@ -13,7 +16,7 @@ import { MediaCard } from './media-card';
       <div class="section-heading">
         <div>
           <h2>{{ heading() }}</h2>
-          <p>{{ results().length }} titles</p>
+          <p>{{ response().total }} titles</p>
         </div>
       </div>
       <div class="filter-panel">
@@ -63,12 +66,12 @@ import { MediaCard } from './media-card';
         }
       </div>
       <div class="media-grid">
-        @for (item of visible(); track item.id) {
+        @for (card of response().items; track card.item.id) {
           <app-media-card
-            [item]="item"
-            [state]="stateFor(item.id)"
-            [url]="links.item(item)"
-            (favorite)="repository.toggleFavorite(item.id)"
+            [item]="card.item"
+            [state]="card.state"
+            [url]="links.item(card.item)"
+            (favorite)="toggleFavorite(card.item.id)"
           />
         } @empty {
           <p class="empty">No titles match these filters.</p>
@@ -85,7 +88,7 @@ import { MediaCard } from './media-card';
         <span>Page {{ query().page }}</span>
         <button
           class="button"
-          [disabled]="query().page * query().pageSize >= results().length"
+          [disabled]="query().page * query().pageSize >= response().total"
           (click)="update({ page: query().page + 1 })"
         >
           Next
@@ -96,7 +99,7 @@ import { MediaCard } from './media-card';
 })
 export class CatalogPage {
   private readonly routes = inject(AppRouter);
-  protected readonly repository = inject(TasteTrackRepository);
+  private readonly catalogApi = inject(CatalogApiService);
   protected readonly links = inject(CatalogLinks);
   private readonly route = this.routes.routes.SCREEN;
   private readonly active = this.routes.activeRoute({
@@ -109,36 +112,27 @@ export class CatalogPage {
   protected readonly heading = computed(
     () => ({ episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' })[this.active().route],
   );
-  protected readonly results = computed(() => {
+
+  private readonly request = computed<CatalogQuery>(() => {
     const active = this.active();
-    const query = this.query();
-    return this.repository
-      .items()
-      .filter((item) => {
-        const inBranch =
-          active.route === 'episodes'
-            ? item.kind === 'episode' &&
-              item.showId === active.params.path.showId &&
-              item.seasonNumber === active.params.path.seasonNumber
-            : item.kind === (active.route === 'movies' ? 'movie' : 'show');
-        return (
-          inBranch &&
-          `${item.title} ${item.subtitle}`.toLowerCase().includes(query.search.toLowerCase()) &&
-          (!query.genres.length || query.genres.some((genre) => item.genres.includes(genre)))
-        );
-      })
-      .sort(
-        (a, b) =>
-          (query.sort.field === 'year' ? a.year - b.year : a.title.localeCompare(b.title)) *
-          (query.sort.direction === 'asc' ? 1 : -1),
-      );
+    return {
+      route: active.route,
+      showId: active.route === 'episodes' ? active.params.path.showId : undefined,
+      seasonNumber: active.route === 'episodes' ? active.params.path.seasonNumber : undefined,
+      ...this.query(),
+    };
   });
-  protected readonly visible = computed(() =>
-    this.results().slice(
-      (this.query().page - 1) * this.query().pageSize,
-      this.query().page * this.query().pageSize,
-    ),
+
+  protected readonly response = toSignal(
+    toObservable(this.request).pipe(switchMap((req) => this.catalogApi.getCatalog(req))),
+    {
+      initialValue: {
+        items: [] as readonly CatalogItemCard[],
+        total: 0,
+      },
+    },
   );
+
   protected update(patch: RouteQueryPatch<typeof this.route>) {
     void this.route.patchQuery(patch, { replaceUrl: true });
   }
@@ -159,7 +153,7 @@ export class CatalogPage {
       page: 1,
     }));
   }
-  protected stateFor(id: string) {
-    return this.repository.personalStates().find((state) => state.itemId === id);
+  protected toggleFavorite(id: CatalogItem['id']) {
+    void this.catalogApi.toggleFavorite(id);
   }
 }

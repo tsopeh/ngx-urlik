@@ -1,8 +1,10 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
+import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
+import { CatalogApiService, type ItemDetail, type ItemDetailRequest } from './catalog-api';
 import { CatalogLinks } from './catalog-links';
-import { TasteTrackRepository } from './database';
 import type { CollectionStatus } from './domain';
 
 @Component({
@@ -99,7 +101,7 @@ import type { CollectionStatus } from './domain';
           <h2>{{ eventCount() }} recorded viewings</h2>
           <a [routerLink]="historyUrl()">View history for {{ title.title }}</a>
         </section>
-      } @else if (repository.ready()) {
+      } @else if (detail() === null) {
         <h1>Title not found</h1>
         <p>This movie, show, season, or episode is not in the catalog.</p>
       }
@@ -108,7 +110,7 @@ import type { CollectionStatus } from './domain';
 })
 export class DetailPage {
   private readonly routes = inject(AppRouter);
-  protected readonly repository = inject(TasteTrackRepository);
+  private readonly catalogApi = inject(CatalogApiService);
   protected readonly links = inject(CatalogLinks);
   protected readonly viewingDate = signal(new Date().toISOString().slice(0, 10));
   protected readonly saving = signal(false);
@@ -121,56 +123,41 @@ export class DetailPage {
     show: this.routes.routes.SHOW_DETAIL,
     movie: this.routes.routes.MOVIE_DETAIL,
   });
-  protected readonly isSeason = computed(() => this.context().route === 'season');
-  protected readonly item = computed(() => {
+
+  private readonly request = computed<ItemDetailRequest>(() => {
     const active = this.context();
-    const items = this.repository.items();
     switch (active.route) {
       case 'movie':
-        return items.find((item) => item.id === active.params.path.movieId);
+        return { route: 'movie', movieId: active.params.path.movieId };
       case 'show':
-        return items.find((item) => item.id === active.params.path.showId);
+        return { route: 'show', showId: active.params.path.showId };
       case 'season':
-        return this.repository
-          .seasons()
-          .some(
-            (season) =>
-              season.showId === active.params.path.showId &&
-              season.number === active.params.path.seasonNumber,
-          )
-          ? items.find((item) => item.id === active.params.path.showId)
-          : undefined;
+        return {
+          route: 'season',
+          showId: active.params.path.showId,
+          seasonNumber: active.params.path.seasonNumber,
+        };
       case 'episode':
-        return items.find(
-          (item) =>
-            item.kind === 'episode' &&
-            item.showId === active.params.path.showId &&
-            item.seasonNumber === active.params.path.seasonNumber &&
-            item.episodeNumber === active.params.path.episodeNumber,
-        );
+        return {
+          route: 'episode',
+          showId: active.params.path.showId,
+          seasonNumber: active.params.path.seasonNumber,
+          episodeNumber: active.params.path.episodeNumber,
+        };
     }
   });
-  protected readonly heading = computed(() => {
-    const active = this.context();
-    return active.route === 'season'
-      ? `${this.item()?.title} · Season ${active.params.path.seasonNumber}`
-      : this.item()?.title;
-  });
-  protected readonly state = computed(() =>
-    this.repository.personalStates().find((state) => state.itemId === this.item()?.id),
+
+  protected readonly detail = toSignal(
+    toObservable(this.request).pipe(switchMap((req) => this.catalogApi.getItemDetail(req))),
   );
-  protected readonly eventCount = computed(
-    () => this.repository.events().filter((event) => event.itemId === this.item()?.id).length,
-  );
-  protected readonly credits = computed(
-    () =>
-      this.item()?.credits.flatMap((credit) => {
-        const person = this.repository
-          .contributors()
-          .find((person) => person.id === credit.contributorId);
-        return person ? [{ person, role: credit.role }] : [];
-      }) ?? [],
-  );
+
+  protected readonly item = computed(() => this.detail()?.item);
+  protected readonly isSeason = computed(() => this.detail()?.isSeason ?? false);
+  protected readonly heading = computed(() => this.detail()?.heading ?? '');
+  protected readonly state = computed(() => this.detail()?.state);
+  protected readonly eventCount = computed(() => this.detail()?.eventCount ?? 0);
+  protected readonly credits = computed(() => this.detail()?.credits ?? []);
+
   protected readonly parentLink = computed(() => {
     const active = this.context();
     if (active.route === 'episode')
@@ -221,13 +208,13 @@ export class DetailPage {
   }
   protected async setStatus(status: CollectionStatus) {
     const item = this.item();
-    if (item) await this.persist(() => this.repository.updatePersonal(item.id, { status }));
+    if (item) await this.persist(() => this.catalogApi.updatePersonal(item.id, { status }));
   }
   protected async setRating(value: string) {
     const item = this.item();
     if (item)
       await this.persist(() =>
-        this.repository.updatePersonal(item.id, { rating: value ? Number(value) : null }),
+        this.catalogApi.updatePersonal(item.id, { rating: value ? Number(value) : null }),
       );
   }
   protected async logViewing() {
@@ -235,7 +222,7 @@ export class DetailPage {
     if (!item) return;
     this.saved.set(false);
     await this.persist(async () => {
-      await this.repository.logViewing(item, this.viewingDate());
+      await this.catalogApi.logViewing(item, this.viewingDate());
       this.saved.set(true);
     });
   }

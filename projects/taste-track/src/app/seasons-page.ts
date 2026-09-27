@@ -1,7 +1,10 @@
 import { Component, computed, inject } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterOutlet } from '@angular/router';
+import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import { TasteTrackRepository } from './database';
+import { CatalogApiService } from './catalog-api';
+import type { Season } from './domain';
 
 @Component({
   imports: [RouterLink, RouterOutlet],
@@ -22,7 +25,7 @@ import { TasteTrackRepository } from './database';
 })
 export class SeasonsPage {
   private readonly routes = inject(AppRouter);
-  private readonly repository = inject(TasteTrackRepository);
+  private readonly catalogApi = inject(CatalogApiService);
   private readonly route = this.routes.routes.SEASONS;
   protected readonly showUrl = computed(() =>
     this.routes.routes.SHOW_DETAIL.createUrlTree({
@@ -30,16 +33,18 @@ export class SeasonsPage {
       query: this.route.params().query,
     }),
   );
+  private readonly showId = computed(() => this.route.params().path.showId);
+  private readonly seasons = toSignal(
+    toObservable(this.showId).pipe(switchMap((showId) => this.catalogApi.getSeasons(showId))),
+    { initialValue: [] as readonly Season[] },
+  );
   protected readonly links = computed(() =>
-    this.repository
-      .seasons()
-      .filter((season) => season.showId === this.route.params().path.showId)
-      .map((season) => ({
-        label: season.title,
-        url: this.routes.routes.SEASON_DETAIL.createUrlTree({
-          path: { showId: season.showId, seasonNumber: season.number },
-          query: this.route.params().query,
-        }),
-      })),
+    this.seasons().map((season) => ({
+      label: season.title,
+      url: this.routes.routes.SEASON_DETAIL.createUrlTree({
+        path: { showId: season.showId, seasonNumber: season.number },
+        query: this.route.params().query,
+      }),
+    })),
   );
 }
