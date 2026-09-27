@@ -23,7 +23,7 @@ const setup = <T>(definition: {
 };
 
 describe('defineAppRouter with Angular route arrays', () => {
-  it('passes Angular routes through when no route has an identifier', () => {
+  it('passes Angular routes through when none has a route name', () => {
     const routes: Route[] = [
       {
         path: '',
@@ -41,17 +41,17 @@ describe('defineAppRouter with Angular route arrays', () => {
     expect(router.config).toEqual(routes);
   });
 
-  it('creates a flat node for each unique identifier, including nested identified routes', () => {
+  it('creates a flat node for each unique route name, including nested named routes', () => {
     const definition = defineAppRouter({
       routes: [
         {
           path: 'shows/:showId',
-          identifier: 'SHOW',
+          routeName: 'SHOW',
           pathParam: { showId: { codec: numberCodec() } },
           children: [
             {
               path: 'seasons/:season',
-              identifier: 'SEASON',
+              routeName: 'SEASON',
               pathParam: { season: { codec: numberCodec() } },
               component: EmptyComponent,
             },
@@ -70,6 +70,19 @@ describe('defineAppRouter with Angular route arrays', () => {
     );
   });
 
+  it('rejects a route name reused in another branch when the router is defined', () => {
+    expect(() =>
+      defineAppRouter({
+        routes: [
+          { path: 'left', children: [{ path: 'item', routeName: 'DETAIL' }] },
+          { path: 'right', children: [{ path: 'item', routeName: 'DETAIL' }] },
+        ],
+      }),
+    ).toThrow(
+      "routeName 'DETAIL' is used by both routes[0].children[0] and routes[1].children[0]. Give each named route a different routeName.",
+    );
+  });
+
   it('requires and decodes every placeholder, including those on unnamed ancestors', async () => {
     const definition = defineAppRouter({
       routes: [
@@ -79,7 +92,7 @@ describe('defineAppRouter with Angular route arrays', () => {
           children: [
             {
               path: 'seasons/:season',
-              identifier: 'SEASON',
+              routeName: 'SEASON',
               pathParam: { season: { codec: numberCodec() } },
               component: EmptyComponent,
             },
@@ -101,7 +114,7 @@ describe('defineAppRouter with Angular route arrays', () => {
       routes: [
         {
           path: 'shows/:showId/seasons/:season',
-          identifier: 'SEASON',
+          routeName: 'SEASON',
           pathParam: {
             showId: { codec: numberCodec() },
             season: { codec: numberCodec() },
@@ -120,7 +133,7 @@ describe('defineAppRouter with Angular route arrays', () => {
 
   it('encodes one supplied path value as one URL segment', () => {
     const definition = defineAppRouter({
-      routes: [{ path: 'items/:id', identifier: 'ITEM', component: EmptyComponent }],
+      routes: [{ path: 'items/:id', routeName: 'ITEM', component: EmptyComponent }],
     });
     const { appRouter, router } = setup(definition);
 
@@ -139,7 +152,7 @@ describe('defineAppRouter with Angular route arrays', () => {
           children: [
             {
               path: 'episodes/:episodeId',
-              identifier: 'EPISODE',
+              routeName: 'EPISODE',
               pathParam: { episodeId: { codec: numberCodec() } },
               component: EmptyComponent,
             },
@@ -158,18 +171,18 @@ describe('defineAppRouter with Angular route arrays', () => {
     });
   });
 
-  it('reports the deepest active candidate and uses an empty-path identified child as landing content', async () => {
+  it('reports the deepest active candidate and uses an empty-path named child as landing content', async () => {
     const definition = defineAppRouter({
       routes: [
         {
           path: 'shows/:showId',
-          identifier: 'SHOW',
+          routeName: 'SHOW',
           pathParam: { showId: { codec: numberCodec() } },
           children: [
-            { path: '', identifier: 'SHOW_LANDING', component: EmptyComponent },
+            { path: '', routeName: 'SHOW_LANDING', component: EmptyComponent },
             {
               path: 'episodes/:episodeId',
-              identifier: 'EPISODE',
+              routeName: 'EPISODE',
               pathParam: { episodeId: { codec: numberCodec() } },
               component: EmptyComponent,
             },
@@ -190,16 +203,16 @@ describe('defineAppRouter with Angular route arrays', () => {
     expect(active()).toMatchObject({ route: 'landing', node: SHOW_LANDING });
   });
 
-  it('uses Angular matching to distinguish identified routes with the same URL', async () => {
+  it('uses Angular matching to distinguish named routes with the same URL', async () => {
     const definition = defineAppRouter({
       routes: [
         {
           path: 'dashboard',
-          identifier: 'ADMIN',
+          routeName: 'ADMIN',
           canMatch: [() => false],
           component: EmptyComponent,
         },
-        { path: 'dashboard', identifier: 'USER', component: EmptyComponent },
+        { path: 'dashboard', routeName: 'USER', component: EmptyComponent },
       ],
     });
     const { appRouter, router } = setup(definition);
@@ -229,7 +242,7 @@ describe('defineAppRouter with Angular route arrays', () => {
           children: [
             {
               path: 'members/:memberId',
-              identifier: 'MEMBER',
+              routeName: 'MEMBER',
               pathParam: { codec: numberCodec() },
               queryParams: { search: queryParam({ codec: stringCodec() }) },
               component: EmptyComponent,
@@ -250,12 +263,12 @@ describe('defineAppRouter with Angular route arrays', () => {
     expect(router.url).toBe('/teams/3/members/4?unknown=keep&search=new');
   });
 
-  it('binds a query form to an identified route node', async () => {
+  it('binds a query form to a named route node', async () => {
     const definition = defineAppRouter({
       routes: [
         {
           path: 'results',
-          identifier: 'RESULTS',
+          routeName: 'RESULTS',
           queryParams: { search: queryParam({ codec: stringCodec(), defaultValue: '' }) },
           component: EmptyComponent,
         },
@@ -270,9 +283,9 @@ describe('defineAppRouter with Angular route arrays', () => {
     await vi.waitFor(() => expect(router.url).toBe('/results?unknown=keep&search=new'));
   });
 
-  it('fails clearly if identified route configurations are replaced', async () => {
+  it('fails clearly if named route configurations are replaced', async () => {
     const definition = defineAppRouter({
-      routes: [{ path: 'movies', identifier: 'MOVIES', component: EmptyComponent }],
+      routes: [{ path: 'movies', routeName: 'MOVIES', component: EmptyComponent }],
     });
     const { appRouter, router } = setup(definition);
     const movies = appRouter.routes.MOVIES;
@@ -294,7 +307,7 @@ describe('defineAppRouter with Angular route arrays', () => {
       routes: [
         {
           path: 'items/:id',
-          identifier: 'ITEM',
+          routeName: 'ITEM',
           pathParam: { codec: numberCodec() },
           queryParams: { page: queryParam({ codec: numberCodec(), defaultValue: 1 }) },
           component: EmptyComponent,
@@ -310,14 +323,14 @@ describe('defineAppRouter with Angular route arrays', () => {
     expect(() => appRouter.routes.ITEM.params()).toThrow(/could not resolve 'id'/);
   });
 
-  it('rejects invalid identified definitions and handles failed serialization without navigation', async () => {
+  it('rejects invalid named definitions and handles failed serialization without navigation', async () => {
     expect(() =>
       defineAppRouter({
         routes: [
           {
             matcher: () => null,
             children: [
-              { path: 'profile/:userId', identifier: 'PROFILE', component: EmptyComponent },
+              { path: 'profile/:userId', routeName: 'PROFILE', component: EmptyComponent },
             ],
           },
         ],
@@ -328,7 +341,7 @@ describe('defineAppRouter with Angular route arrays', () => {
         routes: [
           {
             path: 'teams/:id',
-            children: [{ path: 'members/:id', identifier: 'MEMBER', component: EmptyComponent }],
+            children: [{ path: 'members/:id', routeName: 'MEMBER', component: EmptyComponent }],
           },
         ],
       }),
@@ -344,7 +357,7 @@ describe('defineAppRouter with Angular route arrays', () => {
             children: [
               {
                 path: 'members',
-                identifier: 'MEMBER',
+                routeName: 'MEMBER',
                 queryParams: {
                   // @ts-expect-error duplicate inherited query keys are rejected by the type layer
                   search: queryParam({ codec: stringCodec() }),
@@ -361,7 +374,7 @@ describe('defineAppRouter with Angular route arrays', () => {
         routes: [
           {
             path: 'items/:id/:id',
-            identifier: 'ITEM',
+            routeName: 'ITEM',
             pathParam: { id: { codec: numberCodec() } },
             component: EmptyComponent,
           },
@@ -371,17 +384,9 @@ describe('defineAppRouter with Angular route arrays', () => {
     expect(() =>
       defineAppRouter({
         routes: [
-          { path: 'one', identifier: 'DUPLICATE', component: EmptyComponent },
-          { path: 'two', identifier: 'DUPLICATE', component: EmptyComponent },
-        ],
-      }),
-    ).toThrow(/identifier 'DUPLICATE' duplicates/i);
-    expect(() =>
-      defineAppRouter({
-        routes: [
           {
             path: 'items/:id',
-            identifier: 'ITEM',
+            routeName: 'ITEM',
             pathParam: { id: { codec: numberCodec() }, extra: { codec: stringCodec() } } as never,
             component: EmptyComponent,
           },
@@ -394,7 +399,7 @@ describe('defineAppRouter with Angular route arrays', () => {
       routes: [
         {
           path: 'items/:id',
-          identifier: 'ITEM',
+          routeName: 'ITEM',
           pathParam: { id: { codec: numberCodec() } },
           queryParams: {
             search: queryParam({ codec: numberCodec() }),

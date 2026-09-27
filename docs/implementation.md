@@ -2,16 +2,16 @@
 
 Start with `projects/ngx-urlik/src/lib/app-router.ts`. It validates the Angular route array,
 compiles Angular's routes, and provides the router. The public node types live in
-`app-router-types.ts`; they infer identifiers and parameter state from the literal route array.
+`app-router-types.ts`; they infer route names and parameter state from the literal route array.
 
 Follow the route declaration, state reads, query writes, or form bindings below.
 
 ## Define
 
-`route-definition.ts` parses paths and validates every identified chain. `compiled-route.ts`
+`route-definition.ts` parses paths and validates every named chain. `compiled-route.ts`
 keeps the original Angular route fields, tags each Angular route configuration, and builds the
-identifier catalog. It records path and query definitions from unnamed ancestors as well as the
-identified route. The catalog is the shared input for URL construction and state reads.
+route-name catalog. It records path and query definitions from unnamed ancestors as well as the
+named route. The catalog is the shared input for URL construction and state reads.
 
 ## Read or construct
 

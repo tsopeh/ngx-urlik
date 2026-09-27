@@ -4,21 +4,19 @@ These names are used in the code and reference.
 
 ## Routes
 
-**AppRouter** — The injection token returned by `defineAppRouter()`. Inject it to get the flat, identifier-keyed `routes` catalog and router helpers.
+**AppRouter** — The injection token returned by `defineAppRouter()`. Inject it to get the flat, route-name-keyed `routes` catalog and router helpers.
 
-**Route definition** — An Angular route object with optional typed-router metadata such as `identifier`, `pathParam`, and `queryParams`.
+**Route definition** — An Angular route object with optional ngx-urlik fields: `routeName`, `pathParam`, `queryParams`, and `isEqual`.
 
-**Route identifier** — A unique name on an ordinary route. It adds a flat node under `AppRouter.routes`; uppercase is a convention.
+**Route name** — A unique value in `routeName` on an ordinary route. It adds a node under `AppRouter.routes` and does not change the URL. `defineAppRouter()` throws if two routes use the same name. Uppercase is a convention.
 
-**Route identity** — The identifier used to identify a route in code and parameter diagnostics. It is independent of the URL path.
+**Route node** — The generated object for a named route. It constructs destinations, navigates, and reads or patches state.
 
-**Route node** — The generated object for an identified route. It constructs destinations, navigates, and reads or patches state.
+**Route chain** — A named route and its ancestors, from the root down. Path and query definitions accumulate along this chain, including unnamed ancestors.
 
-**Route chain** — An identified route and its ancestors, from the root down. Path and query definitions accumulate along this chain, including unnamed ancestors.
+**Unnamed route** — An Angular route without `routeName`. Angular handles it, but it adds no generated route node.
 
-**Anonymous route** — An Angular route without an `identifier`. Angular handles it, but it adds no generated route node.
-
-**Path placeholder** — A dynamic segment written as `:name` in an Angular path. A destination supplies a value for every placeholder in its identified route chain.
+**Path placeholder** — A dynamic segment written as `:name` in an Angular path. A destination supplies a value for every placeholder in its named route chain.
 
 **Path parameter configuration** — An optional `{ codec }` or name-keyed map of codec options for placeholders in one route's path. Unconfigured placeholders use strings.
 
@@ -74,7 +72,7 @@ These names are used in the code and reference.
 
 **Semantic state error** — Reading an inactive route or an invalid active path. These reads throw because there is no valid parameter state to return.
 
-**Structural validation** — Checks performed by `defineAppRouter()` on identified route chains, without running codecs or default factories. Errors are reported together.
+**Structural validation** — Checks performed by `defineAppRouter()` on named route chains, without running codecs or default factories. Errors are reported together.
 
 ## TasteTrack
 

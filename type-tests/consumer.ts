@@ -8,7 +8,7 @@ const publicDefinition = defineAppRouter({
   routes: [
     {
       path: 'items/:id',
-      identifier: 'ITEM',
+      routeName: 'ITEM',
       pathParam: { codec: numberCodec() },
       queryParams: { search: queryParam({ codec: stringCodec() }) },
     },
@@ -27,14 +27,14 @@ const definition = defineAppRouter({
       children: [
         {
           path: 'members/:memberId/show/:showId',
-          identifier: 'MEMBER',
+          routeName: 'MEMBER',
           pathParam: { memberId: { codec: numberCodec() }, showId: { codec: stringCodec() } },
           queryParams: {
             page: queryParam({ codec: numberCodec(), required: true }),
             tags: repeatedQueryParam({ codec: stringCodec() }),
           },
         },
-        { path: '', identifier: 'TEAMS' },
+        { path: '', routeName: 'TEAMS' },
         { path: '**', component: class {} },
       ],
     },
@@ -59,7 +59,7 @@ const defaultsDefinition = defineAppRouter({
   routes: [
     {
       path: 'search/:term',
-      identifier: 'SEARCH',
+      routeName: 'SEARCH',
       queryParams: { term: queryParam({ codec: stringCodec() }) },
     },
   ],
@@ -70,11 +70,11 @@ defaults.routes.SEARCH.params().path.term satisfies string;
 defaults.routes.SEARCH.params().query.term satisfies string | null;
 
 declare const angularRoutes: Routes;
-const anonymousDefinition = defineAppRouter({ routes: angularRoutes });
-declare const anonymous: TokenValue<typeof anonymousDefinition.AppRouter>;
-anonymous.routes satisfies object;
-// @ts-expect-error widened Angular routes have no inferred identifiers
-anonymous.routes.UNKNOWN;
+const unnamedDefinition = defineAppRouter({ routes: angularRoutes });
+declare const unnamed: TokenValue<typeof unnamedDefinition.AppRouter>;
+unnamed.routes satisfies object;
+// @ts-expect-error widened Angular routes have no inferred route names
+unnamed.routes.UNKNOWN;
 
 // @ts-expect-error unnamed routes and wildcards have no generated node
 router.routes.WILDCARD;
@@ -92,7 +92,7 @@ defineAppRouter({
   routes: [
     {
       path: 'shows/:showId/season/:season',
-      identifier: 'SHOW',
+      routeName: 'SHOW',
       // @ts-expect-error multiple placeholders need a complete keyed map
       pathParam: { showId: { codec: stringCodec() } },
     },
@@ -102,7 +102,7 @@ defineAppRouter({
   routes: [
     {
       path: 'shows/:showId',
-      identifier: 'SHOW',
+      routeName: 'SHOW',
       // @ts-expect-error codec keys must match placeholders
       pathParam: { other: { codec: stringCodec() } },
     },
@@ -112,8 +112,8 @@ defineAppRouter({
   routes: [
     {
       path: '**',
-      // @ts-expect-error wildcards cannot be identified
-      identifier: 'FALLBACK',
+      // @ts-expect-error wildcard routes cannot be named
+      routeName: 'FALLBACK',
     },
   ],
 });
@@ -121,7 +121,7 @@ defineAppRouter({
   routes: [
     {
       path: 'static',
-      identifier: 'STATIC',
+      routeName: 'STATIC',
       // @ts-expect-error a path without placeholders has no pathParam config
       pathParam: { codec: numberCodec() },
     },
@@ -135,7 +135,7 @@ defineAppRouter({
       children: [
         {
           path: 'items',
-          identifier: 'ITEMS',
+          routeName: 'ITEMS',
           // @ts-expect-error descendants cannot redefine an inherited query key
           queryParams: { page: queryParam({ codec: stringCodec() }) },
         },

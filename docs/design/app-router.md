@@ -6,9 +6,9 @@ values, builds destinations, and coordinates query writes.
 
 The [README](../../README.md) shows a complete setup. This page gives the rules for each operation.
 
-## Route tree and identity
+## Routes and names
 
-Pass Angular's ordered route array to `defineAppRouter()`. Add an `identifier` to each route that
+Pass Angular's ordered route array to `defineAppRouter()`. Add `routeName` to each route that
 should have a typed node:
 
 ```ts
@@ -16,7 +16,7 @@ const { AppRouter, provideAppRouter } = defineAppRouter({
   routes: [
     {
       path: 'users/:userId',
-      identifier: 'USER',
+      routeName: 'USER',
       pathParam: { codec: stringCodec() },
       loadComponent: () => import('./user-page').then((m) => m.UserPage),
     },
@@ -26,30 +26,44 @@ const { AppRouter, provideAppRouter } = defineAppRouter({
 const user = inject(AppRouter).routes.USER;
 ```
 
-The route's Angular `path` is the source of its URL and placeholder names. `USER` is the stable
-identifier used in code. `routes` is flat even when the Angular route is nested. An identified
-descendant inherits path and query definitions from its ancestors, including unnamed ancestors.
+The route's Angular `path` is the source of its URL and placeholder names. `USER` is the name
+used in code. `AppRouter.routes` is flat even when the Angular route is nested. A named descendant
+inherits path and query definitions from its ancestors, including unnamed ancestors.
 
-Angular route options stay at the top level. Routes without an `identifier` remain Angular routes
+Angular route options stay at the top level. Routes without `routeName` remain Angular routes
 and do not appear in `AppRouter.routes`. Unnamed branches can use Angular features such as
-`loadChildren`; a branch used by an identified descendant must have statically declared children.
-Identified routes need a statically known primary-outlet path and cannot use `loadChildren`.
+`loadChildren`; a branch used by a named descendant must have statically declared children.
+Named routes need a statically known primary-outlet path and cannot use `loadChildren`.
+
+### Fields added to Angular routes
+
+The example above names a route and assigns a codec to its `:userId` placeholder. ngx-urlik adds
+four optional fields to Angular's `Route` object:
+
+| Field         | What it does                                                                                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `routeName`   | Adds a node under `AppRouter.routes` with this name. Names must be unique across the whole route array. `defineAppRouter()` throws when a name is repeated and identifies both declarations. The name does not change the URL. |
+| `pathParam`   | Sets codecs for placeholders declared in this route's `path`. Without it, placeholders are strings. Use `{ codec }` for one placeholder or a map keyed by placeholder name for several.                                        |
+| `queryParams` | Declares query fields this route owns. Named descendants inherit them, including fields on unnamed ancestors. Each key has one definition along a named route's chain.                                                         |
+| `isEqual`     | Compares decoded `{ path, query }` state for the route's `params` signal. Descendants inherit it unless they provide their own. It controls signal updates, not which URL values a patch reads.                                |
+
+All four fields are optional. Angular still handles routes that do not use them.
 
 Paths can contain static segments and named placeholders, such as `shows/:showId/seasons/:season`.
 Without `pathParam`, placeholder values are strings. Supply `{ codec }` for a single placeholder,
 or a map with one `{ codec }` entry for every placeholder on that route. Path values are required
-when constructing a destination. Names cannot repeat along an identified route chain. A path and
+when constructing a destination. Names cannot repeat along a named route chain. A path and
 query field may use the same name because state keeps them under separate `path` and `query`
 objects. Query definitions cannot repeat along that chain.
 
 ## Route kinds
 
-| Kind                      | Declaration                                            | Available operations                           |
-| ------------------------- | ------------------------------------------------------ | ---------------------------------------------- |
-| Identified ordinary route | A statically known primary `path` with an `identifier` | Construct, navigate, read state, patch query   |
-| Anonymous Angular route   | Any route without an `identifier`                      | Angular Router handles matching and navigation |
+| Kind                  | Declaration                                        | Available operations                           |
+| --------------------- | -------------------------------------------------- | ---------------------------------------------- |
+| Named ordinary route  | A statically known primary `path` with `routeName` | Construct, navigate, read state, patch query   |
+| Unnamed Angular route | Any route without `routeName`                      | Angular Router handles matching and navigation |
 
-An identified route can have no component, including at a leaf. Angular-only redirects and
+Named routes can have no component, including at a leaf. Angular-only redirects and
 wildcards keep Angular's ordinary configuration; they have no generated nodes. Angular's route
 order controls matching, so keep route ordering meaningful for overlapping patterns.
 
@@ -60,12 +74,12 @@ Use an empty-path child when a route needs landing content at its own URL as wel
 ```ts
 {
   path: 'account/:accountId',
-  identifier: 'ACCOUNT',
+  routeName: 'ACCOUNT',
   pathParam: { codec: numberCodec() },
   component: AccountLayout,
   children: [
-    { path: '', identifier: 'ACCOUNT_OVERVIEW', component: AccountOverview },
-    { path: 'settings', identifier: 'ACCOUNT_SETTINGS', component: AccountSettings },
+    { path: '', routeName: 'ACCOUNT_OVERVIEW', component: AccountOverview },
+    { path: 'settings', routeName: 'ACCOUNT_SETTINGS', component: AccountSettings },
   ],
 }
 ```
@@ -85,10 +99,9 @@ canActivate: [requireSession],
 title: 'User',
 ```
 
-Angular's `Route` fields are forwarded to Router. ngx-urlik uses `identifier`, `pathParam`,
-`queryParams`, and `isEqual` as typed-router metadata. Choose `component` or `loadComponent` as
-Angular requires. Redirects, wildcards, matchers, and named outlets are supported only on
-anonymous routes.
+Angular's `Route` fields are forwarded to Router. The [fields above](#fields-added-to-angular-routes)
+belong to ngx-urlik. Choose `component` or `loadComponent` as Angular requires. Redirects,
+wildcards, matchers, and named outlets are supported only on unnamed routes.
 
 ## Codecs and placement
 
@@ -110,7 +123,7 @@ The same codec can configure a path placeholder or a query field:
 const id = stringCodec();
 const route = {
   path: 'users/:userId',
-  identifier: 'USER',
+  routeName: 'USER',
   pathParam: { codec: id },
   queryParams: {
     search: queryParam({ codec: id }),
@@ -341,7 +354,7 @@ The result is a readonly signal containing `route`, `node`, and `params`. The al
 other two fields. The deepest active named candidate wins, regardless of declaration order.
 Aliases for the same node use the first declared alias.
 
-Candidates must be generated identified nodes. Anonymous Angular routes cannot be selected.
+Candidates must be generated named nodes. Unnamed Angular routes cannot be selected.
 Reading while no candidate is active throws. This keeps a shared component's contract limited to
 the routes it understands.
 
@@ -362,14 +375,14 @@ on `defineAppRouter` with `diagnostics: { warn }`; the default uses `console.war
 
 `AppRouterDiagnostic` contains `code`, `message`, `route`, `parameter`, and `operation`, plus
 `index` and `cause` when available. Codes are `PARAM_DESERIALIZE_FAILED`, `PARAM_SERIALIZE_FAILED`,
-`PARAM_CODEC_THROWN`, and `INVALID_ARRAY_REPRESENTATION`. The route field contains the identifier,
+`PARAM_CODEC_THROWN`, and `INVALID_ARRAY_REPRESENTATION`. The route field contains the route name,
 such as `ADMIN_DETAIL`. Global reads use `globalQueryParams` as their source.
 
 Codec exceptions are caught and treated as invalid data. Errors from default factories propagate.
 Invalid active path values and inactive route reads throw because there is no valid state to return.
 
-`defineAppRouter()` validates identified route chains and throws structural errors together.
-Runtime validation checks unique identifiers, known paths, path codec maps, repeated parameter
+`defineAppRouter()` validates named route chains and throws structural errors together.
+Runtime validation checks unique route names, known paths, path codec maps, repeated parameter
 names, and duplicate query definitions along those chains. Angular validates and matches its route
 configuration.
 

@@ -14,7 +14,7 @@ async function setup() {
     routes: [
       {
         path: 'results',
-        identifier: 'RESULTS',
+        routeName: 'RESULTS',
         queryParams: {
           search: queryParam({ codec: stringCodec(), defaultValue: '' }),
           page: queryParam({ codec: numberCodec(), defaultValue: 1 }),

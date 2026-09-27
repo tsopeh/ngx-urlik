@@ -1,23 +1,23 @@
 # Differences from Angular Router
 
-ngx-urlik accepts Angular's ordered `Routes` shape. Add an `identifier` when code needs a typed
+ngx-urlik accepts Angular's ordered `Routes` shape. Add `routeName` when code needs a typed
 node; unnamed routes stay available to Angular without adding generated nodes.
 
 ## Route definitions
 
-| Area                   | Rule                                                                                                                    |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Shape                  | `defineAppRouter({ routes: [...] })`; `children` are arrays and Angular fields stay at the top level                    |
-| Identifiers            | Unique across the declaration; only ordinary routes with statically known primary paths can have one                    |
-| Dynamic paths          | Angular `:name` placeholders; every destination supplies all placeholders in the identified route chain                 |
-| Codec options          | Without `pathParam`, values are strings; otherwise use `{ codec }` for one placeholder or a keyed codec map for several |
-| Identified descendants | Their ancestor paths and query definitions must be statically declared; an ancestor cannot use `loadChildren`           |
-| Empty paths            | An identified empty-path child is allowed and may construct the same URL as its parent                                  |
-| Angular-only routes    | Redirects, wildcards, matchers, named outlets, and lazy child branches have no typed node                               |
+| Area                | Rule                                                                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Shape               | `defineAppRouter({ routes: [...] })`; `children` are arrays and Angular fields stay at the top level                    |
+| Route names         | Unique across the declaration; only ordinary routes with statically known primary paths can have one                    |
+| Dynamic paths       | Angular `:name` placeholders; every destination supplies all placeholders in the named route chain                      |
+| Codec options       | Without `pathParam`, values are strings; otherwise use `{ codec }` for one placeholder or a keyed codec map for several |
+| Named descendants   | Their ancestor paths and query definitions must be statically declared; an ancestor cannot use `loadChildren`           |
+| Empty paths         | A named empty-path child is allowed and may construct the same URL as its parent                                        |
+| Angular-only routes | Redirects, wildcards, matchers, named outlets, and lazy child branches have no typed node                               |
 
 Angular's route order, matching, guards, redirects, and outlets determine which route activates.
 The typed catalog does not select a route or replace Angular's matching rules. Components can load
-lazily with `loadComponent`; the route declarations and identified chains must be available when
+lazily with `loadComponent`; the route declarations and named chains must be available when
 `defineAppRouter()` runs.
 
 Put router options on `defineAppRouter({ routerConfig })`. ngx-urlik preserves the supplied
@@ -27,8 +27,8 @@ Put router options on `defineAppRouter({ routerConfig })`. ngx-urlik preserves t
 ## Parameters
 
 Path and query state use separate objects, so a path placeholder and query field can share a name.
-Placeholder names cannot repeat along an identified route chain. Query definitions accumulate
-through unnamed ancestors, but a query key cannot be defined twice along an identified chain.
+Placeholder names cannot repeat along a named route chain. Query definitions accumulate
+through unnamed ancestors, but a query key cannot be defined twice along a named chain.
 Query property names are the URL keys; aliases are unsupported.
 
 Scalar query fields use the last repeated key. Arrays use either repeated keys or one delimited

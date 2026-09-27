@@ -108,7 +108,7 @@ export function createAppRouter(
     );
 
   const routes: Record<string, unknown> = Object.create(null);
-  for (const [identifier, info] of catalog) {
+  for (const [routeName, info] of catalog) {
     const node: Record<PropertyKey, unknown> = {};
     Object.defineProperty(node, routeNodeInfo, { value: info });
     const read = () => {
@@ -177,7 +177,7 @@ export function createAppRouter(
       },
       update,
     });
-    routes[identifier] = node;
+    routes[routeName] = node;
   }
 
   const tree: Record<string, unknown> = {
@@ -209,7 +209,7 @@ export function createAppRouter(
       for (const key of Reflect.ownKeys(candidates)) {
         const node = candidates[key] as Record<PropertyKey, unknown>;
         const info = node[routeNodeInfo] as CompiledRoute | undefined;
-        if (!info || !info.identifier || catalog.get(info.identifier) !== info)
+        if (!info || !info.routeName || catalog.get(info.routeName) !== info)
           throw new Error(`activeRoute(): candidate '${String(key)}' is not a stateful route node`);
         requireCurrent(info);
       }

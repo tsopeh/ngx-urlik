@@ -31,6 +31,18 @@ export type { QueryPatch, UrlParamsState } from './route-node';
 type ForwardedRouterFeature = Exclude<RouterFeatures, RouterConfigurationFeature>;
 const routerConfigurationFeatureKind = 5;
 
+/**
+ * Defines typed route names and provides Angular Router with the ordered route array.
+ *
+ * A route with `routeName` needs a statically declared primary-outlet `path`. Its ancestors
+ * need such paths and statically declared `children`. Named routes cannot use `matcher`,
+ * `redirectTo`, `**`, `loadChildren`, or a named outlet. Those Angular routes can stay unnamed
+ * and still work.
+ * Named paths use static segments and `:name` placeholders, not matrix parameters or custom
+ * matching. Keep `path` and `routeName` as literal values so TypeScript can infer the nodes.
+ * Route names must be unique; this function throws during definition if they are not. The typed
+ * catalog is fixed at definition time, so replacing it with `Router.resetConfig()` is unsupported.
+ */
 export function defineAppRouter<const R extends readonly unknown[]>(options: {
   routes: InferDefinition<R> & ContextualRouteArray<NoInfer<R>>;
   routerConfig?: RouterConfigOptions;

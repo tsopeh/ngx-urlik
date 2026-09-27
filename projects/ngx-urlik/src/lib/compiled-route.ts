@@ -19,7 +19,7 @@ export interface RuntimeParam {
 }
 
 export interface CompiledRoute {
-  readonly identifier?: string;
+  readonly routeName?: string;
   readonly identity: string;
   readonly fullIdentity: string;
   readonly definition: RouteDefinition;
@@ -44,7 +44,7 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
   const hasLibraryFields = (routes: readonly RouteDefinition[]): boolean =>
     routes.some(
       (route) =>
-        'identifier' in route ||
+        'routeName' in route ||
         'pathParam' in route ||
         'queryParams' in route ||
         'isEqual' in route ||
@@ -60,7 +60,7 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
     definitions.map((definition, index) => {
       const at = `${location}[${index}]`;
       const {
-        identifier,
+        routeName,
         pathParam,
         queryParams,
         isEqual: comparator,
@@ -72,9 +72,9 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
       const configured = resolvePathParamDefinitions(definition);
       const pattern = [parent?.pattern, definition.path].filter(Boolean).join('/');
       const info: CompiledRoute = {
-        identifier,
-        identity: identifier ?? at,
-        fullIdentity: identifier ?? at,
+        routeName,
+        identity: routeName ?? at,
+        fullIdentity: routeName ?? at,
         definition,
         angular,
         parent,
@@ -96,7 +96,7 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
         info.queryParams.push({ name, definition, owner: info, placement: 'query' });
       }
       (angular as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
-      if (identifier) catalog.set(identifier, info);
+      if (routeName) catalog.set(routeName, info);
       if (children) angular.children = compile(children, info, `${at}.children`);
       return angular;
     });

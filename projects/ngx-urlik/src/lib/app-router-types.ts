@@ -95,7 +95,7 @@ type OwnPath<D> = {
 };
 type AccumulatedPath<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
 type AccumulatedQuery<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
-type RouteKey = keyof Route | 'identifier' | 'pathParam' | 'queryParams' | 'isEqual';
+type RouteKey = keyof Route | 'routeName' | 'pathParam' | 'queryParams' | 'isEqual';
 
 type ContextualRoute<D, AncestorQuery> = {
   [K in keyof D]: K extends RouteKey
@@ -103,7 +103,7 @@ type ContextualRoute<D, AncestorQuery> = {
       ? D[K] extends readonly unknown[]
         ? ContextualRouteArray<D[K], AccumulatedQuery<D, AncestorQuery>>
         : never
-      : K extends 'identifier'
+      : K extends 'routeName'
         ? D extends { path: '**' } | { redirectTo: unknown }
           ? never
           : string
@@ -143,7 +143,7 @@ type RouteEntries<
   Required extends PropertyKey = never,
 > = R extends readonly unknown[]
   ? R[number] extends infer D
-    ? | (D extends { path: string; identifier: infer Name extends string }
+    ? | (D extends { path: string; routeName: infer Name extends string }
           ? D extends { path: '**' } | { redirectTo: unknown }
             ? never
             : { readonly [K in Name]: RouteNode<D, AP, AQ, Required> }
@@ -163,14 +163,14 @@ type UnionToIntersection<U> = (U extends unknown ? (value: U) => void : never) e
 ) => void
   ? I
   : never;
-type IdentifiedRoutes<R> = [RouteEntries<R>] extends [never]
+type NamedRoutes<R> = [RouteEntries<R>] extends [never]
   ? object
   : Simplify<UnionToIntersection<RouteEntries<R>>>;
 type GlobalQueryValues<Q extends QueryDefinitions> = { [K in keyof Q]: QueryValue<Q[K]> };
 
-/** The flat, identifier-keyed public router generated from a route array. */
+/** The flat router keyed by route name. */
 export type GeneratedAppRouter<R> = {
-  readonly routes: IdentifiedRoutes<R>;
+  readonly routes: NamedRoutes<R>;
   globalQueryParams<const Q extends QueryDefinitions>(
     definitions: Q,
     options?: {

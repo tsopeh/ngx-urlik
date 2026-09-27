@@ -22,7 +22,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
   routes: [
     {
       path: 'results',
-      identifier: 'RESULTS',
+      routeName: 'RESULTS',
       queryParams: {
         search: queryParam({ codec: stringCodec(), defaultValue: '' }),
         page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
@@ -33,9 +33,11 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
 });
 ```
 
-`RESULTS` is the identifier you use in code. `results` is the URL path. Angular route fields such
-as `loadComponent` stay at the top level. Anonymous routes keep Angular's routing behavior and do
-not add nodes to `AppRouter.routes`.
+`RESULTS` is the route name you use in code. `results` is the URL path. Route names must be unique;
+`defineAppRouter()` throws if two routes use the same name. Angular fields such as `loadComponent`
+stay at the top level. Unnamed routes keep Angular's routing behavior and do not add nodes to
+`AppRouter.routes`. See the [route field reference](docs/design/app-router.md#fields-added-to-angular-routes)
+for the other fields ngx-urlik adds.
 
 Provide the router at bootstrap:
 
