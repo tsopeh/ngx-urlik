@@ -1,7 +1,7 @@
 import { Component, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { UrlTree } from '@angular/router';
-import type { CatalogItem, PersonalState } from './domain';
+import type { CatalogItem, PersonalState } from './backend';
 
 @Component({
   selector: 'app-media-card',

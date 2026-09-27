@@ -5,7 +5,7 @@ import { ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
 import { debounceTime, groupBy, mergeMap, switchMap } from 'rxjs';
-import { BackendApi, type ActivityEntry, type ActivityQuery } from './backend-api';
+import { BackendApi, type ActivityEntry, type ActivityQuery } from './backend';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
 

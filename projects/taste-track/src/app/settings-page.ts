@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { AppRouter } from './app-router';
-import { TasteTrackRepository } from './database';
+import { TasteTrackRepository } from './backend';
 import { ThemeService, type ThemePreference } from './theme';
 
 @Component({

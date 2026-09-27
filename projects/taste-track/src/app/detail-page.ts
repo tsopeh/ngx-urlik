@@ -3,9 +3,13 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import { BackendApi, type ItemDetail, type ItemDetailRequest } from './backend-api';
+import {
+  BackendApi,
+  type CollectionStatus,
+  type ItemDetail,
+  type ItemDetailRequest,
+} from './backend';
 import { CatalogLinks } from './catalog-links';
-import type { CollectionStatus } from './domain';
 
 @Component({
   imports: [RouterLink],

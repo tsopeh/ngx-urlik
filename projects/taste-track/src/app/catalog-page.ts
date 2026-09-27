@@ -3,10 +3,9 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import type { RouteQueryPatch } from 'ngx-urlik';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import { BackendApi, type CatalogItemCard, type CatalogQuery } from './backend-api';
+import { BackendApi, type CatalogItem, type CatalogItemCard, type CatalogQuery } from './backend';
 import { CatalogLinks } from './catalog-links';
 import type { PageSize } from './codecs';
-import type { CatalogItem } from './domain';
 import { MediaCard } from './media-card';
 
 @Component({

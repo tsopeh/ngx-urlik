@@ -5,8 +5,14 @@ import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
 import { experienceCountCodec } from './codecs';
-import { BackendApi, type CollectionItemCard, type CollectionQuery } from './backend-api';
-import type { CatalogItem, CollectionStatus, MediaKind } from './domain';
+import {
+  BackendApi,
+  type CatalogItem,
+  type CollectionItemCard,
+  type CollectionQuery,
+  type CollectionStatus,
+  type MediaKind,
+} from './backend';
 import { MediaCard } from './media-card';
 
 @Component({

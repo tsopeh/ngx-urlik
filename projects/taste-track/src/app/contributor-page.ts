@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
-import { BackendApi, type ContributorProfile } from './backend-api';
+import { BackendApi, type ContributorProfile } from './backend';
 
 @Component({
   imports: [RouterLink],

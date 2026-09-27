@@ -3,8 +3,7 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import { BackendApi } from './backend-api';
-import type { Season } from './domain';
+import { BackendApi, type Season } from './backend';
 
 @Component({
   imports: [RouterLink, RouterOutlet],

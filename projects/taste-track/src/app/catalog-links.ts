@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { AppRouter } from './app-router';
-import type { CatalogItem, Contributor } from './domain';
+import type { CatalogItem, Contributor } from './backend';
 
 @Injectable({ providedIn: 'root' })
 export class CatalogLinks {

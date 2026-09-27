@@ -1,5 +1,5 @@
 import { queryParam, type UrlParamCodec } from 'ngx-urlik';
-import type { ExperienceCount } from './domain';
+import type { ExperienceCount } from './backend';
 
 export type PageSize = 12 | 24 | 48;
 export type SortDirection = 'asc' | 'desc';

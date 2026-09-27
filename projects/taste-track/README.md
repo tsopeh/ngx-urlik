@@ -44,11 +44,14 @@ Shared pages use `activeRoute()` to select their route. `paginationParams()` sha
 across pages. Sort order is one structured codec value, so a field and direction travel together.
 Normal navigation uses typed nodes throughout.
 
-## Backend API
+## Backend
 
-`BackendApi` (`projects/taste-track/src/app/backend-api.ts`) encapsulates all querying,
-filtering, data joins, and mutations. Components do not wrangle data or read from the
-database directly.
+All backend files and concepts live in `projects/taste-track/src/app/backend/` and export through `backend/index.ts`:
+
+- `BackendApi` (`backend-api.ts`): Encapsulates all querying, filtering, data joins, and mutations. Components do not wrangle data or read from the database directly.
+- `TasteTrackRepository` (`database.ts`): Manages IndexedDB tables with Dexie and publishes table contents as Angular signals.
+- Domain types (`domain.ts`): Entity schemas, identifier types, and state interfaces.
+- Seed data (`seed.ts`): Deterministic dataset used for initial database population and reset.
 
 ### Querying and asynchronous timing
 
