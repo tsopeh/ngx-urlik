@@ -1,95 +1,14 @@
 # Glossary
 
-These names are used in the code and reference.
-
-## Routes
-
-**AppRouter** — The injection token returned by `defineAppRouter()`. Inject it to get the flat, route-name-keyed `routes` catalog and router helpers.
-
-**Route definition** — An Angular route object with optional ngx-urlik fields: `routeName`, `pathParam`, `queryParams`, and `isEqual`.
-
-**Route name** — A unique value in `routeName` on an ordinary route. It adds a node under `AppRouter.routes` and does not change the URL. `defineAppRouter()` throws if two routes use the same name. Uppercase is a convention.
-
-**Route node** — The generated object for a named route. It constructs destinations, navigates, and reads or patches state.
-
-**Route chain** — A named route and its ancestors, from the root down. Path and query definitions accumulate along this chain, including unnamed ancestors.
-
-**Unnamed route** — An Angular route without `routeName`. Angular handles it, but it adds no generated route node.
-
-**Path placeholder** — A dynamic segment written as `:name` in an Angular path. A destination supplies a value for every placeholder in its named route chain.
-
-**Path parameter configuration** — An optional `{ codec }` or name-keyed map of codec options for placeholders in one route's path. Unconfigured placeholders use strings.
-
-**Angular route options** — Angular `Route` fields declared directly on the route and forwarded to Angular Router.
-
-## Parameters
-
-**URL parameter codec** — A pure converter between one decoded string and a non-null value. `null` reports failed conversion.
-
-**Parameter definition** — A codec on a path placeholder through the route's `pathParam` field, or a query definition made with `queryParam()`, `repeatedQueryParam()`, or `delimitedQueryParam()`.
-
-**Path parameter** — The decoded value for one path placeholder. Construction requires values for all placeholders on the route chain.
-
-**Scalar query parameter** — One value from a query key. If the key repeats, the last value wins.
-
-**Repeated query parameter** — An array stored as repeated keys, such as `?tag=a&tag=b`.
-
-**Delimited query parameter** — An array stored under one key, such as `?tag=a,b`. Items receive their own encoding before joining.
-
-**Accumulated parameters** — All path and query definitions from a node and its ancestors.
-
-**Route query schema** — The accumulated query fields a node can read and patch.
-
-**Required query input** — A field marked `required: true` that callers must supply during construction. It does not require a physical URL key.
-
-**Default value** — A value, or synchronous injection-aware factory, used for missing or malformed query input. Values equal to the default are omitted from constructed URLs.
-
-## State and writes
-
-**URL parameters** — The `{ path, query }` value read from a route's `params` signal.
-
-**Query patch** — A partial query object, or a function returning one from committed state. Omitted and `undefined` fields stay unchanged.
-
-**Query form binding** — Synchronization between an active route's query state and an Angular form. The form holds the draft; the URL holds committed state.
-
-**Query write stream** — Per-field form changes passed through `transformWrites` before submission to the URL write queue.
-
-**External URL update** — Navigation outside the shared query-write coordinator, including browser history. It cancels waiting writes and staged form edits when it starts.
-
-**Typed activation context** — The alias, node, and parameter state selected by `activeRoute()`. The alias narrows the types of the other fields.
-
-**Activation candidate set** — The alias-to-node map supplied to `activeRoute()`. The deepest active named candidate wins.
-
-**Deterministic construction** — Building an absolute destination from the selected node and supplied values, without borrowing current URL state.
-
-**Construction fragment** — The optional string or `null` anchor supplied to construction or navigation. It is not part of `params()`.
-
-## Errors and native operations
-
-**Escape hatch** — The `AppRouter.escapeHatch` object for supported native addressing methods and navigation observations.
-
-**Recoverable parameter failure** — Bad query data or failed query serialization handled with a diagnostic and a default or omitted URL key.
-
-**Semantic state error** — Reading an inactive route or an invalid active path. These reads throw because there is no valid parameter state to return.
-
-**Structural validation** — Checks performed by `defineAppRouter()` on named route chains, without running codecs or default factories. Errors are reported together.
-
-## TasteTrack
-
-**TasteTrack** — The browser-local movie and TV journal used to demonstrate the library.
-
-**Catalog item** — Readonly metadata for a movie, show, or episode.
-
-**Season** — A numbered set of episodes belonging to a show. Episode addresses include the show ID, season number, and episode number.
-
-**Contributor** — A person or production company credited on a title.
-
-**Credit** — A contributor's role on a title: actor, director, writer, or production.
-
-**Personal state** — An item's editable status, favorite marker, rating, and experience count.
-
-**Journal event** — A dated viewing with an optional rating. Its rating is separate from the item's overall rating.
-
-**Experience count** — An exact non-negative number or `countless`. Dated events may account for only part of it.
-
-**Collection status** — Saved, in progress, or completed.
+- **Route Node**: The generated typed object for a named route, used to construct URLs, navigate, and read/patch parameters.
+- **Unnamed Route**: An Angular route without `routeName`. Handled by Angular Router, but generates no typed node.
+- **Path Placeholder**: A dynamic segment (`:name`) in an Angular path.
+- **Codec**: A pure serializer and deserializer between a URL string and a typed value.
+- **Accumulated Parameters**: The combined path and query definitions collected from a route and all its ancestors.
+- **Default Value**: A static value or factory used when a query parameter is missing or invalid in the URL.
+- **Query Patch**: A partial object or updater function that modifies query fields on the current URL.
+- **Write Queue**: The sequential coordinator that prevents concurrent `patchQuery` calls from overwriting each other.
+- **Draft State**: Uncommitted values held in a form binding before they are written to the URL.
+- **Committed State**: The actual parameters present in the active URL.
+- **Deterministic Construction**: Building an absolute URL strictly from explicit inputs, without copying state from the active URL.
+- **Escape Hatch**: Safe access to untyped Angular Router operations via `AppRouter.escapeHatch`.
