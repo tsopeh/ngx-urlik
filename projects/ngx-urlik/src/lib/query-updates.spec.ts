@@ -16,29 +16,45 @@ function deferred<T>() {
 }
 
 function setup(guard: CanActivateFn = () => true, isEqual?: (a: unknown, b: unknown) => boolean) {
-  const definition = defineAppRouter({
+  const definition = defineAppRouter(RouteNames, {
     routes: [
       {
         path: '',
-        routeName: 'ROOT',
+        routeName: RouteNames.ROOT,
         isEqual,
         queryParams: { locale: queryParam({ codec: stringCodec() }) },
         children: [
           {
             path: 'results',
-            routeName: 'RESULTS',
+            routeName: RouteNames.RESULTS,
             queryParams: { search: queryParam({ codec: stringCodec() }) },
             component: Page,
             canActivate: [guard],
             runGuardsAndResolvers: 'always' as const,
           },
-          { path: 'other', routeName: 'OTHER', component: Page },
+          { path: 'other', routeName: RouteNames.OTHER, component: Page },
         ],
       },
     ],
   });
   TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
   return { app: TestBed.inject(definition.AppRouter), router: TestBed.inject(Router) };
+}
+
+enum RouteNames {
+  A = 'A',
+  ABOUT = 'ABOUT',
+  B = 'B',
+  CATALOG = 'CATALOG',
+  CHILD = 'CHILD',
+  HOME = 'HOME',
+  ITEM = 'ITEM',
+  ITEMS = 'ITEMS',
+  MOVIES = 'MOVIES',
+  OTHER = 'OTHER',
+  RESULTS = 'RESULTS',
+  ROOT = 'ROOT',
+  SEASONS = 'SEASONS',
 }
 
 describe('query writes', () => {

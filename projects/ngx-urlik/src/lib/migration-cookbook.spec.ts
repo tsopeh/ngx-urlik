@@ -26,6 +26,27 @@ function setup<T>(definition: {
   };
 }
 
+enum RouteNames {
+  A = 'A',
+  ABOUT = 'ABOUT',
+  ADMIN = 'ADMIN',
+  B = 'B',
+  CATALOG = 'CATALOG',
+  CHILD = 'CHILD',
+  DETAIL = 'DETAIL',
+  HOME = 'HOME',
+  ITEM = 'ITEM',
+  ITEMS = 'ITEMS',
+  LANDING = 'LANDING',
+  MEMBER = 'MEMBER',
+  MEMBERS = 'MEMBERS',
+  MOVIES = 'MOVIES',
+  RESULTS = 'RESULTS',
+  ROOT = 'ROOT',
+  SEASONS = 'SEASONS',
+  USER = 'USER',
+}
+
 describe('migration cookbook', () => {
   it('1. accepts ordinary Angular Routes without naming anything', async () => {
     const routes: Routes = [
@@ -34,7 +55,7 @@ describe('migration cookbook', () => {
       { path: 'lazy', loadChildren: async () => [{ path: '', component: Page }] },
       { path: '**', component: Page },
     ];
-    const { appRouter, router } = setup(defineAppRouter({ routes }));
+    const { appRouter, router } = setup(defineAppRouter(RouteNames, { routes }));
 
     expect(Object.keys(appRouter.routes)).toEqual([]);
     expect(router.config).toEqual(routes);
@@ -48,10 +69,10 @@ describe('migration cookbook', () => {
 
   it('2. names one route without changing its Angular neighbors', async () => {
     // Keep this array literal so TypeScript can infer CATALOG from routeName.
-    const definition = defineAppRouter({
+    const definition = defineAppRouter(RouteNames, {
       routes: [
         { path: '', pathMatch: 'full', redirectTo: 'catalog' },
-        { path: 'catalog', routeName: 'CATALOG', title: 'Catalog', component: Page },
+        { path: 'catalog', routeName: RouteNames.CATALOG, title: 'Catalog', component: Page },
         { path: '**', component: Page },
       ],
     });
@@ -67,14 +88,14 @@ describe('migration cookbook', () => {
   });
 
   it('3. reads a typed path value from an unnamed parent', async () => {
-    const definition = defineAppRouter({
+    const definition = defineAppRouter(RouteNames, {
       routerConfig: { paramsInheritanceStrategy: 'emptyOnly' },
       routes: [
         {
           path: 'teams/:teamId',
           pathParam: { codec: numberCodec() },
           component: Layout,
-          children: [{ path: 'members/:memberId', routeName: 'MEMBER', component: Page }],
+          children: [{ path: 'members/:memberId', routeName: RouteNames.MEMBER, component: Page }],
         },
       ],
     });
@@ -90,7 +111,7 @@ describe('migration cookbook', () => {
   });
 
   it('4. adds query fields without taking over unrelated URL keys', async () => {
-    const definition = defineAppRouter({
+    const definition = defineAppRouter(RouteNames, {
       routerConfig: { defaultQueryParamsHandling: 'merge' },
       routes: [
         {
@@ -100,7 +121,7 @@ describe('migration cookbook', () => {
           children: [
             {
               path: 'members',
-              routeName: 'MEMBERS',
+              routeName: RouteNames.MEMBERS,
               queryParams: {
                 search: queryParam({ codec: stringCodec(), defaultValue: '' }),
                 tags: repeatedQueryParam({ codec: stringCodec() }),
@@ -133,13 +154,18 @@ describe('migration cookbook', () => {
   });
 
   it('5. uses the matched Angular route, then the deepest named child', async () => {
-    const definition = defineAppRouter({
+    const definition = defineAppRouter(RouteNames, {
       routes: [
-        { path: 'dashboard', routeName: 'ADMIN', canMatch: [() => false], component: Page },
         {
           path: 'dashboard',
-          routeName: 'USER',
-          children: [{ path: '', routeName: 'LANDING', component: Page }],
+          routeName: RouteNames.ADMIN,
+          canMatch: [() => false],
+          component: Page,
+        },
+        {
+          path: 'dashboard',
+          routeName: RouteNames.USER,
+          children: [{ path: '', routeName: RouteNames.LANDING, component: Page }],
         },
       ],
     });
@@ -157,10 +183,10 @@ describe('migration cookbook', () => {
 
   it('6. reports route names and path names that cannot be typed safely', () => {
     expect(() =>
-      defineAppRouter({
+      defineAppRouter(RouteNames, {
         routes: [
-          { path: 'left', children: [{ path: 'item', routeName: 'DETAIL' }] },
-          { path: 'right', children: [{ path: 'item', routeName: 'DETAIL' }] },
+          { path: 'left', children: [{ path: 'item', routeName: RouteNames.DETAIL }] },
+          { path: 'right', children: [{ path: 'item', routeName: RouteNames.DETAIL }] },
         ],
       }),
     ).toThrow(
@@ -168,11 +194,11 @@ describe('migration cookbook', () => {
     );
 
     expect(() =>
-      defineAppRouter({
+      defineAppRouter(RouteNames, {
         routes: [
           {
             path: 'teams/:id',
-            children: [{ path: 'members/:id', routeName: 'MEMBER' }],
+            children: [{ path: 'members/:id', routeName: RouteNames.MEMBER }],
           },
         ],
       }),

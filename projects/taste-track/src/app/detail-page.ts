@@ -212,33 +212,7 @@ export class DetailPage {
     return null;
   });
   protected sectionUrl(fragment: string) {
-    const active = this.context();
-    switch (active.route) {
-      case 'movie':
-        return active.node.createUrlTree({
-          path: active.params.path,
-          query: active.params.query,
-          fragment,
-        });
-      case 'show':
-        return active.node.createUrlTree({
-          path: active.params.path,
-          query: active.params.query,
-          fragment,
-        });
-      case 'season':
-        return active.node.createUrlTree({
-          path: active.params.path,
-          query: active.params.query,
-          fragment,
-        });
-      case 'episode':
-        return active.node.createUrlTree({
-          path: active.params.path,
-          query: active.params.query,
-          fragment,
-        });
-    }
+    return this.context().createUrlTree({ fragment });
   }
   protected historyUrl() {
     return this.routes.routes.ACTIVITY.createUrlTree({

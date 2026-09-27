@@ -1,19 +1,31 @@
 import type { Routes, UrlTree } from '@angular/router';
 import {
   defineAppRouter,
+  enumCodec,
   numberCodec,
   queryParam,
   repeatedQueryParam,
   stringCodec,
+  type GeneratedAppRouter,
+  type PathParamsOf,
+  type QueryParamsOf,
+  type RouteDefinition,
+  type RouteNode,
+  type RouteQueryPatch,
+  type RouteStateOf,
 } from 'ngx-urlik';
 
 type TokenValue<T> = T extends import('@angular/core').InjectionToken<infer Value> ? Value : never;
 
-const publicDefinition = defineAppRouter({
+enum PublicRouteNames {
+  ITEM = 'ITEM',
+}
+
+const publicDefinition = defineAppRouter(PublicRouteNames, {
   routes: [
     {
       path: 'items/:id',
-      routeName: 'ITEM',
+      routeName: PublicRouteNames.ITEM,
       pathParam: { codec: numberCodec() },
       queryParams: { search: queryParam({ codec: stringCodec() }) },
     },
@@ -23,7 +35,12 @@ declare const publicRouter: TokenValue<typeof publicDefinition.AppRouter>;
 publicRouter.routes.ITEM.params().path.id satisfies number;
 publicRouter.routes.ITEM.params().query.search satisfies string | null;
 
-const definition = defineAppRouter({
+enum RouteNames {
+  MEMBER = 'MEMBER',
+  TEAMS = 'TEAMS',
+}
+
+const definition = defineAppRouter(RouteNames, {
   routes: [
     {
       path: 'teams/:teamId',
@@ -32,14 +49,14 @@ const definition = defineAppRouter({
       children: [
         {
           path: 'members/:memberId/show/:showId',
-          routeName: 'MEMBER',
+          routeName: RouteNames.MEMBER,
           pathParam: { memberId: { codec: numberCodec() }, showId: { codec: stringCodec() } },
           queryParams: {
             page: queryParam({ codec: numberCodec(), required: true }),
             tags: repeatedQueryParam({ codec: stringCodec() }),
           },
         },
-        { path: '', routeName: 'TEAMS' },
+        { path: '', routeName: RouteNames.TEAMS },
         { path: '**', component: class {} },
       ],
     },
@@ -60,11 +77,15 @@ router.routes.MEMBER.params().query.tags satisfies readonly string[];
 router.routes.TEAMS.createUrlTree({ path: { teamId: 1 } });
 router.routes.MEMBER.patchQuery({ page: 2 });
 
-const defaultsDefinition = defineAppRouter({
+enum SearchRouteNames {
+  SEARCH = 'SEARCH',
+}
+
+const defaultsDefinition = defineAppRouter(SearchRouteNames, {
   routes: [
     {
       path: 'search/:term',
-      routeName: 'SEARCH',
+      routeName: SearchRouteNames.SEARCH,
       queryParams: { term: queryParam({ codec: stringCodec() }) },
     },
   ],
@@ -75,11 +96,32 @@ defaults.routes.SEARCH.params().path.term satisfies string;
 defaults.routes.SEARCH.params().query.term satisfies string | null;
 
 declare const angularRoutes: Routes;
-const unnamedDefinition = defineAppRouter({ routes: angularRoutes });
+enum EmptyRouteNames {}
+const unnamedDefinition = defineAppRouter(EmptyRouteNames, { routes: angularRoutes });
 declare const unnamed: TokenValue<typeof unnamedDefinition.AppRouter>;
 unnamed.routes satisfies object;
 // @ts-expect-error widened Angular routes have no inferred route names
 unnamed.routes.UNKNOWN;
+
+declare const wideString: string;
+defineAppRouter(RouteNames, {
+  routes: [
+    {
+      path: 'invalid',
+      // @ts-expect-error routeName must be a literal string, not a wide string
+      routeName: wideString,
+    },
+  ],
+});
+defineAppRouter(RouteNames, {
+  routes: [
+    {
+      path: 'invalid',
+      // @ts-expect-error routeName must be a string, not an object
+      routeName: { FIRST: true },
+    },
+  ],
+});
 
 // @ts-expect-error unnamed routes and wildcards have no generated node
 router.routes.WILDCARD;
@@ -93,46 +135,58 @@ router.routes.MEMBER.createUrlTree({
   query: { page: 1 },
 });
 
-defineAppRouter({
+enum ShowRouteNames {
+  SHOW = 'SHOW',
+}
+defineAppRouter(ShowRouteNames, {
   routes: [
     {
       path: 'shows/:showId/season/:season',
-      routeName: 'SHOW',
+      routeName: ShowRouteNames.SHOW,
       // @ts-expect-error multiple placeholders need a complete keyed map
       pathParam: { showId: { codec: stringCodec() } },
     },
   ],
 });
-defineAppRouter({
+defineAppRouter(ShowRouteNames, {
   routes: [
     {
       path: 'shows/:showId',
-      routeName: 'SHOW',
+      routeName: ShowRouteNames.SHOW,
       // @ts-expect-error codec keys must match placeholders
       pathParam: { other: { codec: stringCodec() } },
     },
   ],
 });
-defineAppRouter({
+enum FallbackRouteNames {
+  FALLBACK = 'FALLBACK',
+}
+defineAppRouter(FallbackRouteNames, {
   routes: [
     {
       path: '**',
       // @ts-expect-error wildcard routes cannot be named
-      routeName: 'FALLBACK',
+      routeName: FallbackRouteNames.FALLBACK,
     },
   ],
 });
-defineAppRouter({
+enum StaticRouteNames {
+  STATIC = 'STATIC',
+}
+defineAppRouter(StaticRouteNames, {
   routes: [
     {
       path: 'static',
-      routeName: 'STATIC',
+      routeName: StaticRouteNames.STATIC,
       // @ts-expect-error a path without placeholders has no pathParam config
       pathParam: { codec: numberCodec() },
     },
   ],
 });
-defineAppRouter({
+enum ItemsRouteNames {
+  ITEMS = 'ITEMS',
+}
+defineAppRouter(ItemsRouteNames, {
   routes: [
     {
       path: '',
@@ -140,7 +194,7 @@ defineAppRouter({
       children: [
         {
           path: 'items',
-          routeName: 'ITEMS',
+          routeName: ItemsRouteNames.ITEMS,
           // @ts-expect-error descendants cannot redefine an inherited query key
           queryParams: { page: queryParam({ codec: stringCodec() }) },
         },
@@ -148,3 +202,45 @@ defineAppRouter({
     },
   ],
 });
+
+// Array-based enumCodec
+const tupleCodec = enumCodec(['first', 'second'] as const);
+tupleCodec.deserialize('first') satisfies 'first' | 'second' | null;
+
+// Non-null UrlTree on pathless routes
+enum StaticNames {
+  HOME = 'HOME',
+}
+const staticDef = defineAppRouter(StaticNames, {
+  routes: [{ path: 'home', routeName: StaticNames.HOME }],
+});
+declare const staticRouter: TokenValue<typeof staticDef.AppRouter>;
+staticRouter.routes.HOME.createUrlTree() satisfies UrlTree;
+// Pathless navigate with options
+staticRouter.routes.HOME.navigate({ replaceUrl: true }) satisfies Promise<boolean>;
+
+// Type extractors
+type MemberNode = typeof router.routes.MEMBER;
+type MemberQuery = QueryParamsOf<MemberNode>;
+type MemberPath = PathParamsOf<MemberNode>;
+type MemberState = RouteStateOf<MemberNode>;
+type MemberPatch = RouteQueryPatch<MemberNode>;
+
+declare const memberQuery: MemberQuery;
+memberQuery.locale satisfies string;
+memberQuery.tags satisfies readonly string[];
+
+declare const memberPath: MemberPath;
+memberPath.teamId satisfies number;
+memberPath.memberId satisfies number;
+
+declare const memberPatch: MemberPatch;
+router.routes.MEMBER.patchQuery(memberPatch);
+
+// activeRoute ambient createUrlTree
+const activeContext = router.activeRoute({
+  member: router.routes.MEMBER,
+  teams: router.routes.TEAMS,
+});
+declare const currentActive: ReturnType<typeof activeContext>;
+currentActive.createUrlTree({ fragment: 'bio' }) satisfies UrlTree | null;

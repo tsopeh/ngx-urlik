@@ -1,5 +1,5 @@
 import { Component, computed, inject } from '@angular/core';
-import type { QueryPatch } from 'ngx-urlik';
+import type { RouteQueryPatch } from 'ngx-urlik';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
 import type { PageSize } from './codecs';
@@ -139,7 +139,7 @@ export class CatalogPage {
       this.query().page * this.query().pageSize,
     ),
   );
-  protected update(patch: QueryPatch<ReturnType<typeof this.query>>) {
+  protected update(patch: RouteQueryPatch<typeof this.route>) {
     void this.route.patchQuery(patch, { replaceUrl: true });
   }
   protected sort(field: 'title' | 'year') {

@@ -10,11 +10,11 @@ import { numberCodec, queryParam, stringCodec } from './params';
 class Page {}
 
 async function setup() {
-  const definition = defineAppRouter({
+  const definition = defineAppRouter(RouteNames, {
     routes: [
       {
         path: 'results',
-        routeName: 'RESULTS',
+        routeName: RouteNames.RESULTS,
         queryParams: {
           search: queryParam({ codec: stringCodec(), defaultValue: '' }),
           page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
@@ -28,6 +28,21 @@ async function setup() {
   const router = TestBed.inject(Router);
   await router.navigateByUrl('/results');
   return { results: TestBed.inject(definition.AppRouter).routes.RESULTS, router };
+}
+
+enum RouteNames {
+  A = 'A',
+  ABOUT = 'ABOUT',
+  B = 'B',
+  CATALOG = 'CATALOG',
+  CHILD = 'CHILD',
+  HOME = 'HOME',
+  ITEM = 'ITEM',
+  ITEMS = 'ITEMS',
+  MOVIES = 'MOVIES',
+  RESULTS = 'RESULTS',
+  ROOT = 'ROOT',
+  SEASONS = 'SEASONS',
 }
 
 describe('query forms', () => {

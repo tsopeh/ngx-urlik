@@ -13,13 +13,28 @@ import {
 @Component({ template: '' })
 class Page {}
 
+enum RouteNames {
+  A = 'A',
+  ABOUT = 'ABOUT',
+  B = 'B',
+  CATALOG = 'CATALOG',
+  CHILD = 'CHILD',
+  HOME = 'HOME',
+  ITEM = 'ITEM',
+  ITEMS = 'ITEMS',
+  MOVIES = 'MOVIES',
+  RESULTS = 'RESULTS',
+  ROOT = 'ROOT',
+  SEASONS = 'SEASONS',
+}
+
 describe('parameter state', () => {
   it('reads repeated and delimited arrays using their declared forms', async () => {
-    const definition = defineAppRouter({
+    const definition = defineAppRouter(RouteNames, {
       routes: [
         {
           path: 'items',
-          routeName: 'ITEMS',
+          routeName: RouteNames.ITEMS,
           queryParams: {
             search: queryParam({ codec: stringCodec() }),
             tags: repeatedQueryParam({ codec: stringCodec() }),
@@ -44,12 +59,12 @@ describe('parameter state', () => {
 
   it('uses the fallback for a malformed array and reports the field', async () => {
     const diagnostics: AppRouterDiagnostic[] = [];
-    const definition = defineAppRouter({
+    const definition = defineAppRouter(RouteNames, {
       diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
       routes: [
         {
           path: 'items',
-          routeName: 'ITEMS',
+          routeName: RouteNames.ITEMS,
           queryParams: { ids: delimitedQueryParam({ codec: numberCodec(), separator: ',' }) },
           component: Page,
         },
@@ -72,11 +87,11 @@ describe('parameter state', () => {
 
   it('resolves injection-aware defaults and omits default values from URLs', async () => {
     const locale = new InjectionToken<string>('locale');
-    const definition = defineAppRouter({
+    const definition = defineAppRouter(RouteNames, {
       routes: [
         {
           path: 'items',
-          routeName: 'ITEMS',
+          routeName: RouteNames.ITEMS,
           queryParams: {
             locale: queryParam({ codec: stringCodec(), defaultValue: () => inject(locale) }),
           },

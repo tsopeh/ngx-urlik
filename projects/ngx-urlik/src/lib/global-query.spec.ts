@@ -23,10 +23,10 @@ const definitions = {
 
 function setup() {
   const diagnostics: AppRouterDiagnostic[] = [];
-  const definition = defineAppRouter({
+  const definition = defineAppRouter(RouteNames, {
     diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
     routes: [
-      { path: 'page', routeName: 'PAGE', queryParams: definitions, component: Page },
+      { path: 'page', routeName: RouteNames.PAGE, queryParams: definitions, component: Page },
       { path: 'other', component: Page },
       { path: 'blocked', component: Page, canActivate: [() => false] },
     ],
@@ -35,6 +35,22 @@ function setup() {
     providers: [definition.provideAppRouter(), { provide: fallback, useValue: 'week' }],
   });
   return { app: TestBed.inject(definition.AppRouter), router: TestBed.inject(Router), diagnostics };
+}
+
+enum RouteNames {
+  A = 'A',
+  ABOUT = 'ABOUT',
+  B = 'B',
+  CATALOG = 'CATALOG',
+  CHILD = 'CHILD',
+  HOME = 'HOME',
+  ITEM = 'ITEM',
+  ITEMS = 'ITEMS',
+  MOVIES = 'MOVIES',
+  PAGE = 'PAGE',
+  RESULTS = 'RESULTS',
+  ROOT = 'ROOT',
+  SEASONS = 'SEASONS',
 }
 
 describe('global query observation', () => {

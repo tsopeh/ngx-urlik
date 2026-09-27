@@ -44,6 +44,13 @@ describe('parameter codecs and definitions', () => {
     expect(() => enumCodec({ String: 'ok', Numeric: 1 } as never)).toThrow(
       'enum codec values must all be strings',
     );
+
+    const arrayCodec = enumCodec(['open', 'closed'] as const);
+    expect(arrayCodec.deserialize('open')).toBe('open');
+    expect(arrayCodec.deserialize('Open')).toBeNull();
+    expect(arrayCodec.serialize('closed')).toBe('closed');
+    expect(arrayCodec.serialize('other' as never)).toBeNull();
+    expect(() => enumCodec(['ok', 1] as never)).toThrow('enum codec values must all be strings');
   });
 
   it('keeps query defaults and collection representation outside codecs', () => {

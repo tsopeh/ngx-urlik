@@ -17,17 +17,9 @@ import {
   sortCodec,
 } from './codecs';
 
-const statusCodec = enumCodec({
-  SAVED: 'saved',
-  IN_PROGRESS: 'in-progress',
-  COMPLETED: 'completed',
-} as const);
+const statusCodec = enumCodec(['saved', 'in-progress', 'completed'] as const);
 
-const mediaKindCodec = enumCodec({
-  MOVIE: 'movie',
-  SHOW: 'show',
-  EPISODE: 'episode',
-} as const);
+const mediaKindCodec = enumCodec(['movie', 'show', 'episode'] as const);
 
 const catalogQueryParams = () => ({
   search: queryParam({ codec: stringCodec(), defaultValue: '' }),
@@ -47,7 +39,26 @@ const loadDetail = () => import('./detail-page').then((module) => module.DetailP
 const redirectToMovies = ({ queryParams }: { queryParams: Record<string, unknown> }) =>
   inject(Router).createUrlTree(['/screen/movies'], { queryParams });
 
-export const { AppRouter, provideAppRouter } = defineAppRouter({
+export enum RouteNames {
+  SCREEN = 'SCREEN',
+  MOVIES = 'MOVIES',
+  MOVIE_DETAIL = 'MOVIE_DETAIL',
+  SHOWS = 'SHOWS',
+  SHOW_DETAIL = 'SHOW_DETAIL',
+  SEASONS = 'SEASONS',
+  SEASON_DETAIL = 'SEASON_DETAIL',
+  EPISODES = 'EPISODES',
+  EPISODE_DETAIL = 'EPISODE_DETAIL',
+  PEOPLE = 'PEOPLE',
+  PERSON_DETAIL = 'PERSON_DETAIL',
+  COMPANIES = 'COMPANIES',
+  COMPANY_DETAIL = 'COMPANY_DETAIL',
+  COLLECTION = 'COLLECTION',
+  ACTIVITY = 'ACTIVITY',
+  SETTINGS = 'SETTINGS',
+}
+
+export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
   routes: [
     {
       path: '',
@@ -56,7 +67,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
         { path: '', pathMatch: 'full', redirectTo: redirectToMovies },
         {
           path: 'screen',
-          routeName: 'SCREEN',
+          routeName: RouteNames.SCREEN,
           queryParams: catalogQueryParams(),
           loadComponent: loadSection,
           children: [
@@ -67,12 +78,12 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
                 {
                   path: '',
                   pathMatch: 'full',
-                  routeName: 'MOVIES',
+                  routeName: RouteNames.MOVIES,
                   loadComponent: loadCatalog,
                 },
                 {
                   path: 'movie/:movieId',
-                  routeName: 'MOVIE_DETAIL',
+                  routeName: RouteNames.MOVIE_DETAIL,
                   pathParam: { codec: prefixedIdCodec('mov') },
                   loadComponent: loadDetail,
                 },
@@ -84,7 +95,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
                 {
                   path: '',
                   pathMatch: 'full',
-                  routeName: 'SHOWS',
+                  routeName: RouteNames.SHOWS,
                   loadComponent: loadCatalog,
                 },
                 {
@@ -94,12 +105,12 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
                     {
                       path: '',
                       pathMatch: 'full',
-                      routeName: 'SHOW_DETAIL',
+                      routeName: RouteNames.SHOW_DETAIL,
                       loadComponent: loadDetail,
                     },
                     {
                       path: 'seasons',
-                      routeName: 'SEASONS',
+                      routeName: RouteNames.SEASONS,
                       loadComponent: () =>
                         import('./seasons-page').then((module) => module.SeasonsPage),
                       children: [
@@ -110,7 +121,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
                             {
                               path: '',
                               pathMatch: 'full',
-                              routeName: 'SEASON_DETAIL',
+                              routeName: RouteNames.SEASON_DETAIL,
                               loadComponent: loadDetail,
                             },
                             {
@@ -119,12 +130,12 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
                                 {
                                   path: '',
                                   pathMatch: 'full',
-                                  routeName: 'EPISODES',
+                                  routeName: RouteNames.EPISODES,
                                   loadComponent: loadCatalog,
                                 },
                                 {
                                   path: 'episode/:episodeNumber',
-                                  routeName: 'EPISODE_DETAIL',
+                                  routeName: RouteNames.EPISODE_DETAIL,
                                   pathParam: { codec: positiveIntegerCodec() },
                                   loadComponent: loadDetail,
                                 },
@@ -146,12 +157,12 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
             {
               path: '',
               pathMatch: 'full',
-              routeName: 'PEOPLE',
+              routeName: RouteNames.PEOPLE,
               loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
             },
             {
               path: 'profile/:personId',
-              routeName: 'PERSON_DETAIL',
+              routeName: RouteNames.PERSON_DETAIL,
               pathParam: { codec: prefixedIdCodec('per') },
               loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
             },
@@ -163,12 +174,12 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
             {
               path: '',
               pathMatch: 'full',
-              routeName: 'COMPANIES',
+              routeName: RouteNames.COMPANIES,
               loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
             },
             {
               path: 'profile/:companyId',
-              routeName: 'COMPANY_DETAIL',
+              routeName: RouteNames.COMPANY_DETAIL,
               pathParam: { codec: prefixedIdCodec('co') },
               loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
             },
@@ -176,7 +187,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
         },
         {
           path: 'collection',
-          routeName: 'COLLECTION',
+          routeName: RouteNames.COLLECTION,
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
             media: delimitedQueryParam({ codec: mediaKindCodec, separator: ',' }),
@@ -193,7 +204,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
         },
         {
           path: 'activity',
-          routeName: 'ACTIVITY',
+          routeName: RouteNames.ACTIVITY,
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
             from: queryParam({ codec: stringCodec() }),
@@ -208,7 +219,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter({
         },
         {
           path: 'settings',
-          routeName: 'SETTINGS',
+          routeName: RouteNames.SETTINGS,
           loadComponent: () => import('./settings-page').then((module) => module.SettingsPage),
         },
         {
