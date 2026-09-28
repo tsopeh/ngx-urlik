@@ -5,60 +5,63 @@ description: Use for any task involving Angular routing, URL state management, o
 
 # ngx-urlik
 
-**Philosophy: URL is King.**
-The URL is a perfectly fine place for state management—it is the single source of truth. Relying on the URL for state ensures persistent results after a reload, enables deep linking, and delivers good UX. `ngx-urlik` enforces this by treating the URL as a strictly typed, reliable data store.
+**Philosophy: The URL is the Source of Truth.**
+Most front-end complexity comes from trying to reinvent state management. But the web already has a foundational state store: the URL. It is the only state that survives a page reload, the only state a user can bookmark, and the only state you can safely share. If state isn't in the URL, it doesn't really exist. `ngx-urlik` enforces this reality by turning the URL into a strictly typed, declarative data store.
 
-## 1. Migration & Daily Setup
+## 1. Declarative Setup & Migration
 
-Whether migrating an existing component from `ActivatedRoute` or building a new one, follow these steps to connect to `ngx-urlik`.
+When moving a component from the native `ActivatedRoute` to `ngx-urlik`, the goal is to eliminate implicit state and untyped reads.
 
-- **Schema:** Find the application's `defineAppRouter` catalog. Define path placeholders in `pathParam` and query strings in `queryParams`. Assign a `defaultValue` to optional parameters so the application never has to check for `undefined`.
-- **Injections:** Ban native Angular Router tokens. Drop `ActivatedRoute` and `Router`, and inject `AppRouter` instead.
+- **Schema:** Find the `defineAppRouter` catalog. Declare path placeholders in `pathParam` and query fields in `queryParams`. Define explicit `defaultValue`s for optional parameters. If a parameter isn't typed here, it shouldn't be read.
+- **Injections:** Purge native routing tokens. Remove `ActivatedRoute` and `Router`. Inject `AppRouter`.
 
-**Completion criterion**: Every parameter the component touches is defined in the schema with a codec, and zero `ActivatedRoute` or `Router` tokens remain injected in the file.
+**Completion criterion**: Every parameter the component touches is defined in the schema with a codec. Zero `ActivatedRoute` or `Router` tokens remain in the file.
 
 ## 2. State & Writes
 
 Interact with the URL exclusively through the typed `RouteNode`.
 
-- **Read:** Transform RxJS parameter subscriptions into signal reads (e.g., `node.params().query.search`). Read parameters inside a `computed()` or template. Reading an inactive route throws, so only read when the route is active.
-- **Write:** Call `node.patchQuery(patch)` to update the URL. Supply only the fields that changed. The write coordinator runs updates sequentially, so concurrent patches from different components never overwrite each other.
-- **Build Links:** Call `node.createUrlTree(inputs)` for strict, deterministic link generation that ignores the current URL.
+- **Read:** Convert RxJS subscriptions into synchronous signal reads (`node.params().query.search`). Read parameters within a `computed()` or template. If the route is inactive, reading it throws—only read active routes.
+- **Write:** Call `node.patchQuery(patch)`. Provide only the fields that actually changed. The write coordinator queues updates sequentially, ensuring concurrent patches never clobber each other.
+- **Build Links:** Call `node.createUrlTree(inputs)` for deterministic link generation that ignores current URL context.
 
-**Completion criterion**: All parameter reads are synchronous signals, and every URL update uses `patchQuery` or `navigate`.
+**Completion criterion**: All parameter reads are synchronous signals. Every URL update is a `patchQuery` or `navigate` call.
 
 ## 3. Forms and Drafts
 
-When a user edits a parameter through a text input or form, writing to the URL on every keystroke disrupts UX and clutters browser history.
+There is a fundamental difference between draft state (what the user is typing right now) and committed state (what the URL holds).
 
-- **Rule:** The URL holds the committed state; the form holds the draft state.
-- **Binding:** Bind UI inputs to `createQueryParamsSignalForm(node)`. This safely isolates partially typed text or debounced inputs. External navigations (like the back button) automatically reset the form to the committed URL state.
+- **Rule:** Never bind rapid text inputs directly to the URL. Doing so destroys UX and pollutes browser history.
+- **Binding:** Use `createQueryParamsSignalForm(node)` to isolate the draft state. The form holds the user's unfinished edits; the URL holds the committed truth. If an external navigation occurs (like a back button press), the form automatically resets to match the URL.
 
-**Completion criterion**: Rapid text inputs bind to a draft form, never directly to `patchQuery`.
+**Completion criterion**: Text inputs and debounced controls bind to a draft form, never directly to `patchQuery`.
 
-## 4. Reference: Codecs & Niceties
+## 4. Primitives & Reference
 
-Consult these when configuring a node in `defineAppRouter`.
+Consult these primitives when configuring a node in `defineAppRouter`.
 
 **Codecs**
-Codecs convert between strings and typed values.
-- Built-in primitives: `stringCodec()`, `numberCodec()`, `booleanCodec()`.
+Codecs strictly translate between strings and types.
+
+- Primitives: `stringCodec()`, `numberCodec()`, `booleanCodec()`.
 - Enums: `enumCodec(values)` accepts readonly string arrays, tuples, or records.
 
 **Cardinality**
-- `queryParam`: A single value. Last occurrence wins.
+
+- `queryParam`: A single deterministic value.
 - `repeatedQueryParam`: An array represented as repeated keys (`?a=1&a=2`).
 - `delimitedQueryParam`: An array joined by a separator (`?a=1,2`).
 
 **Comparators (`isEqual`)**
-You can provide a custom `isEqual` function in the node configuration to override how the `params` signal detects changes for complex parameter shapes.
+You can provide a custom `isEqual` function in the node configuration to override how the `params` signal evaluates equality for complex objects.
 
 **Shared Components (`activeRoute`)**
-If a component is shared across multiple routes, it cannot hardcode a single `RouteNode`. Use `activeRoute` to dynamically select the deepest active candidate:
+If a component exists across multiple routes, it cannot depend on a single hardcoded `RouteNode`. Use `activeRoute` to dynamically resolve the deepest active candidate:
+
 ```ts
 const active = router.activeRoute({ A: routes.A, B: routes.B });
 // active() returns { route, node, params, createUrlTree, patchQuery }
 ```
 
 **Global Queries**
-To read query parameters completely independent of the active route, use `router.globalQueryParams(schema)`. This returns a readonly signal and does not write to the URL.
+To read query parameters that exist independently of the active route hierarchy, use `router.globalQueryParams(schema)`. This yields a readonly signal without affecting URL writes.
