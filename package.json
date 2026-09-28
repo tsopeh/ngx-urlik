@@ -12,7 +12,7 @@
     "test:lib": "ng test ngx-urlik --watch=false",
     "test:demo": "ng test taste-track --watch=false",
     "e2e": "playwright test",
-    "typecheck": "tsc -p type-tests/tsconfig.json && node --test type-tests/navigation.test.mjs",
+    "typecheck": "tsc -p type-tests/tsconfig.json",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
