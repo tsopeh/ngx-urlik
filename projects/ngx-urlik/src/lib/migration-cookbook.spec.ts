@@ -82,7 +82,7 @@ describe('migration cookbook', () => {
     expect(Object.keys(appRouter.routes)).toEqual(['CATALOG']);
     expect(router.config[1]).toMatchObject({ path: 'catalog', title: 'Catalog' });
     expect('routeName' in router.config[1]).toBe(false);
-    expect(router.serializeUrl(catalog.createUrlTree()!)).toBe('/catalog');
+    expect(router.serializeUrl(catalog.createUrlTree())).toBe('/catalog');
     expect(await catalog.navigate()).toBe(true);
     expect(catalog.params()).toEqual({ path: {}, query: {} });
   });
@@ -141,7 +141,7 @@ describe('migration cookbook', () => {
       query: { id: 'campaign', search: '', tags: ['a', 'b'] },
     });
     expect(
-      router.serializeUrl(members.createUrlTree({ path: { id: 7 }, query: { search: 'new' } })!),
+      router.serializeUrl(members.createUrlTree({ path: { id: 7 }, query: { search: 'new' } })),
     ).toBe('/teams/7/members?search=new');
 
     expect(await members.patchQuery({ search: 'new' })).toBe(true);
@@ -174,8 +174,8 @@ describe('migration cookbook', () => {
     const active = appRouter.activeRoute({ admin: ADMIN, user: USER, landing: LANDING });
 
     expect(Object.keys(appRouter.routes)).toEqual(['ADMIN', 'USER', 'LANDING']);
-    expect(router.serializeUrl(ADMIN.createUrlTree()!)).toBe('/dashboard');
-    expect(router.serializeUrl(LANDING.createUrlTree()!)).toBe('/dashboard');
+    expect(router.serializeUrl(ADMIN.createUrlTree())).toBe('/dashboard');
+    expect(router.serializeUrl(LANDING.createUrlTree())).toBe('/dashboard');
     expect(await USER.navigate()).toBe(true);
     expect(active()).toMatchObject({ route: 'landing', node: LANDING });
     expect(() => ADMIN.params()).toThrow(/inactive/);

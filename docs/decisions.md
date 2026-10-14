@@ -34,7 +34,9 @@ TypeScript can infer a route's accumulated parameters only from literal paths, n
 `children` arrays that reach `defineAppRouter()` directly. Named routes and their ancestors
 therefore cannot use `loadChildren`, and a route array widened to Angular's `Routes` type produces
 no typed nodes. Components can still load lazily. The catalog is fixed at definition time, so
-`Router.resetConfig()` is outside the contract and makes stale nodes throw.
+`Router.resetConfig()` is outside the contract. The library does not check for it: the check walked
+the route configuration on every construction and state read to catch a call almost no application
+makes.
 
 **Cost:** a large route tree must be assembled in one expression. A `defineRoutes()` helper for
 arrays split across files was considered and not added, because once a value is widened its literal
@@ -76,11 +78,14 @@ the current filters.
 
 Bad URL data should not crash an application when a safe reading exists. Malformed query values
 read as their default and emit a diagnostic. A path value that cannot be serialized has no honest
-substitute, so construction returns `null` instead of inventing a segment. Reading an inactive
-route throws, because no state exists.
+substitute and comes from the caller, not the URL, so construction throws instead of inventing a
+segment. Reading an inactive route throws, because no state exists.
 
-**Cost:** callers handle `UrlTree | null`. Angular's `RouterLink` accepts `null`; redirect
-callbacks must choose their own fallback.
+The first design returned `UrlTree | null` for routes with path parameters. Every link, redirect,
+and template then handled a `null` that almost always meant a programming error.
+
+**Cost:** an empty or invalid ID from data throws where the link is built, for example while a
+template renders. Check such values before building the link.
 
 ## Let Angular run the router, behind a small escape hatch
 

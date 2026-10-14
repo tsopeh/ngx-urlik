@@ -11,7 +11,6 @@ import { filter } from 'rxjs';
 import type { CompiledRoute, RuntimeParam } from './compiled-route';
 import {
   activePathParams,
-  assertRouteConfig,
   findActiveRoute,
   findLastResult,
   getPrimaryActiveChain,
@@ -35,15 +34,6 @@ export type TypedNavigationBehaviorOptions = Omit<NavigationBehaviorOptions, 'br
 
 type ConstructionValues = { path?: AnyRecord; query?: AnyRecord; fragment?: string | null };
 
-function checkedSignal<T>(source: Signal<T>, check: () => void): Signal<T> {
-  return new Proxy(source, {
-    apply(target, thisArg, args) {
-      check();
-      return Reflect.apply(target, thisArg, args);
-    },
-  });
-}
-
 export function createAppRouter(
   routeNames: Readonly<Record<string, string>>,
   catalog: ReadonlyMap<string, CompiledRoute>,
@@ -60,28 +50,16 @@ export function createAppRouter(
     .subscribe(() => navigation.update((value) => value + 1));
   destroyRef.onDestroy(() => subscription.unsubscribe());
   const { readState, readQueryState } = reader;
-  const { encode, serializeQuery } = createParameterSerializer(injector, report);
+  const { serializePath, serializeQuery } = createParameterSerializer(injector, report);
 
-  const requireCurrent = (info: CompiledRoute) => assertRouteConfig(router.config, info);
-  const createUrlTree = (info: CompiledRoute, values: ConstructionValues = {}): UrlTree | null => {
-    requireCurrent(info);
+  const createUrlTree = (info: CompiledRoute, values: ConstructionValues = {}): UrlTree => {
     const commands: unknown[] = ['/'];
     for (const segment of info.fullSegments) {
-      if (segment.kind === 'static') {
-        commands.push(segment.value);
-        continue;
-      }
-      const output = encode(segment.param, values.path?.[segment.name]);
-      if (output === null) return null;
-      if (output === '') {
-        report(
-          segment.param,
-          { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize' },
-          'produced an empty path segment',
-        );
-        return null;
-      }
-      commands.push(output);
+      commands.push(
+        segment.kind === 'static'
+          ? segment.value
+          : serializePath(segment.param, values.path?.[segment.name]),
+      );
     }
     const queryParams: Record<string, string | readonly string[]> = {};
     for (const param of info.queryParams) {
@@ -111,7 +89,6 @@ export function createAppRouter(
     const node: Record<PropertyKey, unknown> = {};
     Object.defineProperty(node, routeNodeInfo, { value: info });
     const read = () => {
-      requireCurrent(info);
       const active = findActiveRoute(router.routerState.snapshot.root, info);
       return active ? readActiveState(info, active) : undefined;
     };
@@ -124,34 +101,16 @@ export function createAppRouter(
       return state;
     };
     node['createUrlTree'] = (values?: ConstructionValues) => createUrlTree(info, values);
-    node['navigate'] = (
-      valuesOrOptions?: ConstructionValues | TypedNavigationBehaviorOptions,
+    node['navigate'] = async (
+      values?: ConstructionValues,
       options?: TypedNavigationBehaviorOptions,
-    ) => {
-      let values: ConstructionValues | undefined;
-      let navOptions = options;
-      if (
-        options === undefined &&
-        valuesOrOptions &&
-        !('path' in valuesOrOptions || 'query' in valuesOrOptions || 'fragment' in valuesOrOptions)
-      ) {
-        values = undefined;
-        navOptions = valuesOrOptions as TypedNavigationBehaviorOptions;
-      } else {
-        values = valuesOrOptions as ConstructionValues;
-      }
-      const tree = createUrlTree(info, values);
-      return tree === null ? Promise.resolve(false) : router.navigateByUrl(tree, navOptions);
-    };
-    node['params'] = checkedSignal(
-      computed(
-        () => {
-          navigation();
-          return requireState();
-        },
-        { equal: info.comparator },
-      ),
-      () => requireCurrent(info),
+    ) => router.navigateByUrl(createUrlTree(info, values), options);
+    node['params'] = computed(
+      () => {
+        navigation();
+        return requireState();
+      },
+      { equal: info.comparator },
     );
     const update = (
       updater: (query: AnyRecord) => AnyRecord,
@@ -221,70 +180,63 @@ export function createAppRouter(
     );
   };
   tree['activeRoute'] = (candidates: Readonly<Record<PropertyKey, object>>) => {
-    const checkCandidates = () => {
-      for (const key of Reflect.ownKeys(candidates)) {
-        const node = candidates[key] as Record<PropertyKey, unknown>;
-        const info = node[routeNodeInfo] as CompiledRoute | undefined;
-        if (!info || !info.routeName || catalog.get(info.routeName) !== info)
-          throw new Error(`activeRoute(): candidate '${String(key)}' is not a stateful route node`);
-        requireCurrent(info);
-      }
-    };
-    return checkedSignal(
-      computed(() => {
-        navigation();
-        let selected:
-          | {
-              key: PropertyKey;
-              node: object;
-              info: CompiledRoute;
-              active: NonNullable<ReturnType<typeof findActiveRoute>>;
-            }
-          | undefined;
-        checkCandidates();
-        const root = router.routerState.snapshot.root;
-        const activeChain = getPrimaryActiveChain(root);
-        const match = findLastResult(activeChain, (snap) => {
-          const info = (snap.routeConfig as Record<PropertyKey, unknown> | null)?.[
-            routeConfigBrand
-          ] as CompiledRoute | undefined;
-          if (!info) return null;
-          const key = Reflect.ownKeys(candidates).find(
-            (candidate) =>
-              (candidates[candidate] as Record<PropertyKey, unknown>)[routeNodeInfo] === info,
-          );
-          return key === undefined
-            ? null
-            : { key, node: candidates[key] as object, info, active: snap };
-        });
-        if (match) selected = match;
-        if (selected) {
-          const { key, node, info, active } = selected;
-          const params = readActiveState(info, active);
-          return {
-            route: key,
-            node,
-            params,
-            createUrlTree: (patch?: { query?: AnyRecord; fragment?: string | null }) =>
-              createUrlTree(info, {
-                path: params.path,
-                query: patch?.query ? { ...params.query, ...patch.query } : params.query,
-                fragment: patch?.fragment,
-              }),
-            patchQuery: (
-              patch: Partial<AnyRecord> | ((query: AnyRecord) => Partial<AnyRecord>),
-              options?: { replaceUrl?: boolean },
-            ) => (node as Record<string, Function>)['patchQuery'](patch, options),
-          };
-        }
-        throw new Error(
-          `activeRoute(): none of the candidate routes [${Reflect.ownKeys(candidates)
-            .map(String)
-            .join(', ')}] is active`,
+    for (const key of Reflect.ownKeys(candidates)) {
+      const node = candidates[key] as Record<PropertyKey, unknown>;
+      const info = node[routeNodeInfo] as CompiledRoute | undefined;
+      if (!info || !info.routeName || catalog.get(info.routeName) !== info)
+        throw new Error(`activeRoute(): candidate '${String(key)}' is not a stateful route node`);
+    }
+    return computed(() => {
+      navigation();
+      let selected:
+        | {
+            key: PropertyKey;
+            node: object;
+            info: CompiledRoute;
+            active: NonNullable<ReturnType<typeof findActiveRoute>>;
+          }
+        | undefined;
+      const root = router.routerState.snapshot.root;
+      const activeChain = getPrimaryActiveChain(root);
+      const match = findLastResult(activeChain, (snap) => {
+        const info = (snap.routeConfig as Record<PropertyKey, unknown> | null)?.[
+          routeConfigBrand
+        ] as CompiledRoute | undefined;
+        if (!info) return null;
+        const key = Reflect.ownKeys(candidates).find(
+          (candidate) =>
+            (candidates[candidate] as Record<PropertyKey, unknown>)[routeNodeInfo] === info,
         );
-      }),
-      checkCandidates,
-    );
+        return key === undefined
+          ? null
+          : { key, node: candidates[key] as object, info, active: snap };
+      });
+      if (match) selected = match;
+      if (selected) {
+        const { key, node, info, active } = selected;
+        const params = readActiveState(info, active);
+        return {
+          route: key,
+          node,
+          params,
+          createUrlTree: (patch?: { query?: AnyRecord; fragment?: string | null }) =>
+            createUrlTree(info, {
+              path: params.path,
+              query: patch?.query ? { ...params.query, ...patch.query } : params.query,
+              fragment: patch?.fragment,
+            }),
+          patchQuery: (
+            patch: Partial<AnyRecord> | ((query: AnyRecord) => Partial<AnyRecord>),
+            options?: { replaceUrl?: boolean },
+          ) => (node as Record<string, Function>)['patchQuery'](patch, options),
+        };
+      }
+      throw new Error(
+        `activeRoute(): none of the candidate routes [${Reflect.ownKeys(candidates)
+          .map(String)
+          .join(', ')}] is active`,
+      );
+    });
   };
   return tree;
 }

@@ -52,7 +52,7 @@ describe('parameter state', () => {
     expect(items.params().query).toEqual({ search: 'new', tags: ['a', 'b'], ids: [3, 4] });
     expect(
       router.serializeUrl(
-        items.createUrlTree({ query: { search: 'next', tags: ['x', 'y'], ids: [5, 6] } })!,
+        items.createUrlTree({ query: { search: 'next', tags: ['x', 'y'], ids: [5, 6] } }),
       ),
     ).toBe('/items?search=next&tags=x&tags=y&ids=5,6');
   });
@@ -85,6 +85,41 @@ describe('parameter state', () => {
     ]);
   });
 
+  it('reports a throwing codec as a failed conversion with its cause', async () => {
+    const diagnostics: AppRouterDiagnostic[] = [];
+    const failure = new Error('boom');
+    const throwing = {
+      serialize: (): string => {
+        throw failure;
+      },
+      deserialize: (): string => {
+        throw failure;
+      },
+    };
+    const definition = defineAppRouter(RouteNames, {
+      diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
+      routes: [
+        {
+          path: 'items',
+          routeName: RouteNames.ITEMS,
+          queryParams: { search: queryParam({ codec: throwing }) },
+          component: Page,
+        },
+      ],
+    });
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const router = TestBed.inject(Router);
+    const items = TestBed.inject(definition.AppRouter).routes.ITEMS;
+
+    await router.navigateByUrl('/items?search=x');
+    expect(items.params().query.search).toBeNull();
+    expect(router.serializeUrl(items.createUrlTree({ query: { search: 'y' } }))).toBe('/items');
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ code: 'PARAM_DESERIALIZE_FAILED', cause: failure }),
+      expect.objectContaining({ code: 'PARAM_SERIALIZE_FAILED', cause: failure }),
+    ]);
+  });
+
   it('resolves injection-aware defaults and omits default values from URLs', async () => {
     const locale = new InjectionToken<string>('locale');
     const definition = defineAppRouter(RouteNames, {
@@ -107,7 +142,7 @@ describe('parameter state', () => {
 
     await router.navigateByUrl('/items');
     expect(items.params().query.locale).toBe('en');
-    expect(router.serializeUrl(items.createUrlTree({ query: { locale: 'en' } })!)).toBe('/items');
+    expect(router.serializeUrl(items.createUrlTree({ query: { locale: 'en' } }))).toBe('/items');
     await router.navigateByUrl('/items?locale=fr');
     expect(items.params().query.locale).toBe('fr');
   });

@@ -168,15 +168,3 @@ export function activePathParams(target: CompiledRoute, active: ActivatedRouteSn
   }
   return convertToParamMap(path);
 }
-
-export function assertRouteConfig(routerRoutes: Routes, target: CompiledRoute): void {
-  const contains = (routes: Routes): boolean =>
-    routes.some((route) => {
-      if ((route as Record<PropertyKey, unknown>)[routeConfigBrand] === target) return true;
-      return route.children ? contains(route.children) : false;
-    });
-  if (!contains(routerRoutes))
-    throw new Error(
-      `${target.identity}: its route configuration was replaced. Recreate the app router instead of calling Router.resetConfig().`,
-    );
-}

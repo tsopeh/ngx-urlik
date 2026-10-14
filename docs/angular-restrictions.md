@@ -18,7 +18,8 @@ unnamed routes stay available to Angular without adding generated nodes.
 Angular's route order, matching, guards, redirects, and outlets determine which route activates.
 The typed catalog does not select a route or replace Angular's matching rules. Components can load
 lazily with `loadComponent`; the route declarations and named chains must be available when
-`defineAppRouter()` runs. Replacing them later with `Router.resetConfig()` is unsupported.
+`defineAppRouter()` runs. Replacing them later with `Router.resetConfig()` is unsupported and not
+detected.
 
 Put router options on `defineAppRouter(RouteNames, { routerConfig })`. ngx-urlik keeps the
 supplied `paramsInheritanceStrategy` and reads path values from the activated route chain.

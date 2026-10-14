@@ -67,7 +67,7 @@ declare const router: TokenValue<typeof definition.AppRouter>;
 router.routes.MEMBER.createUrlTree({
   path: { teamId: 1, memberId: 2, showId: 'abc' },
   query: { page: 1 },
-}) satisfies UrlTree | null;
+}) satisfies UrlTree;
 router.routes.MEMBER.params().path.teamId satisfies number;
 router.routes.MEMBER.params().path.memberId satisfies number;
 router.routes.MEMBER.params().path.showId satisfies string;
@@ -216,8 +216,11 @@ const staticDef = defineAppRouter(StaticNames, {
 });
 declare const staticRouter: TokenValue<typeof staticDef.AppRouter>;
 staticRouter.routes.HOME.createUrlTree() satisfies UrlTree;
-// Pathless navigate with options
-staticRouter.routes.HOME.navigate({ replaceUrl: true }) satisfies Promise<boolean>;
+// Navigation options always follow the construction values
+staticRouter.routes.HOME.navigate({}, { replaceUrl: true }) satisfies Promise<boolean>;
+staticRouter.routes.HOME.navigate(undefined, { replaceUrl: true }) satisfies Promise<boolean>;
+// @ts-expect-error navigation options are not construction values
+staticRouter.routes.HOME.navigate({ replaceUrl: true });
 
 // Type extractors
 type MemberNode = typeof router.routes.MEMBER;
@@ -243,4 +246,4 @@ const activeContext = router.activeRoute({
   teams: router.routes.TEAMS,
 });
 declare const currentActive: ReturnType<typeof activeContext>;
-currentActive.createUrlTree({ fragment: 'bio' }) satisfies UrlTree | null;
+currentActive.createUrlTree({ fragment: 'bio' }) satisfies UrlTree;

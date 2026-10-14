@@ -35,18 +35,12 @@ type MethodArgs<P, Q, Required extends PropertyKey> = keyof P extends never
     ? [values?: ConstructionArgs<P, Q, Required>]
     : [values: ConstructionArgs<P, Q, Required>]
   : [values: ConstructionArgs<P, Q, Required>];
-type NavigateArgs<P, Q, Required extends PropertyKey> = keyof P extends never
-  ? [Required] extends [never]
-    ? | [values?: ConstructionArgs<P, Q, Required>, options?: TypedNavigationBehaviorOptions]
-      | [options: TypedNavigationBehaviorOptions]
-    : [values: ConstructionArgs<P, Q, Required>, options?: TypedNavigationBehaviorOptions]
-  : [values: ConstructionArgs<P, Q, Required>, options?: TypedNavigationBehaviorOptions];
 
 export type RouteNode<P = unknown, Q = unknown, Required extends PropertyKey = never> = {
-  createUrlTree(
-    ...args: MethodArgs<P, Q, Required>
-  ): keyof P extends never ? UrlTree : UrlTree | null;
-  navigate(...args: NavigateArgs<P, Q, Required>): Promise<boolean>;
+  createUrlTree(...args: MethodArgs<P, Q, Required>): UrlTree;
+  navigate(
+    ...args: [...MethodArgs<P, Q, Required>, options?: TypedNavigationBehaviorOptions]
+  ): Promise<boolean>;
   readonly [routeNodeInfo]: unknown;
   readonly params: Signal<UrlParamsState<P, Q>>;
   patchQuery(patch: QueryPatch<Q>, options?: { replaceUrl?: boolean }): Promise<boolean>;
@@ -77,7 +71,7 @@ export type ActiveRoute<C extends Readonly<Record<PropertyKey, AnyStatefulNode>>
     createUrlTree(patch?: {
       query?: Partial<QueryOfNode<C[K]>>;
       fragment?: string | null;
-    }): UrlTree | null;
+    }): UrlTree;
     patchQuery(
       patch: QueryPatch<QueryOfNode<C[K]>>,
       options?: { replaceUrl?: boolean },

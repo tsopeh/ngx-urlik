@@ -25,7 +25,7 @@ export function createParameterReader(report: ReportParameterFailure) {
     } catch (cause) {
       report(
         param,
-        { code: 'PARAM_CODEC_THROWN', operation: 'deserialize', index, cause },
+        { code: 'PARAM_DESERIALIZE_FAILED', operation: 'deserialize', index, cause },
         'threw in its codec',
       );
       return null;
@@ -132,11 +132,31 @@ export function createParameterSerializer(
     } catch (cause) {
       report(
         param,
-        { code: 'PARAM_CODEC_THROWN', operation: 'serialize', index, cause },
+        { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize', index, cause },
         'threw in its codec',
       );
       return null;
     }
+  };
+
+  /** Path values have no fallback, so a failed segment is a caller error. */
+  const serializePath = (param: RuntimeParam, value: unknown): string => {
+    let output: unknown;
+    try {
+      output = (param.definition.codec as UrlParamCodec<unknown>).serialize(value);
+    } catch (cause) {
+      throw new Error(
+        `${param.owner.fullIdentity}: serialize path parameter '${param.name}' threw in its codec`,
+        { cause },
+      );
+    }
+    if (typeof output !== 'string' || output === '')
+      throw new Error(
+        `${param.owner.fullIdentity}: serialize path parameter '${param.name}' ${
+          output === '' ? 'produced an empty path segment' : 'was invalid'
+        }`,
+      );
+    return output;
   };
 
   const serializeQuery = (
@@ -171,5 +191,5 @@ export function createParameterSerializer(
       : items.map((item) => encodeURIComponent(item)).join(definition.separator!);
   };
 
-  return { encode, serializeQuery };
+  return { serializePath, serializeQuery };
 }

@@ -197,18 +197,20 @@ declarations; it never copies the current query, even when Angular's `defaultQue
 is set to merge or preserve. Ancestor query fields are serialized before child fields, in
 declaration order at each level.
 
-If a path value fails to serialize, the codec throws, or it produces an empty segment,
-`createUrlTree()` returns `null` and `navigate()` resolves `false` without calling Angular. A
-query value that fails to serialize is reported as a diagnostic and omitted; construction
-continues. A route without path parameters always returns a `UrlTree`, and its `navigate()` can
-take navigation options alone: `navigate({ replaceUrl: true })`.
+`createUrlTree()` always returns a `UrlTree`. A path value has no fallback, so if its codec
+returns a non-string, throws, or produces an empty segment, `createUrlTree()` throws and
+`navigate()` rejects without calling Angular. The error names the route and placeholder, and a
+codec's exception is in `cause`. A query value that fails to serialize is reported as a diagnostic
+and omitted; construction continues.
+
+`navigate()` takes construction values first and navigation options second. A route without
+required values can pass `{}` or `undefined` before its options: `navigate({}, { replaceUrl: true })`.
 
 `fragment` accepts a string or `null`. It is construction-only and does not appear in `params()`.
 Navigation accepts Angular's navigation behavior options except `browserUrl`, which could display
 a different address from the typed destination.
 
-Pass the constructed `UrlTree | null` to Angular's `RouterLink`; `null` renders a link with no
-target. `RouterLinkActive` also works. There is no library-specific link directive.
+Pass the constructed `UrlTree` to Angular's `RouterLink`. `RouterLinkActive` also works. There is no library-specific link directive.
 
 ## Reactive state and updates
 
@@ -401,20 +403,21 @@ Bad query data uses the default or absence behavior and emits a warning. Configu
 `AppRouterDiagnostic` contains `code`, `message`, `route`, `parameter`, and `operation`
 (`'serialize'` or `'deserialize'`), plus `index` and `cause` when available.
 
-| Code                           | When                                                                                                   |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `PARAM_DESERIALIZE_FAILED`     | A codec returned `null`, or a delimited item had malformed URI encoding                                |
-| `PARAM_SERIALIZE_FAILED`       | A codec returned a non-string, an array field got a non-array, or a path value became an empty segment |
-| `PARAM_CODEC_THROWN`           | A codec threw; the error is in `cause`                                                                 |
-| `INVALID_ARRAY_REPRESENTATION` | A delimited field had more than one physical key                                                       |
+| Code                           | When                                                                             |
+| ------------------------------ | -------------------------------------------------------------------------------- |
+| `PARAM_DESERIALIZE_FAILED`     | A codec returned `null` or threw, or a delimited item had malformed URI encoding |
+| `PARAM_SERIALIZE_FAILED`       | A query codec returned a non-string or threw, or an array field got a non-array  |
+| `INVALID_ARRAY_REPRESENTATION` | A delimited field had more than one physical key                                 |
+
+When a codec or URI decoding throws, the error is in `cause`.
 
 `route` names the route that declares the parameter, which may be an ancestor of the route you
 read. An unnamed ancestor is identified by position, such as `routes[0].children[1]`. Global
 observers use `globalQueryParams`.
 
-Codec exceptions are caught and treated as invalid data. Errors from default factories propagate.
-Invalid active path values and inactive route reads throw because there is no valid state to
-return.
+Codec exceptions in query fields are caught and treated as invalid data. Errors from default
+factories propagate. Invalid active path values, path values that fail to serialize, and inactive
+route reads throw, because there is no valid value to return.
 
 `defineAppRouter()` validates named route chains and throws one error listing every problem:
 repeated or empty route names, names on redirects, wildcards, or matchers, `loadChildren` on a
@@ -423,8 +426,9 @@ reserved characters, `pathParam` maps that do not match the placeholders, repeat
 names, repeated query keys, and invalid delimited separators. Some of these are also type errors.
 Angular validates its own route configuration.
 
-The typed catalog is fixed when the router is defined. After `Router.resetConfig()` replaces the
-named routes, their nodes throw on use.
+The typed catalog is fixed when the router is defined. Replacing the named routes with
+`Router.resetConfig()` is unsupported; the library does not detect it, and stale nodes build URLs
+and read state against routes Angular no longer uses.
 
 ## Angular runtime relationship
 

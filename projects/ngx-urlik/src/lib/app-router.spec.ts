@@ -88,8 +88,8 @@ describe('defineAppRouter with Angular route arrays', () => {
 
     expect(Object.keys(appRouter.routes)).toEqual(['SHOW', 'SEASON']);
     expect('SEASON' in SHOW).toBe(false);
-    expect(router.serializeUrl(SHOW.createUrlTree({ path: { showId: 12 } })!)).toBe('/shows/12');
-    expect(router.serializeUrl(SEASON.createUrlTree({ path: { showId: 12, season: 3 } })!)).toBe(
+    expect(router.serializeUrl(SHOW.createUrlTree({ path: { showId: 12 } }))).toBe('/shows/12');
+    expect(router.serializeUrl(SEASON.createUrlTree({ path: { showId: 12, season: 3 } }))).toBe(
       '/shows/12/seasons/3',
     );
   });
@@ -138,7 +138,9 @@ describe('defineAppRouter with Angular route arrays', () => {
     await season.navigate({ path: { showId: 42, season: 2 } });
     expect(router.url).toBe('/shows/42/seasons/2');
     expect(season.params()).toEqual({ path: { showId: 42, season: 2 }, query: {} });
-    expect(season.createUrlTree({ path: { showId: 42 } } as never)).toBeNull();
+    expect(() => season.createUrlTree({ path: { showId: 42 } } as never)).toThrow(
+      /serialize path parameter 'season' was invalid/,
+    );
   });
 
   it('applies a codec to each placeholder in one route path', async () => {
@@ -170,7 +172,7 @@ describe('defineAppRouter with Angular route arrays', () => {
     const { appRouter, router } = setup(definition);
 
     expect(
-      router.serializeUrl(appRouter.routes.ITEM.createUrlTree({ path: { id: 'a/b?c' } })!),
+      router.serializeUrl(appRouter.routes.ITEM.createUrlTree({ path: { id: 'a/b?c' } })),
     ).toBe('/items/a%2Fb%3Fc');
   });
 
@@ -297,7 +299,7 @@ describe('defineAppRouter with Angular route arrays', () => {
 
     expect(router.serializeUrl(appRouter.routes.ADMIN.createUrlTree())).toBe('/dashboard');
     expect(router.serializeUrl(appRouter.routes.USER.createUrlTree())).toBe('/dashboard');
-    await appRouter.routes.ADMIN.navigate({ replaceUrl: true });
+    await appRouter.routes.ADMIN.navigate({}, { replaceUrl: true });
     expect(active().route).toBe('user');
     expect(() => appRouter.routes.ADMIN.params()).toThrow(/inactive/);
   });
@@ -330,7 +332,7 @@ describe('defineAppRouter with Angular route arrays', () => {
 
     await router.navigateByUrl('/teams/3/members/4?unknown=keep');
     expect(member.params()).toEqual({ path: { teamId: 3, memberId: 4 }, query: { search: null } });
-    expect(router.serializeUrl(member.createUrlTree({ path: { teamId: 3, memberId: 4 } })!)).toBe(
+    expect(router.serializeUrl(member.createUrlTree({ path: { teamId: 3, memberId: 4 } }))).toBe(
       '/teams/3/members/4',
     );
     await member.patchQuery({ search: 'new' });
@@ -355,25 +357,6 @@ describe('defineAppRouter with Angular route arrays', () => {
     );
     form.patchValue({ search: 'new' });
     await vi.waitFor(() => expect(router.url).toBe('/results?unknown=keep&search=new'));
-  });
-
-  it('fails clearly if named route configurations are replaced', async () => {
-    const definition = defineAppRouter(RouteNames, {
-      routes: [{ path: 'movies', routeName: RouteNames.MOVIES, component: EmptyComponent }],
-    });
-    const { appRouter, router } = setup(definition);
-    const movies = appRouter.routes.MOVIES;
-    expect(movies.createUrlTree()).not.toBeNull();
-    await movies.navigate();
-    expect(movies.params()).toEqual({ path: {}, query: {} });
-    const active = appRouter.activeRoute({ movies });
-    expect(active().route).toBe('movies');
-
-    router.resetConfig([{ path: 'movies', component: EmptyComponent }]);
-    expect(() => movies.createUrlTree()).toThrow(/route configuration was replaced/);
-    expect(() => movies.navigate()).toThrow(/route configuration was replaced/);
-    expect(() => movies.params()).toThrow(/route configuration was replaced/);
-    expect(() => active()).toThrow(/route configuration was replaced/);
   });
 
   it('uses a default for malformed URL query data but rejects an invalid active path read', async () => {
@@ -490,12 +473,16 @@ describe('defineAppRouter with Angular route arrays', () => {
     const item = appRouter.routes.ITEM;
     const navigateByUrl = vi.spyOn(router, 'navigateByUrl');
 
-    expect(item.createUrlTree({ path: { id: 'invalid' as never } })).toBeNull();
-    expect(await item.navigate({ path: { id: 'invalid' as never } })).toBe(false);
+    expect(() => item.createUrlTree({ path: { id: 'invalid' as never } })).toThrow(
+      /ITEM: serialize path parameter 'id' was invalid/,
+    );
+    await expect(item.navigate({ path: { id: 'invalid' as never } })).rejects.toThrow(
+      /serialize path parameter 'id'/,
+    );
     expect(navigateByUrl).not.toHaveBeenCalled();
     expect(
       router.serializeUrl(
-        item.createUrlTree({ path: { id: 1 }, query: { search: 'invalid' as never, page: 2 } })!,
+        item.createUrlTree({ path: { id: 1 }, query: { search: 'invalid' as never, page: 2 } }),
       ),
     ).toBe('/items/1?page=2');
     expect(diagnostics.length).toBeGreaterThan(0);
