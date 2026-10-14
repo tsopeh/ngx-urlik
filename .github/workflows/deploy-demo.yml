@@ -1,0 +1,46 @@
+# Builds TasteTrack against the library on master and publishes it to GitHub Pages.
+name: Deploy demo
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build:lib
+      - id: pages
+        uses: actions/configure-pages@v6
+      - run: npx ng build taste-track --base-href "${{ steps.pages.outputs.base_path }}/"
+      # Pages serves 404.html for unknown paths, so deep links load the app and Angular routes them.
+      - run: cp dist/taste-track/browser/index.html dist/taste-track/browser/404.html
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist/taste-track/browser
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
