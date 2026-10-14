@@ -1,13 +1,61 @@
 # Differences from Angular Router
 
-ngx-urlik uses Angular Router for matching, guards, and navigation, but imposes rules on named routes to guarantee type safety.
+ngx-urlik accepts Angular's ordered `Routes` shape. Add `routeName` when code needs a typed node;
+unnamed routes stay available to Angular without adding generated nodes.
 
-**Named Routes:** Routes with a `routeName` generate typed nodes. Because TypeScript requires literal types at compile time to infer parameters, named routes must have statically known paths and `children` arrays. They cannot use `loadChildren`, wildcards, or named outlets. Their parameter names must be unique along their route chain. Unnamed routes bypass these rules and behave exactly like standard Angular routes.
+## Route definitions
 
-**Explicit Construction:** Angular's `router.navigate` can implicitly borrow the current URL's query state, which occasionally leads to unpredictable links. ngx-urlik's `createUrlTree` and `navigate` are strictly deterministic: they build destinations using only the exact parameters you provide.
+| Area                | Rule                                                                                                                          |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Shape               | `defineAppRouter(RouteNames, { routes: [...] })`; `children` are arrays and Angular fields stay at the top level              |
+| Route names         | Unique across the declaration, taken from `RouteNames`; only ordinary routes with statically known primary paths can have one |
+| Dynamic paths       | Angular `:name` placeholders; every destination supplies all placeholders in the named route chain                            |
+| Codec options       | Without `pathParam`, values are strings; otherwise use `{ codec }` for one placeholder or a keyed codec map for several       |
+| Named descendants   | Their ancestor paths and query definitions must be statically declared; an ancestor cannot use `loadChildren`                 |
+| Empty paths         | A named empty-path child is allowed and may construct the same URL as its parent                                              |
+| Angular-only routes | Redirects, wildcards, matchers, named outlets, and lazy child branches have no typed node                                     |
 
-**Sequential Writes:** Concurrent calls to Angular's `router.navigate` can overwrite each other if they read from the same initial snapshot. ngx-urlik's `patchQuery()` solves this by running all updates through a sequential queue, ensuring every edit survives.
+Angular's route order, matching, guards, redirects, and outlets determine which route activates.
+The typed catalog does not select a route or replace Angular's matching rules. Components can load
+lazily with `loadComponent`; the route declarations and named chains must be available when
+`defineAppRouter()` runs. Replacing them later with `Router.resetConfig()` is unsupported.
 
-**Configuration:** Pass router options like `paramsInheritanceStrategy` to `defineAppRouter(RouteNames, { routerConfig, routes })`. Calling `withRouterConfig()` in your provider is rejected to keep configuration and typed schemas synchronized.
+Put router options on `defineAppRouter(RouteNames, { routerConfig })`. ngx-urlik keeps the
+supplied `paramsInheritanceStrategy` and reads path values from the activated route chain.
+Passing `withRouterConfig()` to `provideAppRouter()` throws.
 
-**Escape Hatch:** For untyped navigation, use `AppRouter.escapeHatch`.
+## Parameters
+
+Path and query state use separate objects, so a path placeholder and a query field can share a name.
+Placeholder names cannot repeat along a named route chain. Query definitions accumulate through
+unnamed ancestors, but a query key cannot be defined twice along a named chain. Query property
+names are the URL keys; aliases are unsupported.
+
+Scalar query fields use the last repeated key. Arrays use either repeated keys or one delimited
+value; the two forms cannot be mixed. Built-in codecs cover strings, numbers, booleans, and string
+enums. Supply custom codecs for dates and structured values.
+
+Fragments can be supplied during construction, but have no codec and do not appear in route state.
+
+## Reads and writes
+
+Route state is a readonly signal. There is no writable URL signal or observable interface.
+`patchQuery()` changes supplied query fields on the current URL, and also normalizes the route's
+other declared fields. Reactive Forms and Signal Forms bindings come from `ngx-urlik/forms`.
+
+A plain `router.navigate()` call builds its URL from the snapshot it reads, so two overlapping
+calls can overwrite each other's query changes. `patchQuery()` and form writes run one at a time
+instead, each against the URL the previous write committed.
+
+`createUrlTree()` and `navigate()` on a route node construct absolute destinations from explicit
+values. They do not inherit the current query, follow `defaultQueryParamsHandling`, or perform
+relative navigation. Generated trees work with Angular's own `RouterLink`; no extra directive is
+needed.
+
+## Native operations
+
+Use `AppRouter.escapeHatch` for supported native addressing and navigation observations. It does
+not expose router configuration, raw state, or lifecycle controls. Angular's `Router` remains
+injectable, but calls through it bypass the typed route contract and the write queue.
+
+See the [API reference](design/app-router.md) for exact inputs and failure behavior.
