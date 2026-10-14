@@ -132,7 +132,8 @@ const route = {
 };
 ```
 
-Query definitions can specify `defaultValue` and `required`. `repeatedQueryParam` puts each item
+Query definitions can specify `defaultValue`, `required`, and
+[`resetWhen`](#fields-that-reset-together). `repeatedQueryParam` puts each item
 under its own key; `listCodec` joins items into one value. Each query property name is also its URL key.
 
 ### Built-in scalar codecs
@@ -236,6 +237,36 @@ destination's values, not the page it replaced. Reading an inactive route throws
 A patch changes only supplied fields. Omitted and `undefined` fields stay unchanged. Use `null` for
 nullable scalars, `[]` for arrays, or a field's default to remove its URL representation. The
 path, fragment, query fields owned by descendants, and undeclared keys are preserved.
+
+### Fields that reset together
+
+A page number only makes sense for the results it was counted against. Name the fields it depends
+on:
+
+```ts
+queryParams: {
+  search: queryParam({ codec: stringCodec(), defaultValue: '' }),
+  genres: repeatedQueryParam({ codec: stringCodec() }),
+  view: queryParam({ codec: enumCodec(['grid', 'list']), defaultValue: 'grid' }),
+  page: queryParam({ codec: numberCodec(), defaultValue: 1, resetWhen: ['search', 'genres'] }),
+}
+```
+
+`patchQuery({ search: 'elm' })` on page 3 writes `?search=elm`: the page returns to its default in
+the same navigation. Changing `view` keeps the page, because the page does not list it. Several
+lists on one page each name their own fields, such as `castPage` resetting on `castSearch`.
+
+A field resets when a write changes a listed field's value and does not set the field itself, so
+`patchQuery({ search: 'elm', page: 3 })` keeps page 3, and writing the current search again keeps
+the page. Resets cascade: if `tags` resets on `search` and `tagPage` resets on `tags`, a new search
+resets both, unless `tags` was already at its default. The rule applies to every write on the
+route: `patchQuery`, form bindings, and `activeRoute()` links. A node's `createUrlTree` builds a
+destination from the supplied values only, so nothing resets there.
+
+`resetWhen` can name query fields declared on the same route or an ancestor. TypeScript rejects
+other names, including the field's own, at the route declaration. `defineAppRouter()` checks the
+same rule at runtime for definitions TypeScript cannot see, such as a helper typed with plain
+`string` names.
 
 A patch rewrites every query field the route declares from its decoded state. Fields that were
 malformed or non-canonical in the URL are normalized as a side effect: after any patch on a route

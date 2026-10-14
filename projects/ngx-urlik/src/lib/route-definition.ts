@@ -224,6 +224,19 @@ export function validateRouteDefinitions(
                     );
                   else queryOwners.set(name, member.path ?? '');
                 }
+              // Run after this member's own names are recorded, so siblings can refer to each other.
+              if (member.queryParams && typeof member.queryParams === 'object')
+                for (const [name, definition] of Object.entries(member.queryParams))
+                  for (const listed of definition?.resetWhen ?? []) {
+                    if (listed === name)
+                      report(
+                        `${routeName}: query parameter '${name}' cannot reset when it changes itself`,
+                      );
+                    else if (!queryOwners.has(listed))
+                      report(
+                        `${routeName}: query parameter '${name}' resets when '${listed}' changes, but the route chain does not declare '${listed}'`,
+                      );
+                  }
             }
           }
         }

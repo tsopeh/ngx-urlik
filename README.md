@@ -8,10 +8,11 @@ handles matching and navigation.
 const results = inject(AppRouter).routes.RESULTS;
 
 results.params().query.search;
-await results.patchQuery({ search: 'elm', page: 1 });
+await results.patchQuery({ search: 'elm' });
 ```
 
-The patch changes search and resets the page in one navigation. Other query fields stay as they are.
+The patch changes search and, because the page is declared to depend on it, resets the page in the
+same navigation. Other query fields stay as they are.
 
 ## Define a route
 
@@ -29,7 +30,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
       routeName: RouteNames.RESULTS,
       queryParams: {
         search: queryParam({ codec: stringCodec(), defaultValue: '' }),
-        page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
+        page: queryParam({ codec: numberCodec(), defaultValue: 1, resetWhen: ['search'] }),
       },
       loadComponent: () => import('./results-page').then((m) => m.ResultsPage),
     },

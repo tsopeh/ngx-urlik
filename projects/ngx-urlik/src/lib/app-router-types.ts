@@ -119,6 +119,17 @@ type OwnPath<D> = {
 };
 type AccumulatedPath<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
 type AccumulatedQuery<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
+// Each resetWhen entry must name another query field of this route or an ancestor. A definition
+// typed with a wide string, such as one returned by an annotated helper, is checked at runtime.
+type ResetChecks<Q, Keys extends PropertyKey> = {
+  readonly [P in keyof Q]: Q[P] extends { readonly resetWhen?: readonly (infer Reset)[] }
+    ? string extends Reset
+      ? unknown
+      : [Exclude<Reset, Exclude<Keys, P>>] extends [never]
+        ? unknown
+        : { readonly resetWhen?: readonly Exclude<Keys, P>[] }
+    : unknown;
+};
 type RouteKey = keyof Route | 'routeName' | 'pathParam' | 'queryParams' | 'isEqual';
 
 type ContextualRoute<D, AncestorQuery> = {
@@ -139,7 +150,8 @@ type ContextualRoute<D, AncestorQuery> = {
           ? PathConfig<OwnPathNames<D>, D[K]>
           : K extends 'queryParams'
             ? D[K] extends QueryDefinitions
-              ? Record<Extract<keyof D[K], keyof AncestorQuery>, never>
+              ? Record<Extract<keyof D[K], keyof AncestorQuery>, never> &
+                  ResetChecks<D[K], keyof AncestorQuery | keyof D[K]>
               : never
             : K extends 'isEqual'
               ? RouteDefinition['isEqual']

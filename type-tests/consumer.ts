@@ -256,3 +256,98 @@ const activeContext = router.activeRoute({
 });
 declare const currentActive: ReturnType<typeof activeContext>;
 currentActive.createUrlTree({ fragment: 'bio' }) satisfies UrlTree;
+
+enum ResetRouteNames {
+  LIST = 'LIST',
+  CHILD = 'CHILD',
+}
+
+const resets = defineAppRouter(ResetRouteNames, {
+  routes: [
+    {
+      path: 'list',
+      routeName: ResetRouteNames.LIST,
+      queryParams: {
+        search: queryParam({ codec: stringCodec(), defaultValue: '' }),
+        tags: repeatedQueryParam({ codec: stringCodec(), resetWhen: ['search'] }),
+        page: queryParam({ codec: numberCodec(), defaultValue: 1, resetWhen: ['search', 'tags'] }),
+      },
+      children: [
+        {
+          path: 'child',
+          routeName: ResetRouteNames.CHILD,
+          queryParams: {
+            tab: queryParam({ codec: stringCodec() }),
+            childPage: queryParam({
+              codec: numberCodec(),
+              defaultValue: 1,
+              resetWhen: ['search', 'tab'],
+            }),
+          },
+        },
+      ],
+    },
+  ],
+});
+declare const resetRouter: TokenValue<typeof resets.AppRouter>;
+resetRouter.routes.CHILD.params().query.childPage satisfies number;
+resetRouter.routes.LIST.params().query.tags satisfies readonly string[];
+
+defineAppRouter(ResetRouteNames, {
+  routes: [
+    {
+      path: 'list',
+      routeName: ResetRouteNames.LIST,
+      queryParams: {
+        search: queryParam({ codec: stringCodec(), defaultValue: '' }),
+        // @ts-expect-error resetWhen names query fields of the route chain
+        page: queryParam({
+          codec: numberCodec(),
+          defaultValue: 1,
+          resetWhen: ['serch'],
+        }),
+      },
+    },
+  ],
+});
+
+defineAppRouter(ResetRouteNames, {
+  routes: [
+    {
+      path: 'list',
+      routeName: ResetRouteNames.LIST,
+      queryParams: {
+        // @ts-expect-error a field cannot reset when it changes itself
+        page: queryParam({
+          codec: numberCodec(),
+          defaultValue: 1,
+          resetWhen: ['page'],
+        }),
+      },
+    },
+  ],
+});
+
+defineAppRouter(ResetRouteNames, {
+  routes: [
+    {
+      path: 'list',
+      routeName: ResetRouteNames.LIST,
+      queryParams: {
+        // @ts-expect-error an ancestor cannot name a descendant's field
+        page: queryParam({
+          codec: numberCodec(),
+          defaultValue: 1,
+          resetWhen: ['tab'],
+        }),
+      },
+      children: [
+        {
+          path: 'child',
+          routeName: ResetRouteNames.CHILD,
+          queryParams: { tab: queryParam({ codec: stringCodec() }) },
+        },
+      ],
+    },
+  ],
+});
