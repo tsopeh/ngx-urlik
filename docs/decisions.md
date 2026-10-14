@@ -108,7 +108,9 @@ Router options go on `defineAppRouter()`, so the configuration and the typed cat
 together.
 
 **Cost:** Angular's `Router` stays injectable, and calls through it bypass both the types and the
-write queue. Nothing enforces the boundary; a lint rule is an [open question](deferred-discussions.md).
+write queue. The library discourages that path instead of blocking it: the docs give an ESLint
+[configuration](angular-restrictions.md#flag-native-router-use) that warns on `Router` and
+`ActivatedRoute` imports. Nothing enforces the boundary at runtime.
 
 ## Check route relationships at definition time, not in the types
 

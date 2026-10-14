@@ -60,4 +60,38 @@ Use `AppRouter.escapeHatch` for supported native addressing and navigation obser
 not expose router configuration, raw state, or lifecycle controls. Angular's `Router` remains
 injectable, but calls through it bypass the typed route contract and the write queue.
 
+### Flag native router use
+
+The library does not forbid Angular's router, but code that injects it loses the typed contract
+quietly. ESLint's core `no-restricted-imports` rule makes each such import visible:
+
+```js
+// eslint.config.js
+export default [
+  {
+    files: ['src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'warn',
+        {
+          paths: [
+            {
+              name: '@angular/router',
+              importNames: ['ActivatedRoute', 'Router'],
+              message:
+                'Read and write the URL through AppRouter routes. Use AppRouter.escapeHatch for native operations.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+];
+```
+
+The rule warns rather than fails, so a deliberate native call can stay with an
+`eslint-disable-next-line` comment that explains it. Other router imports, such as `RouterLink`,
+`RouterOutlet`, `ResolveFn`, and `ActivatedRouteSnapshot`, stay allowed: templates and guards
+still need them.
+
 See the [API reference](design/app-router.md) for exact inputs and failure behavior.

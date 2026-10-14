@@ -16,7 +16,7 @@ in concepts, types, and runtime behavior.
 | Read fragments or support typed relative navigation?     | Fragments are construction-only; relative navigation uses the escape hatch.                |
 | Expose more write options?                               | Query patches accept `replaceUrl`.                                                         |
 | Add tracing or editor diagnostics?                       | Runtime validation and parameter diagnostics are available.                                |
-| Warn about bypassing the typed router?                   | There is no library ESLint rule.                                                           |
+| Warn about bypassing the typed router?                   | The docs give a core ESLint configuration; there is no plugin or runtime warning.          |
 | Infer accumulated state in route equality callbacks?     | Equality callbacks currently receive `unknown`; construction and state reads are inferred. |
 
 The [reference](design/app-router.md) describes what callers can rely on today.
