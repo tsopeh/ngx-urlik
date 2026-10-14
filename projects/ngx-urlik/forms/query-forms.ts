@@ -5,12 +5,12 @@ import {
   inject,
   Signal,
   signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
 import { FieldTree, form as signalForm, SchemaOrSchemaFn } from '@angular/forms/signals';
 import { isEqual, ɵgetQueryBinding } from 'ngx-urlik';
-import { Observable, Subject, Subscription } from 'rxjs';
 
 type QueryState = Readonly<Record<string, unknown>>;
 type QueryRoute<Q extends QueryState> = { readonly params: Signal<{ readonly query: Q }> };
@@ -19,51 +19,42 @@ export type QueryParamsFormControls<Q extends QueryState> = {
   [K in keyof Q]: FormControl<Q[K]>;
 };
 
-export type QueryParamChange<Q extends QueryState> = {
-  [K in keyof Q]: Readonly<{
-    param: K;
-    value: Q[K];
-    query: Q;
-    valid: boolean;
-    pending: boolean;
-    formValid: boolean;
-    formPending: boolean;
-  }>;
-}[keyof Q];
-
 export type QueryWriteFailure =
   Readonly<{ kind: 'declined' }> | Readonly<{ kind: 'error'; error: unknown }>;
 
-export interface QueryParamsBindingOptions<Q extends QueryState> {
+export interface QueryParamsBindingOptions {
   readonly replaceUrl?: boolean;
-  readonly transformWrites?: (
-    changes: Observable<QueryParamChange<Q>>,
-  ) => Observable<QueryParamChange<Q>>;
+  /**
+   * `'valid'` holds a field's draft until its validators pass, including async ones. The default,
+   * `'always'`, writes every change.
+   */
+  readonly writeWhen?: 'always' | 'valid';
   readonly onWriteFailure?: (failure: QueryWriteFailure) => void;
+}
+
+export interface QueryParamsFormGroupOptions<
+  Q extends QueryState,
+> extends QueryParamsBindingOptions {
+  /**
+   * Milliseconds a field waits after its last change before it writes. Signal Forms use the
+   * schema's `debounce()` rule instead.
+   */
+  readonly debounce?: { readonly [K in keyof Q]?: number };
 }
 
 type BindingAdapter<Q extends QueryState> = {
   reset(query: Q): void;
   write(query: Q): void;
-  changes(emit: (query: Q, metadata: (param: keyof Q) => QueryChangeMetadata) => void): () => void;
+  /** Whether a field's validators pass and none is pending. */
+  valid(param: keyof Q): boolean;
+  changes(emit: (query: Q) => void): () => void;
+  validityChanges(notify: () => void): () => void;
 };
-
-type QueryChangeMetadata = Readonly<{
-  valid: boolean;
-  pending: boolean;
-  formValid: boolean;
-  formPending: boolean;
-}>;
-
-type QueryFieldState = () => Readonly<{
-  valid(): boolean;
-  pending(): boolean;
-}>;
 
 const bindQueryParams = <Q extends QueryState>(
   route: QueryRoute<Q>,
   adapter: BindingAdapter<Q>,
-  options: QueryParamsBindingOptions<Q>,
+  options: QueryParamsFormGroupOptions<Q>,
 ): void => {
   const destroyRef = inject(DestroyRef);
   const errorHandler = inject(ErrorHandler);
@@ -73,32 +64,47 @@ const bindQueryParams = <Q extends QueryState>(
   // Each edit identifies the draft that a write may acknowledge. Newer edits remain pending.
   type Edit = { value: Q[keyof Q] };
   const staged = new Map<keyof Q, Edit>();
+  // Fields that writeWhen kept back; they write when the form's validity changes.
+  const held = new Set<keyof Q>();
+  const timers = new Map<keyof Q, ReturnType<typeof setTimeout>>();
   let destroyed = false;
-  let source = new Subject<QueryParamChange<Q>>();
-  let outputSubscription: Subscription;
-  type SubmittedValue = { value: Q[keyof Q]; edit: Edit | undefined };
-  let collecting: Map<keyof Q, SubmittedValue> | undefined;
   adapter.reset(observed);
+
+  const clearPending = () => {
+    for (const timer of timers.values()) clearTimeout(timer);
+    timers.clear();
+    held.clear();
+    staged.clear();
+  };
 
   const reportFailure = (failure: QueryWriteFailure) => {
     if (options.onWriteFailure) options.onWriteFailure(failure);
     else if (failure.kind === 'error') errorHandler.handleError(failure.error);
   };
 
-  const submit = (changes: Map<keyof Q, SubmittedValue>) => {
-    if (!changes.size || destroyed) return;
-    const patch = Object.fromEntries([...changes].map(([param, change]) => [param, change.value]));
-    const clearSubmitted = () => {
-      for (const [param, change] of changes) {
-        if (staged.get(param) === change.edit) staged.delete(param);
+  const submit = (params: Iterable<keyof Q>) => {
+    if (destroyed) return;
+    const edits = new Map<keyof Q, Edit>();
+    for (const param of params) {
+      const edit = staged.get(param);
+      if (!edit) continue;
+      if (options.writeWhen === 'valid' && !adapter.valid(param)) held.add(param);
+      else {
+        held.delete(param);
+        edits.set(param, edit);
       }
+    }
+    if (!edits.size) return;
+    const patch = Object.fromEntries([...edits].map(([param, edit]) => [param, edit.value]));
+    const committed = () => {
+      for (const [param, edit] of edits) if (staged.get(param) === edit) staged.delete(param);
     };
     void binding
       .update(
         (query) => ({ ...query, ...patch }),
         { replaceUrl: options.replaceUrl ?? true },
         owner,
-        clearSubmitted,
+        committed,
       )
       .then((result) => {
         if (!result && !destroyed) reportFailure({ kind: 'declined' });
@@ -107,22 +113,6 @@ const bindQueryParams = <Q extends QueryState>(
         if (!destroyed) reportFailure({ kind: 'error', error });
       });
   };
-
-  const connectOutput = () => {
-    const output = options.transformWrites?.(source.asObservable()) ?? source;
-    outputSubscription = output.subscribe({
-      next: (change) => {
-        const submitted = {
-          value: change.value,
-          edit: staged.get(change.param),
-        };
-        if (collecting) collecting.set(change.param, submitted);
-        else submit(new Map([[change.param, submitted]]));
-      },
-      error: (error: unknown) => errorHandler.handleError(error),
-    });
-  };
-  connectOutput();
 
   const synchronize = (reset: boolean) => {
     const incoming = binding.read();
@@ -145,52 +135,49 @@ const bindQueryParams = <Q extends QueryState>(
 
   const subscription = binding.coordinator.changes.subscribe((kind) => {
     if (kind === 'external') {
-      collecting?.clear();
-      outputSubscription.unsubscribe();
-      source.complete();
-      source = new Subject<QueryParamChange<Q>>();
-      staged.clear();
+      clearPending();
       synchronize(true);
-      connectOutput();
     } else synchronize(false);
   });
 
-  const stopFormChanges = adapter.changes((next, metadata) => {
-    const changes: QueryParamChange<Q>[] = [];
+  const stopFormChanges = adapter.changes((next) => {
+    const immediate: (keyof Q)[] = [];
     for (const param of Object.keys(next) as (keyof Q)[]) {
       if (isEqual(observed[param], next[param])) continue;
       staged.set(param, { value: next[param] });
-      changes.push({
+      held.delete(param);
+      const delay = options.debounce?.[param];
+      if (delay === undefined) {
+        immediate.push(param);
+        continue;
+      }
+      clearTimeout(timers.get(param));
+      timers.set(
         param,
-        value: next[param],
-        query: next,
-        ...metadata(param),
-      } as QueryParamChange<Q>);
+        setTimeout(() => {
+          timers.delete(param);
+          submit([param]);
+        }, delay),
+      );
     }
     observed = next;
-    // Synchronous outputs from this form notification share one navigation.
-    // Delayed or filtered fields wait for their own notification.
-    const batch = new Map<keyof Q, SubmittedValue>();
-    const previous = collecting;
-    const input = source;
-    collecting = batch;
-    try {
-      for (const change of changes) input.next(change);
-    } finally {
-      collecting = previous;
-      submit(batch);
-    }
+    // Immediate fields from one form notification share one navigation.
+    submit(immediate);
+  });
+
+  const stopValidityChanges = adapter.validityChanges(() => {
+    if (held.size) submit([...held]);
   });
 
   // Defaults can change through injection without a navigation, so observe them as well.
   const urlEffect = effect(() => synchronize(false));
   destroyRef.onDestroy(() => {
     destroyed = true;
+    clearPending();
     binding.coordinator.cancelOwner(owner);
     stopFormChanges();
+    stopValidityChanges();
     subscription.unsubscribe();
-    outputSubscription.unsubscribe();
-    source.complete();
     urlEffect.destroy();
   });
 };
@@ -198,22 +185,20 @@ const bindQueryParams = <Q extends QueryState>(
 export function bindQueryParamsToFormGroup<Q extends QueryState>(
   route: QueryRoute<Q>,
   form: FormGroup<QueryParamsFormControls<Q>>,
-  options: QueryParamsBindingOptions<Q> = {},
+  options: QueryParamsFormGroupOptions<Q> = {},
 ): void {
   bindQueryParams(
     route,
     {
       reset: (query) => form.reset(query as never, { emitEvent: false }),
       write: (query) => form.setValue(query as never, { emitEvent: false }),
+      valid: (param) => form.controls[param].valid,
       changes: (emit) => {
-        const subscription = form.valueChanges.subscribe(() =>
-          emit(form.getRawValue() as Q, (param) => ({
-            valid: form.controls[param].valid,
-            pending: form.controls[param].pending,
-            formValid: form.valid,
-            formPending: form.pending,
-          })),
-        );
+        const subscription = form.valueChanges.subscribe(() => emit(form.getRawValue() as Q));
+        return () => subscription.unsubscribe();
+      },
+      validityChanges: (notify) => {
+        const subscription = form.statusChanges.subscribe(() => notify());
         return () => subscription.unsubscribe();
       },
     },
@@ -223,7 +208,7 @@ export function bindQueryParamsToFormGroup<Q extends QueryState>(
 
 export function createQueryParamsFormGroup<Q extends QueryState>(
   route: QueryRoute<Q>,
-  options: QueryParamsBindingOptions<Q> = {},
+  options: QueryParamsFormGroupOptions<Q> = {},
 ): FormGroup<QueryParamsFormControls<Q>> {
   const query = ɵgetQueryBinding<Q>(route).read() ?? route.params().query;
   const controls = Object.fromEntries(
@@ -237,25 +222,32 @@ export function createQueryParamsFormGroup<Q extends QueryState>(
   return result;
 }
 
+type QueryFieldState = () => Readonly<{ valid(): boolean }>;
+
 export function bindQueryParamsToSignalForm<Q extends QueryState>(
   route: QueryRoute<Q>,
   form: FieldTree<Q>,
-  options: QueryParamsBindingOptions<Q> = {},
+  options: QueryParamsBindingOptions = {},
 ): void {
+  const field = (param: keyof Q) =>
+    (form as unknown as Record<PropertyKey, QueryFieldState>)[param]();
   bindQueryParams(
     route,
     {
       reset: (query) => form().reset(query as never),
       write: (query) => form().value.set(query as never),
+      valid: (param) => untracked(() => field(param).valid()),
       changes: (emit) => {
         const watcher = effect(() => {
           const query = form().value();
-          emit(query, (param) => ({
-            valid: (form as unknown as Record<PropertyKey, QueryFieldState>)[param]().valid(),
-            pending: (form as unknown as Record<PropertyKey, QueryFieldState>)[param]().pending(),
-            formValid: form().valid(),
-            formPending: form().pending(),
-          }));
+          untracked(() => emit(query));
+        });
+        return () => watcher.destroy();
+      },
+      validityChanges: (notify) => {
+        const watcher = effect(() => {
+          for (const param of Object.keys(form().value())) field(param).valid();
+          untracked(notify);
         });
         return () => watcher.destroy();
       },
@@ -266,7 +258,8 @@ export function bindQueryParamsToSignalForm<Q extends QueryState>(
 
 export interface CreateQueryParamsSignalFormOptions<
   Q extends QueryState,
-> extends QueryParamsBindingOptions<Q> {
+> extends QueryParamsBindingOptions {
+  /** Validators and `debounce()` rules for the form. */
   readonly schema?: SchemaOrSchemaFn<Q>;
 }
 

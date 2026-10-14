@@ -2,7 +2,8 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NavigationStart, Router } from '@angular/router';
 import { createQueryParamsFormGroup, createQueryParamsSignalForm } from 'ngx-urlik/forms';
-import { filter } from 'rxjs';
+import { AbstractControl, Validators } from '@angular/forms';
+import { minLength } from '@angular/forms/signals';
 import { defineAppRouter } from './app-router';
 import { numberCodec, queryParam, stringCodec, UrlParamCodec } from './params';
 
@@ -75,13 +76,12 @@ describe('query forms', () => {
     expect(starts).toEqual(['/results?search=new&page=2']);
   });
 
-  it('keeps a filtered draft until external navigation resets it', async () => {
+  it('keeps an invalid draft until external navigation resets it', async () => {
     const { results, router } = await setup();
     const form = TestBed.runInInjectionContext(() =>
-      createQueryParamsFormGroup(results, {
-        transformWrites: (changes) => changes.pipe(filter((change) => change.param !== 'search')),
-      }),
+      createQueryParamsFormGroup(results, { writeWhen: 'valid' }),
     );
+    form.controls.search.addValidators(Validators.minLength(10));
     form.controls.search.setValue('draft');
     expect(form.controls.search.value).toBe('draft');
     expect(router.url).toBe('/results');
@@ -146,6 +146,92 @@ describe('query forms', () => {
       await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
       TestBed.tick();
       expect(binding.model().search).toBe('elm ');
+    });
+  });
+
+  describe('writeWhen: valid', () => {
+    it('holds a reactive field until it is valid and writes an empty value', async () => {
+      const { results, router } = await setup();
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { writeWhen: 'valid' }),
+      );
+      form.controls.search.addValidators(Validators.minLength(3));
+
+      form.controls.search.setValue('el');
+      form.controls.page.setValue(2);
+      await vi.waitFor(() => expect(router.url).toBe('/results?page=2'));
+      form.controls.search.setValue('elm');
+      await vi.waitFor(() => expect(router.url).toBe('/results?page=2&search=elm'));
+      form.controls.search.setValue('');
+      await vi.waitFor(() => expect(router.url).toBe('/results?page=2'));
+    });
+
+    it('writes a reactive field once its async validator passes', async () => {
+      const { results, router } = await setup();
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { writeWhen: 'valid' }),
+      );
+      let settle!: (errors: null | { taken: true }) => void;
+      form.controls.search.addAsyncValidators(
+        (_control: AbstractControl) => new Promise((resolve) => (settle = resolve)),
+      );
+
+      form.controls.search.setValue('elm');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(router.url).toBe('/results');
+      settle(null);
+      await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
+    });
+
+    it('holds a signal form field until its schema passes', async () => {
+      const { results, router } = await setup();
+      const binding = TestBed.runInInjectionContext(() =>
+        createQueryParamsSignalForm(results, {
+          schema: (fields) => minLength(fields.search, 3),
+          writeWhen: 'valid',
+        }),
+      );
+
+      binding.model.update((query) => ({ ...query, search: 'el', page: 2 }));
+      TestBed.tick();
+      await vi.waitFor(() => expect(router.url).toBe('/results?page=2'));
+      binding.model.update((query) => ({ ...query, search: 'elm' }));
+      TestBed.tick();
+      await vi.waitFor(() => expect(router.url).toBe('/results?page=2&search=elm'));
+    });
+  });
+
+  describe('reactive debounce', () => {
+    it('writes a debounced field after its last change without delaying other fields', async () => {
+      const { results, router } = await setup();
+      const starts: string[] = [];
+      router.events.subscribe((event) => {
+        if (event instanceof NavigationStart) starts.push(event.url);
+      });
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { debounce: { search: 200 } }),
+      );
+
+      form.controls.search.setValue('e');
+      form.controls.search.setValue('el');
+      form.controls.page.setValue(2);
+      await vi.waitFor(() => expect(router.url).toBe('/results?page=2'));
+      form.controls.search.setValue('elm');
+      await vi.waitFor(() => expect(router.url).toBe('/results?page=2&search=elm'));
+      expect(starts).toEqual(['/results?page=2', '/results?page=2&search=elm']);
+    });
+
+    it('drops a pending debounced write when external navigation starts', async () => {
+      const { results, router } = await setup();
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { debounce: { search: 40 } }),
+      );
+
+      form.controls.search.setValue('stale');
+      await router.navigateByUrl('/results?page=3');
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(router.url).toBe('/results?page=3');
+      expect(form.controls.search.value).toBe('');
     });
   });
 });

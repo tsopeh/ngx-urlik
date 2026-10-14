@@ -35,6 +35,8 @@ There is a fundamental difference between draft state (what the user is typing r
 - **Rule:** Never bind rapid text inputs directly to the URL. Doing so destroys UX and pollutes browser history.
 - **Binding:** Use `createQueryParamsSignalForm(node)` to isolate the draft state. The form holds the user's unfinished edits; the URL holds the committed truth. If an external navigation occurs (like a back button press), the form automatically resets to match the URL.
 
+- **Timing and validity:** Delay Signal Forms fields with Angular's `debounce()` schema rule and Reactive Forms fields with the binding's `debounce` option. Pass `writeWhen: 'valid'` to hold invalid input back. Put value shaping, such as trimming, in the codec.
+
 **Completion criterion**: Text inputs and debounced controls bind to a draft form, never directly to `patchQuery`.
 
 ## 4. Primitives & Reference

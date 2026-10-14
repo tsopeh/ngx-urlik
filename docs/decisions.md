@@ -155,17 +155,23 @@ reaches the coordinator through the internal `ɵgetQueryBinding` export.
 ## Let forms hold drafts while the URL holds committed state
 
 A typed character or a debounced field is not yet a URL value. Form bindings keep these drafts and
-submit per-field change events through `transformWrites`, an ordinary RxJS function. The library
-does not wrap RxJS operators, so any timing policy is available. Per-field events let an immediate
-field write without flushing a delayed one.
+decide when each field commits. Each concern has one place. A codec shapes the value, so links,
+patches, and forms write the same URL. Validators and `writeWhen: 'valid'` hold back input that
+should not commit, such as a one-letter search. Timing follows each form system: Signal Forms use
+Angular's `debounce()` rule, and Reactive Forms, which have none, take a `debounce` option on the
+binding.
+
+An earlier design exposed an RxJS stream of field changes. It could express any timing policy, but
+the common case took a `groupBy`/`mergeMap` pipeline, and it duplicated native Signal Forms
+debounce.
 
 The URL wins after external navigation: pending edits are dropped and the form resets, so a stale
 debounced value cannot overwrite a page the user moved to. Writes replace the history entry by
 default, because each keystroke is not a place the user wants to return to.
 
 **Cost:** forms bind only query fields, as flat controls; nested groups and `FormArray` are not
-supported. Failed writes are reported, not retried. Signal Forms debounce and `transformWrites`
-delays add up when both are used.
+supported. Failed writes are reported, not retried. Debounce is configured differently in the two
+form systems. Policies beyond a delay and validity, such as throttling, need code around the form.
 
 ## Let shared components name the routes they serve
 

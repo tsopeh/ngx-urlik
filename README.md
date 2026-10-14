@@ -94,7 +94,7 @@ current URL. Use `patchQuery` when you want to edit the current URL.
 import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
 
 const filters = createQueryParamsFormGroup(results);
-filters.patchValue({ search: 'elm', page: 1 });
+filters.patchValue({ search: 'elm' });
 ```
 
 For Signal Forms:
@@ -103,11 +103,12 @@ For Signal Forms:
 import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
 
 const { model, form } = createQueryParamsSignalForm(results);
-model.update((query) => ({ ...query, search: 'elm', page: 1 }));
+model.update((query) => ({ ...query, search: 'elm' }));
 ```
 
-The form holds the draft. The URL holds the committed value. A multi-field edit writes together;
-fields you explicitly debounce write later. Forms replace the current history entry by default.
+The form holds the draft. The URL holds the committed value. A multi-field edit writes together.
+Signal Forms delay a field with Angular's `debounce()` rule; Reactive Forms take a `debounce`
+option. `writeWhen: 'valid'` holds a field until its validators pass. Forms replace the current history entry by default.
 Browser navigation cancels pending edits and resets the form.
 
 See the [forms reference](docs/design/app-router.md#query-form-bindings) for validation, existing

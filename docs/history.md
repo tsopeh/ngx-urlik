@@ -10,7 +10,8 @@ Version 0.2.0 is the current design. It accepts Angular's ordered route array an
 node only for routes with a `routeName`. Angular fields stay on the route, an empty-path child
 supplies landing content, and redirects are ordinary unnamed Angular routes. The methods became
 `params` and `patchQuery()`. Later in 0.2.0, `defineAppRouter()` began taking a `RouteNames` enum
-as its first argument so Go to Definition reaches the route name.
+as its first argument so Go to Definition reaches the route name. Form bindings then replaced the
+`transformWrites` RxJS stream with `writeWhen` and a Reactive Forms `debounce` option.
 
 Several 0.1.0 ideas carried over: codecs separate from placement, deterministic construction, the
 shared write queue, form drafts, `activeRoute()`, and read-only global observation.

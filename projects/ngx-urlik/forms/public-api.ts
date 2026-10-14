@@ -4,8 +4,8 @@ export {
   createQueryParamsFormGroup,
   createQueryParamsSignalForm,
   type CreateQueryParamsSignalFormOptions,
-  type QueryParamChange,
   type QueryParamsBindingOptions,
   type QueryParamsFormControls,
+  type QueryParamsFormGroupOptions,
   type QueryWriteFailure,
 } from './query-forms';

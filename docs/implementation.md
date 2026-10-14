@@ -56,11 +56,14 @@ The binding remembers each edit as an object. On success, it clears the object t
 submitted. If the user has edited the same field again, the newer object stays. Incoming URL
 values are combined with outstanding edits before the form is updated.
 
-One form notification can change several fields. Synchronous outputs from its write transformation
-share one queued write. Delayed outputs submit later. All of these writes use the router's queue.
+One form notification can change several fields; the fields that write at once share one queued
+write. A Reactive Forms field with a `debounce` entry waits on its own timer. With
+`writeWhen: 'valid'`, an invalid field goes into a held set, and the binding retries the held set
+whenever the form's validity changes, which is how a field waits for an async validator. All of
+these writes go through the router's queue.
 
-External navigation clears the edits, resets the form, and resubscribes the transformation stream,
-which also drops its debounce timers. The private `ɵgetQueryBinding` bridge gives the forms package
+External navigation clears the edits, the held set, and the debounce timers, then resets the
+form. The private `ɵgetQueryBinding` bridge gives the forms package
 access to fresh route state and the coordinator.
 
 ## Check a change

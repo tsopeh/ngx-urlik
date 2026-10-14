@@ -337,45 +337,72 @@ with `bindQueryParamsToSignalForm(results, form, options)`.
 
 The form starts from the URL. It then holds a draft while the URL holds committed values. Writes
 replace the current history entry unless you pass `replaceUrl: false`. Other coordinated writes
-update unrelated fields without touching drafts or interaction state. After a write commits, a draft that
-encodes to the committed URL value stays as typed: with a codec that trims, `'elm '` writes
-`?search=elm` and the input keeps its trailing space. External navigation cancels
-pending edits when it starts and resets the form to a pristine, untouched URL baseline, even if
-navigation is then blocked. It resets again when that navigation finishes.
+update unrelated fields without touching drafts or interaction state. After a write commits, a
+draft that encodes to the committed URL value stays as typed: with a codec that trims, `'elm '`
+writes `?search=elm` and the input keeps its trailing space. External navigation cancels pending
+edits when it starts and resets the form to a pristine, untouched URL baseline, even if navigation
+is then blocked. It resets again when that navigation finishes.
 
 A multi-field `patchValue` or `setValue` produces one write. Signal Forms read the model in an
-effect, so model updates made before that effect runs share one write. A write includes only the
-fields that `transformWrites` emits synchronously for that change; filtered or delayed fields are
-excluded.
+effect, so model updates made before that effect runs share one write.
 
-For example, debounce search without delaying other fields:
+#### Delay a field
+
+Signal Forms delay a field with Angular's own `debounce()` rule. The model updates when the delay
+ends, and the binding writes then:
 
 ```ts
-import { debounceTime, groupBy, mergeMap } from 'rxjs';
+import { debounce } from '@angular/forms/signals';
 
-const filters = createQueryParamsFormGroup(results, {
-  transformWrites: (changes) =>
-    changes.pipe(
-      groupBy((change) => change.param),
-      mergeMap((group) => (group.key === 'search' ? group.pipe(debounceTime(300)) : group)),
-    ),
+const { form } = createQueryParamsSignalForm(results, {
+  schema: (fields) => debounce(fields.search, 300),
 });
 ```
 
-Grouping keeps an immediate field from flushing or replacing a pending search. A delayed field
-joins the queue when its transformation emits, not when the user typed. External navigation
-resubscribes the transformation, which drops pending timers. Native Signal Forms debounce runs
-before this transformation, so enabling both delays twice.
+The rule acts on input that goes through the `[formField]` directive. A direct
+`model.update(...)` is not delayed.
 
-Change events contain `param`, `value`, the full `query` snapshot, and `valid`, `pending`,
-`formValid`, and `formPending`. Validation does not block writes; filter events when that is the
-policy you want.
+Reactive Forms have no debounce of their own, so the Reactive Forms binding takes one:
+
+```ts
+const filters = createQueryParamsFormGroup(results, { debounce: { search: 300 } });
+```
+
+The search writes 300 ms after its last change. Other fields write at once, without flushing or
+replacing the pending search. External navigation and destroying the binding drop the pending
+write. The Signal Forms options have no `debounce`, so each form system has one way to delay a
+field.
+
+#### Hold invalid input
+
+By default every change writes. With `writeWhen: 'valid'`, a field writes only while its
+validators pass:
+
+```ts
+import { minLength } from '@angular/forms/signals';
+
+const { form } = createQueryParamsSignalForm(results, {
+  schema: (fields) => {
+    debounce(fields.search, 300);
+    minLength(fields.search, 3);
+  },
+  writeWhen: 'valid',
+});
+```
+
+Typing `el` writes nothing; `elm` writes. Clearing the field writes the empty search, because
+Angular's length validators accept empty values. The rule applies per field: an invalid search
+does not stop a valid page change. A field whose async validator is still pending waits and writes
+when the validator passes. A held field keeps its draft until it becomes valid, the user changes
+it, or external navigation resets the form. Reactive Forms take the same option; add validators to
+the controls.
+
+#### Failures
 
 Failed writes keep the entered values and are not retried. `onWriteFailure` receives
 `{ kind: 'declined' }` or `{ kind: 'error', error }`. Without a callback, errors go to Angular's
-`ErrorHandler` and declined writes are silent. Errors thrown inside `transformWrites` also go to
-`ErrorHandler`. Destroying a binding cancels its waiting writes; it does not abort a navigation
-that already started.
+`ErrorHandler` and declined writes are silent. Destroying a binding cancels its waiting writes; it
+does not abort a navigation that already started.
 
 ## Typed activation context
 
