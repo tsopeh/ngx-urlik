@@ -5,8 +5,16 @@ import {
   runInInjectionContext,
   Signal,
   signal,
+  ValueEqualityFn,
 } from '@angular/core';
-import { NavigationBehaviorOptions, NavigationEnd, Router, UrlTree } from '@angular/router';
+import {
+  ActivatedRouteSnapshot,
+  NavigationBehaviorOptions,
+  NavigationEnd,
+  Router,
+  RouterState,
+  UrlTree,
+} from '@angular/router';
 import { filter } from 'rxjs';
 import type { CompiledRoute, RuntimeParam } from './compiled-route';
 import {
@@ -52,6 +60,31 @@ export function createAppRouter(
   const { readState, readQueryState } = reader;
   const { serializePath, serializeQuery } = createParameterSerializer(injector, report);
 
+  // Angular commits the new router state and creates routed components before NavigationEnd.
+  // A value cached earlier in that navigation is stale then, so read the committed state directly.
+  const stateSignal = <T>(read: () => T, equal: ValueEqualityFn<T>): Signal<T> => {
+    let source: RouterState | undefined;
+    const cached = computed(
+      () => {
+        navigation();
+        source = router.routerState;
+        return read();
+      },
+      { equal },
+    );
+    const current = () => {
+      try {
+        const value = cached();
+        if (source === router.routerState) return value;
+      } catch (error) {
+        if (source === router.routerState) throw error;
+      }
+      return read();
+    };
+    // Copying the computed's own properties keeps Angular's signal marker on the wrapper.
+    return Object.assign(current, cached);
+  };
+
   const createUrlTree = (info: CompiledRoute, values: ConstructionValues = {}): UrlTree => {
     const commands: unknown[] = ['/'];
     for (const segment of info.fullSegments) {
@@ -74,13 +107,13 @@ export function createAppRouter(
     });
   };
 
-  const readActiveState = (info: CompiledRoute, active: ReturnType<typeof findActiveRoute>) =>
+  const readActiveState = (info: CompiledRoute, active: ActivatedRouteSnapshot) =>
     runInInjectionContext(injector, () =>
       readState(
         info,
-        activePathParams(info, active!),
-        active!.queryParamMap,
-        router.url.split(/[?#]/, 1)[0] || '/',
+        activePathParams(info, active),
+        active.queryParamMap,
+        '/' + active.pathFromRoot.flatMap((snapshot) => snapshot.url.map((s) => s.path)).join('/'),
       ),
     );
 
@@ -105,13 +138,13 @@ export function createAppRouter(
       values?: ConstructionValues,
       options?: TypedNavigationBehaviorOptions,
     ) => router.navigateByUrl(createUrlTree(info, values), options);
-    node['params'] = computed(
-      () => {
-        navigation();
-        return requireState();
-      },
-      { equal: info.comparator },
-    );
+    node['params'] = stateSignal(requireState, info.comparator);
+    node['paramsFrom'] = (snapshot: ActivatedRouteSnapshot) => {
+      const active = findActiveRoute(snapshot.root, info);
+      if (!active)
+        throw new Error(`${info.identity}: the snapshot does not contain route '${info.pattern}'`);
+      return readActiveState(info, active);
+    };
     const update = (
       updater: (query: AnyRecord) => AnyRecord,
       options?: { replaceUrl?: boolean },
@@ -169,14 +202,12 @@ export function createAppRouter(
       owner: { fullIdentity: 'globalQueryParams' },
       placement: 'query',
     }));
-    return computed(
-      () => {
-        navigation();
-        return runInInjectionContext(injector, () =>
+    return stateSignal(
+      () =>
+        runInInjectionContext(injector, () =>
           readQueryState(params, router.routerState.snapshot.root.queryParamMap),
-        );
-      },
-      { equal: options?.isEqual ?? isEqual },
+        ),
+      options?.isEqual ?? isEqual,
     );
   };
   tree['activeRoute'] = (candidates: Readonly<Record<PropertyKey, object>>) => {
@@ -186,8 +217,7 @@ export function createAppRouter(
       if (!info || !info.routeName || catalog.get(info.routeName) !== info)
         throw new Error(`activeRoute(): candidate '${String(key)}' is not a stateful route node`);
     }
-    return computed(() => {
-      navigation();
+    return stateSignal(() => {
       let selected:
         | {
             key: PropertyKey;
@@ -236,7 +266,7 @@ export function createAppRouter(
           .map(String)
           .join(', ')}] is active`,
       );
-    });
+    }, Object.is);
   };
   return tree;
 }

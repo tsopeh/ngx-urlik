@@ -79,6 +79,10 @@ router.routes.MEMBER.params().query.page satisfies number | null;
 router.routes.MEMBER.params().query.ids satisfies readonly number[];
 router.routes.MEMBER.params().query.labels satisfies readonly string[] | null;
 router.routes.MEMBER.params().query.tags satisfies readonly string[];
+declare const snapshot: import('@angular/router').ActivatedRouteSnapshot;
+router.routes.MEMBER.paramsFrom(snapshot).path.teamId satisfies number;
+router.routes.MEMBER.paramsFrom(snapshot).query.ids satisfies readonly number[];
+router.escapeHatch.isActive('/teams') satisfies import('@angular/core').Signal<boolean>;
 router.routes.TEAMS.createUrlTree({ path: { teamId: 1 } });
 router.routes.MEMBER.patchQuery({ page: 2 });
 

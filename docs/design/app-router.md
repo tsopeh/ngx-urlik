@@ -65,6 +65,11 @@ values are required when constructing a destination. Placeholder names cannot re
 route chain. A path and query field may use the same name, because state keeps them under
 separate `path` and `query` objects.
 
+A `pathParam` codec also decides whether the route matches. ngx-urlik puts a `canMatch` check in
+front of the route's own `canMatch` guards. With `numberCodec()` on `items/:id`, `/items/abc` does
+not match, and Angular tries the next route. Add a route such as `items/:slug` or a wildcard if
+those URLs should show a page.
+
 ## Route kinds
 
 | Kind                  | Declaration                                        | Available operations                           |
@@ -224,9 +229,9 @@ await results.patchQuery((q) => ({ page: q.page + 1 }));
 ```
 
 Each named route owns a stable readonly `params` signal containing `{ path, query }`, including
-inherited parameters. It reads Angular's committed snapshot and refreshes on `NavigationEnd`.
-Reading an inactive route throws. Reading an active route whose path value fails to decode also
-throws, after reporting a diagnostic.
+inherited parameters. It reads Angular's committed router state. Angular commits that state and
+creates routed components before it emits `NavigationEnd`, so a component constructor reads the
+destination's values, not the page it replaced. Reading an inactive route throws.
 
 A patch changes only supplied fields. Omitted and `undefined` fields stay unchanged. Use `null` for
 nullable scalars, `[]` for arrays, or a field's default to remove its URL representation. The
@@ -258,6 +263,22 @@ External navigation cancels waiting work even if a guard later rejects it, so a 
 pull the user back to a page they tried to leave. Initial navigation counts as external: writes
 submitted before it finishes resolve `false`.
 
+### Guards and resolvers
+
+A guard or resolver runs before Angular commits the destination, so `params()` still describes
+the current page. Decode the destination from the snapshot Angular passes in:
+
+```ts
+export const seasonResolver: ResolveFn<Season> = (route) => {
+  const { path } = inject(AppRouter).routes.SEASON.paramsFrom(route);
+  return inject(SeasonApi).load(path.showId, path.season);
+};
+```
+
+`paramsFrom(snapshot)` uses the same codecs and defaults as `params()`. The snapshot can be any
+route snapshot from that navigation, so a child route's guard can read an ancestor's node. It
+throws when the snapshot's tree does not contain the route.
+
 ### Global query observation
 
 Use route declarations for fields owned by a page. A service that follows a convention across
@@ -271,7 +292,7 @@ campaign().source;
 ```
 
 The result is a readonly signal of the decoded query object, without a `query` wrapper. It uses
-the same codecs, defaults, and `NavigationEnd` timing as route state. It does not need an active
+the same codecs, defaults, and timing as route state. It does not need an active
 route. Before initial navigation finishes, it reads the current snapshot with normal absent-key
 behavior. Diagnostics name `globalQueryParams` as their route.
 
@@ -385,12 +406,12 @@ a shared component's contract limited to the routes it understands.
 ## Equality
 
 `isEqual()` is the default comparator. It compares primitives with `Object.is`, requires matching
-prototypes, compares dates by time, and compares arrays and objects by their enumerable string and
-symbol keys, recursively.
+prototypes, and compares dates by time. Maps compare by entries, with keys matched by identity.
+Sets compare by members, each member matched to one deeply equal member. Arrays and other objects
+compare by their enumerable string and symbol keys, recursively.
 
-Values without enumerable keys compare equal whenever their prototypes match: any two `Map`s are
-equal, and so are any two `Set`s. Cyclic values overflow the stack. Two invalid dates are not
-equal. Supply a route `isEqual` if decoded state can contain such values.
+Cyclic values compare by structure: two objects that each point to themselves are equal when
+their other fields are. Two invalid dates are not equal.
 
 A route inherits its parent's `isEqual` unless it declares its own. The comparator controls signal
 notifications. Patches and form initialization read fresh committed state, so a retained signal
@@ -416,8 +437,9 @@ read. An unnamed ancestor is identified by position, such as `routes[0].children
 observers use `globalQueryParams`.
 
 Codec exceptions in query fields are caught and treated as invalid data. Errors from default
-factories propagate. Invalid active path values, path values that fail to serialize, and inactive
-route reads throw, because there is no valid value to return.
+factories propagate. Path values that fail to serialize and inactive route reads throw, because
+there is no valid value to return. A path value that fails to decode never reaches a read: the
+route does not match.
 
 `defineAppRouter()` validates named route chains and throws one error listing every problem:
 repeated or empty route names, names on redirects, wildcards, or matchers, `loadChildren` on a
@@ -445,7 +467,9 @@ For native addressing outside the typed tree, use `router.escapeHatch`:
 | `createUrlTree`, `navigate`, `navigateByUrl` | `url`, `events`, `navigated`                                                    |
 | `parseUrl`, `serializeUrl`, `isActive`       | `currentNavigation`, `lastSuccessfulNavigation`, `componentInputBindingEnabled` |
 
-These keep Angular's types and behavior, including `browserUrl` for native navigation. The escape
+These keep Angular's types and behavior, including `browserUrl` for native navigation.
+`isActive(url, matchOptions?)` is Angular's `isActive()` function bound to the router and returns
+a `Signal<boolean>`; Angular deprecated `Router.isActive` in 21.1. The escape
 hatch does not expose `routerState`, route configuration or its mutation, lifecycle controls, or
 deprecated mutable properties. Angular's `Router` remains injectable because it runs the
 application router, but calls through it bypass the typed contract and the write queue.

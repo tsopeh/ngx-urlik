@@ -23,7 +23,14 @@ supplied by the caller. `params` finds the active Angular snapshot by its tag an
 values. `route-params-runtime.ts` handles codecs, defaults, and malformed input;
 `route-diagnostics.ts` turns failures into `AppRouterDiagnostic` values.
 
-Angular performs route matching. ngx-urlik uses the matched route to find the declared schema.
+Angular performs route matching. `compiled-route.ts` adds a `canMatch` check to routes with
+`pathParam` codecs, so a path value its codec rejects makes Angular try the next route. ngx-urlik
+uses the matched route to find the declared schema.
+
+Angular commits the new router state and creates routed components before it emits
+`NavigationEnd`. Each state signal therefore remembers the router state it was computed from and
+decodes again when Angular has committed a newer one. Guards and resolvers run before the commit,
+so `paramsFrom()` decodes the snapshot they receive instead.
 
 ## Write
 
@@ -66,6 +73,8 @@ Library test paths below are relative to `projects/ngx-urlik`.
 | Adopting an existing app  | `src/lib/migration-cookbook.spec.ts`            |
 | Codecs                    | `src/lib/params.spec.ts`                        |
 | Parameter decoding        | `src/lib/parameter-state.spec.ts`               |
+| Reads during navigation   | `src/lib/navigation-reads.spec.ts`              |
+| Server rendering          | `src/lib/server-rendering.spec.ts`              |
 | Query write ordering      | `src/lib/query-updates.spec.ts`                 |
 | Query form bindings       | `src/lib/query-forms.spec.ts`                   |
 | Global query observations | `src/lib/global-query.spec.ts`                  |

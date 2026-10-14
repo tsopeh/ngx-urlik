@@ -9,7 +9,6 @@ in concepts, types, and runtime behavior.
 | Name redirects and wildcards?                            | They stay unnamed Angular routes without typed nodes.                                      |
 | Accept route arrays split across files?                  | Literal routes must reach `defineAppRouter()` directly; there is no `defineRoutes()`.      |
 | Let global observers write?                              | They return readonly signals. Route nodes own query writes.                                |
-| Compare cycles, maps, sets, and other collections?       | `isEqual` treats any two `Map`s or `Set`s as equal and overflows on cycles.                |
 | Validate custom domain values more deeply?               | Codecs own conversion; the runtime checks their serialized output.                         |
 | Add date or structured codecs?                           | Applications supply custom codecs.                                                         |
 | Separate TypeScript query names from URL keys?           | Each property name is also its URL key.                                                    |

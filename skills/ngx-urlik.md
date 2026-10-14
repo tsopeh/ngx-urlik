@@ -22,6 +22,7 @@ When moving a component from the native `ActivatedRoute` to `ngx-urlik`, the goa
 Interact with the URL exclusively through the typed `RouteNode`.
 
 - **Read:** Convert RxJS subscriptions into synchronous signal reads (`node.params().query.search`). Read parameters within a `computed()` or template. If the route is inactive, reading it throws—only read active routes.
+- **Guards and resolvers:** Read the destination with `node.paramsFrom(route)`, passing the snapshot Angular gives the guard or resolver. `params()` still describes the previous page there.
 - **Write:** Call `node.patchQuery(patch)`. Provide only the fields that actually changed. The write coordinator queues updates sequentially, ensuring concurrent patches never clobber each other.
 - **Build Links:** Call `node.createUrlTree(inputs)` for deterministic link generation that ignores current URL context.
 

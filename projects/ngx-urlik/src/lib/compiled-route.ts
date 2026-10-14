@@ -1,5 +1,6 @@
 import {
   ActivatedRouteSnapshot,
+  CanMatchFn,
   convertToParamMap,
   ParamMap,
   Route,
@@ -109,6 +110,12 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
       });
       (info as any).fullSegments = [...(parent?.fullSegments ?? []), ...localSegments];
 
+      const codecs = parsed.segments.map((segment) =>
+        segment.kind === 'param' ? configured[segment.name]?.codec : undefined,
+      );
+      if (codecs.some(Boolean))
+        angular.canMatch = [matchPathCodecs(codecs), ...(angular.canMatch ?? [])];
+
       (angular as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
       if (routeName) catalog.set(routeName, info);
       if (children) angular.children = compile(children, info, `${at}.children`);
@@ -116,6 +123,22 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
     });
 
   return { routes: compile(definitions), catalog };
+}
+
+/** Rejects a match whose path values fail their codecs, so Angular tries the next route. */
+function matchPathCodecs(codecs: readonly (UrlParamCodec<unknown> | undefined)[]): CanMatchFn {
+  return (_route, segments) =>
+    codecs.every((codec, index) => {
+      if (!codec) return true;
+      const segment = segments[index];
+      if (!segment) return false;
+      try {
+        const value = codec.deserialize(segment.path);
+        return value !== null && value !== undefined;
+      } catch {
+        return false;
+      }
+    });
 }
 
 export function findActiveRoute(

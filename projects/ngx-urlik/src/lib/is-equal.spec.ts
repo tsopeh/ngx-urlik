@@ -48,4 +48,25 @@ describe('isEqual', () => {
     Object.defineProperty(right, 'hidden', { value: 2 });
     expect(isEqual(left, right)).toBe(true);
   });
+
+  it('compares map entries and set members', () => {
+    expect(isEqual(new Map([['a', [1]]]), new Map([['a', [1]]]))).toBe(true);
+    expect(isEqual(new Map([['a', 1]]), new Map())).toBe(false);
+    expect(isEqual(new Map([['a', 1]]), new Map([['a', 2]]))).toBe(false);
+    expect(isEqual(new Set([1, 2]), new Set([2, 1]))).toBe(true);
+    expect(isEqual(new Set([1]), new Set())).toBe(false);
+    expect(isEqual(new Set([{ id: 1 }, { id: 1 }]), new Set([{ id: 1 }, { id: 2 }]))).toBe(false);
+    expect(isEqual(new Set([{ id: 1 }, { id: 2 }]), new Set([{ id: 2 }, { id: 1 }]))).toBe(true);
+  });
+
+  it('compares cyclic values without overflowing', () => {
+    type Node = { id: number; next?: Node };
+    const left: Node = { id: 1 };
+    left.next = left;
+    const right: Node = { id: 1 };
+    right.next = right;
+    const other: Node = { id: 1, next: { id: 2 } };
+    expect(isEqual(left, right)).toBe(true);
+    expect(isEqual(left, other)).toBe(false);
+  });
 });

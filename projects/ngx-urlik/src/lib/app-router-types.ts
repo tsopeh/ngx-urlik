@@ -1,5 +1,5 @@
 import type { Signal } from '@angular/core';
-import type { Route, UrlTree } from '@angular/router';
+import type { ActivatedRouteSnapshot, Route, UrlTree } from '@angular/router';
 import type { ArrayQueryParamDefinition, QueryParamDefinition, UrlParamCodec } from './params';
 import type { QueryDefinitions, RouteDefinition } from './route-definition';
 import type { QueryPatch, TypedNavigationBehaviorOptions, UrlParamsState } from './route-node';
@@ -43,6 +43,8 @@ export type RouteNode<P = unknown, Q = unknown, Required extends PropertyKey = n
   ): Promise<boolean>;
   readonly [routeNodeInfo]: unknown;
   readonly params: Signal<UrlParamsState<P, Q>>;
+  /** Decodes this route from a snapshot, such as the one a guard or resolver receives. */
+  paramsFrom(snapshot: ActivatedRouteSnapshot): UrlParamsState<P, Q>;
   patchQuery(patch: QueryPatch<Q>, options?: { replaceUrl?: boolean }): Promise<boolean>;
 };
 

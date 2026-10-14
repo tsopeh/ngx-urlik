@@ -16,7 +16,8 @@ unnamed routes stay available to Angular without adding generated nodes.
 | Angular-only routes | Redirects, wildcards, matchers, named outlets, and lazy child branches have no typed node                                     |
 
 Angular's route order, matching, guards, redirects, and outlets determine which route activates.
-The typed catalog does not select a route or replace Angular's matching rules. Components can load
+The typed catalog adds one rule: a route whose `pathParam` codec rejects a path value does not
+match, and Angular tries the next route. Components can load
 lazily with `loadComponent`; the route declarations and named chains must be available when
 `defineAppRouter()` runs. Replacing them later with `Router.resetConfig()` is unsupported and not
 detected.

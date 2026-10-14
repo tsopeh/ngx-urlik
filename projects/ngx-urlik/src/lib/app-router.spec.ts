@@ -359,7 +359,7 @@ describe('defineAppRouter with Angular route arrays', () => {
     await vi.waitFor(() => expect(router.url).toBe('/results?unknown=keep&search=new'));
   });
 
-  it('uses a default for malformed URL query data but rejects an invalid active path read', async () => {
+  it('uses a default for malformed URL query data but does not match an invalid path value', async () => {
     const definition = defineAppRouter(RouteNames, {
       routes: [
         {
@@ -368,7 +368,9 @@ describe('defineAppRouter with Angular route arrays', () => {
           pathParam: { codec: numberCodec() },
           queryParams: { page: queryParam({ codec: numberCodec(), defaultValue: 1 }) },
           component: EmptyComponent,
+          canMatch: [() => true],
         },
+        { path: 'items/:slug', routeName: RouteNames.DETAIL, component: EmptyComponent },
       ],
       diagnostics: { warn: () => undefined },
     });
@@ -377,7 +379,8 @@ describe('defineAppRouter with Angular route arrays', () => {
     await router.navigateByUrl('/items/5?page=nope');
     expect(appRouter.routes.ITEM.params()).toEqual({ path: { id: 5 }, query: { page: 1 } });
     await router.navigateByUrl('/items/nope?page=2');
-    expect(() => appRouter.routes.ITEM.params()).toThrow(/could not resolve 'id'/);
+    expect(appRouter.routes.DETAIL.params().path).toEqual({ slug: 'nope' });
+    expect(() => appRouter.routes.ITEM.params()).toThrow(/is inactive/);
   });
 
   it('rejects invalid named definitions and handles failed serialization without navigation', async () => {
@@ -486,5 +489,21 @@ describe('defineAppRouter with Angular route arrays', () => {
       ),
     ).toBe('/items/1?page=2');
     expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it('exposes Angular isActive() as a signal through the escape hatch', async () => {
+    const definition = defineAppRouter(RouteNames, {
+      routes: [
+        { path: 'items', routeName: RouteNames.ITEMS, component: EmptyComponent },
+        { path: 'about', routeName: RouteNames.ABOUT, component: EmptyComponent },
+      ],
+    });
+    const { appRouter, router } = setup(definition);
+    const items = appRouter.escapeHatch.isActive(appRouter.routes.ITEMS.createUrlTree());
+
+    await router.navigateByUrl('/items');
+    expect(items()).toBe(true);
+    await router.navigateByUrl('/about');
+    expect(items()).toBe(false);
   });
 });

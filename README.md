@@ -54,7 +54,7 @@ bootstrapApplication(App, { providers: [provideAppRouter()] });
 
 ## Read and write
 
-`params` is a readonly Angular signal containing `{ path, query }`. It updates on `NavigationEnd`:
+`params` is a readonly Angular signal containing `{ path, query }` for the committed URL:
 
 ```ts
 const search = computed(() => results.params().query.search);
@@ -64,6 +64,9 @@ await results.patchQuery((query) => ({ page: query.page + 1 }));
 A function patch reads the latest committed query when its turn in the write queue starts. Return
 only the fields to change. Omitted and `undefined` fields stay unchanged. To remove a field from the
 URL, use its default, `null` for a nullable scalar, or `[]` for an array.
+
+In a guard or resolver, the destination is not committed yet. Read it with
+`results.paramsFrom(route)`, using the snapshot Angular passes in.
 
 Every route and form shares one write queue, so two components that patch different fields in the
 same moment both keep their edit. Reading an inactive route throws. Use `activeRoute()` when one
