@@ -2,13 +2,7 @@ import { Component, computed, inject, InjectionToken } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { AppRouterDiagnostic, defineAppRouter } from './app-router';
-import {
-  delimitedQueryParam,
-  numberCodec,
-  queryParam,
-  repeatedQueryParam,
-  stringCodec,
-} from './params';
+import { listCodec, numberCodec, queryParam, repeatedQueryParam, stringCodec } from './params';
 
 @Component({ template: '' })
 class Page {}
@@ -18,7 +12,7 @@ const definitions = {
   timeRange: queryParam({ codec: stringCodec(), defaultValue: () => inject(fallback) }),
   count: queryParam({ codec: numberCodec() }),
   tags: repeatedQueryParam({ codec: stringCodec() }),
-  ids: delimitedQueryParam({ codec: numberCodec(), separator: ',' }),
+  ids: queryParam({ codec: listCodec(numberCodec(), ','), defaultValue: [] }),
 };
 
 function setup() {
@@ -73,7 +67,7 @@ describe('global query observation', () => {
     const numeric = app.globalQueryParams(definitions);
     const text = app.globalQueryParams({ count: queryParam({ codec: stringCodec() }) });
 
-    await router.navigateByUrl('/page?count=oops&ids=1&ids=2');
+    await router.navigateByUrl('/page?count=oops&ids=1,x');
     expect(numeric().count).toBeNull();
     expect(numeric().ids).toEqual([]);
     expect(text().count).toBe('oops');

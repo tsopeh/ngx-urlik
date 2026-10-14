@@ -45,12 +45,12 @@ Codecs strictly translate between strings and types.
 
 - Primitives: `stringCodec()`, `numberCodec()`, `booleanCodec()`.
 - Enums: `enumCodec(values)` accepts readonly string arrays, tuples, or records.
+- Lists: `listCodec(item, separator)` joins items into one value (`?a=1,2`). Use it with `queryParam` and `defaultValue: []`.
 
 **Cardinality**
 
 - `queryParam`: A single deterministic value.
 - `repeatedQueryParam`: An array represented as repeated keys (`?a=1&a=2`).
-- `delimitedQueryParam`: An array joined by a separator (`?a=1,2`).
 
 **Comparators (`isEqual`)**
 You can provide a custom `isEqual` function in the node configuration to override how the `params` signal evaluates equality for complex objects.

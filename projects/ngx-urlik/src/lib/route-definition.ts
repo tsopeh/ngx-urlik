@@ -41,8 +41,6 @@ export interface ParsedRoutePath {
   readonly errors: readonly string[];
 }
 
-const encodedOutputCharacter = /^[A-Za-z0-9\-_.!~*'()%]$/;
-
 /** Parse the ordinary primary-outlet path syntax used for typed URL construction. */
 export function parseRoutePath(path: string): ParsedRoutePath {
   if (typeof path !== 'string')
@@ -218,24 +216,13 @@ export function validateRouteDefinitions(
               ) {
                 report(`${routeName}: ${owner}: queryParams must be a non-null object`);
               } else
-                for (const [name, param] of Object.entries(member.queryParams)) {
+                for (const name of Object.keys(member.queryParams)) {
                   const previous = queryOwners.get(name);
                   if (previous)
                     report(
                       `${routeName}: query parameter '${name}' is defined in both '${previous}' and '${member.path}'`,
                     );
                   else queryOwners.set(name, member.path ?? '');
-                  if (param?.mode === 'delimited') {
-                    const separator = param.separator ?? '';
-                    if (
-                      typeof separator !== 'string' ||
-                      Array.from(separator).length !== 1 ||
-                      encodedOutputCharacter.test(separator)
-                    )
-                      report(
-                        `${routeName}: query parameter '${name}' separator must be one character escaped by encodeURIComponent`,
-                      );
-                  }
                 }
             }
           }

@@ -32,9 +32,9 @@ Placeholder names cannot repeat along a named route chain. Query definitions acc
 unnamed ancestors, but a query key cannot be defined twice along a named chain. Query property
 names are the URL keys; aliases are unsupported.
 
-Scalar query fields use the last repeated key. Arrays use either repeated keys or one delimited
-value; the two forms cannot be mixed. Built-in codecs cover strings, numbers, booleans, and string
-enums. Supply custom codecs for dates and structured values.
+Scalar query fields use the last repeated key. Arrays use either repeated keys or one value joined
+by `listCodec`; the two forms cannot be mixed. Built-in codecs cover strings, numbers, booleans,
+string enums, and joined lists. Supply custom codecs for dates and structured values.
 
 Fragments can be supplied during construction, but have no codec and do not appear in route state.
 

@@ -45,37 +45,9 @@ export function createParameterReader(report: ReportParameterFailure) {
       const value = decode(param, raws.at(-1)!);
       return value ?? queryFallback(definition);
     }
-    if (definition.mode === 'delimited' && raws.length !== 1) {
-      report(
-        param,
-        { code: 'INVALID_ARRAY_REPRESENTATION', operation: 'deserialize' },
-        'used repeated keys for a delimited value',
-      );
-      return queryFallback(definition);
-    }
-    const encoded = definition.mode === 'repeated' ? raws : raws[0].split(definition.separator!);
     const values: unknown[] = [];
     let invalid = false;
-    encoded.forEach((item, index) => {
-      let raw = item;
-      if (definition.mode === 'delimited') {
-        try {
-          raw = decodeURIComponent(item);
-        } catch (cause) {
-          report(
-            param,
-            {
-              code: 'PARAM_DESERIALIZE_FAILED',
-              operation: 'deserialize',
-              index,
-              cause,
-            },
-            'had malformed item encoding',
-          );
-          invalid = true;
-          return;
-        }
-      }
+    raws.forEach((raw, index) => {
       const value = decode(param, raw, index);
       if (value === null || value === undefined) invalid = true;
       else values.push(value);
@@ -185,10 +157,7 @@ export function createParameterSerializer(
       if (output === null) invalid = true;
       else items.push(output);
     });
-    if (invalid) return null;
-    return definition.mode === 'repeated'
-      ? items
-      : items.map((item) => encodeURIComponent(item)).join(definition.separator!);
+    return invalid ? null : items;
   };
 
   return { serializePath, serializeQuery };

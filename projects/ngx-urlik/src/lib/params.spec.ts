@@ -1,7 +1,7 @@
 import {
   booleanCodec,
-  delimitedQueryParam,
   enumCodec,
+  listCodec,
   numberCodec,
   queryParam,
   repeatedQueryParam,
@@ -62,10 +62,21 @@ describe('parameter codecs and definitions', () => {
       defaultValue: 'all',
     });
     expect(repeatedQueryParam({ codec })).toMatchObject({ mode: 'repeated', required: false });
-    expect(delimitedQueryParam({ codec, separator: ',' })).toMatchObject({
-      mode: 'delimited',
-      separator: ',',
-      required: false,
-    });
+  });
+
+  it('joins list items with a separator', () => {
+    const codec = listCodec(numberCodec(), ',');
+    expect(codec.serialize([1, 2])).toBe('1,2');
+    expect(codec.serialize([])).toBe('');
+    expect(codec.deserialize('1,2')).toEqual([1, 2]);
+    expect(codec.deserialize('')).toEqual([]);
+    expect(codec.deserialize('1,x')).toBeNull();
+    expect(codec.deserialize('1,,2')).toBeNull();
+
+    const text = listCodec(stringCodec(), '|');
+    expect(text.serialize(['a,b', 'c'])).toBe('a,b|c');
+    expect(text.serialize(['a|b'])).toBeNull();
+    expect(text.serialize([''])).toBeNull();
+    expect(() => listCodec(stringCodec(), '')).toThrow('list codec separator');
   });
 });

@@ -29,16 +29,16 @@ The server builds the library first. The app imports only the public `ngx-urlik`
 
 ## What to look at in the code
 
-| Example                          | Feature                                                                     |
-| -------------------------------- | --------------------------------------------------------------------------- |
-| Movie and TV browsing            | Inherited query fields, repeated genres, sorting, and pagination            |
-| Show → season → episode          | Accumulated path parameters and custom ID/integer codecs                    |
-| Detail section links             | URL fragments                                                               |
-| Credits and contributor profiles | Typed navigation across branches                                            |
-| Collection                       | Signal Forms, repeated statuses, delimited media, structured viewing counts |
-| Viewing history                  | Reactive Forms and per-field RxJS debounce                                  |
-| Landing pages                    | Empty-path children and redirects                                           |
-| Unknown URLs                     | Wildcard routes                                                             |
+| Example                          | Feature                                                                       |
+| -------------------------------- | ----------------------------------------------------------------------------- |
+| Movie and TV browsing            | Inherited query fields, repeated genres, sorting, and pagination              |
+| Show → season → episode          | Accumulated path parameters and custom ID/integer codecs                      |
+| Detail section links             | URL fragments                                                                 |
+| Credits and contributor profiles | Typed navigation across branches                                              |
+| Collection                       | Signal Forms, repeated statuses, joined media list, structured viewing counts |
+| Viewing history                  | Reactive Forms and per-field RxJS debounce                                    |
+| Landing pages                    | Empty-path children and redirects                                             |
+| Unknown URLs                     | Wildcard routes                                                               |
 
 Shared pages use `activeRoute()` to select their route. `paginationParams()` shares definitions
 across pages. Sort order is one structured codec value, so a field and direction travel together.

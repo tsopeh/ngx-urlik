@@ -2,6 +2,7 @@ import type { Routes, UrlTree } from '@angular/router';
 import {
   defineAppRouter,
   enumCodec,
+  listCodec,
   numberCodec,
   queryParam,
   repeatedQueryParam,
@@ -54,6 +55,8 @@ const definition = defineAppRouter(RouteNames, {
           queryParams: {
             page: queryParam({ codec: numberCodec(), required: true }),
             tags: repeatedQueryParam({ codec: stringCodec() }),
+            ids: queryParam({ codec: listCodec(numberCodec(), ','), defaultValue: [] }),
+            labels: queryParam({ codec: listCodec(stringCodec(), '|') }),
           },
         },
         { path: '', routeName: RouteNames.TEAMS },
@@ -73,6 +76,8 @@ router.routes.MEMBER.params().path.memberId satisfies number;
 router.routes.MEMBER.params().path.showId satisfies string;
 router.routes.MEMBER.params().query.locale satisfies string;
 router.routes.MEMBER.params().query.page satisfies number | null;
+router.routes.MEMBER.params().query.ids satisfies readonly number[];
+router.routes.MEMBER.params().query.labels satisfies readonly string[] | null;
 router.routes.MEMBER.params().query.tags satisfies readonly string[];
 router.routes.TEAMS.createUrlTree({ path: { teamId: 1 } });
 router.routes.MEMBER.patchQuery({ page: 2 });

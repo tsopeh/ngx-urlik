@@ -21,11 +21,10 @@ export interface QueryParamDefinition<
 
 export interface ArrayQueryParamDefinition<T, Required extends boolean = false> {
   readonly kind: 'query';
-  readonly mode: 'repeated' | 'delimited';
+  readonly mode: 'repeated';
   readonly codec: UrlParamCodec<T>;
   readonly required: Required;
   readonly defaultValue?: DefaultValue<readonly T[]>;
-  readonly separator?: string;
 }
 
 export type AnyQueryParamDefinition =
@@ -70,19 +69,6 @@ export function repeatedQueryParam<T, const Required extends boolean = false>(
     codec: options.codec,
     required: options.required ?? false,
     defaultValue: options.defaultValue,
-  } as ArrayQueryParamDefinition<T, Required>;
-}
-
-export function delimitedQueryParam<T, const Required extends boolean = false>(
-  options: ArrayQueryOptions<T, Required> & { separator: string } & NonNullish<T>,
-): ArrayQueryParamDefinition<T, Required> {
-  return {
-    kind: 'query',
-    mode: 'delimited',
-    codec: options.codec,
-    required: options.required ?? false,
-    defaultValue: options.defaultValue,
-    separator: options.separator,
   } as ArrayQueryParamDefinition<T, Required>;
 }
 
@@ -131,5 +117,40 @@ export function enumCodec<const Values extends readonly string[] | StringRecord>
   return {
     serialize: (value) => (allowed.has(value as string) ? (value as string) : null),
     deserialize: (raw) => (allowed.has(raw) ? (raw as EnumValue<Values>) : null),
+  };
+}
+
+/**
+ * Joins item values with `separator` into one string, such as `a,b`. The empty string is the
+ * empty list. Empty items and items whose output contains the separator fail conversion.
+ */
+export function listCodec<T>(
+  item: UrlParamCodec<T>,
+  separator: string,
+): UrlParamCodec<readonly T[]> {
+  if (typeof separator !== 'string' || separator === '')
+    throw new Error('list codec separator must be a non-empty string');
+  return {
+    serialize(values) {
+      if (!Array.isArray(values)) return null;
+      const items: string[] = [];
+      for (const value of values) {
+        const output = item.serialize(value);
+        if (typeof output !== 'string' || output === '' || output.includes(separator)) return null;
+        items.push(output);
+      }
+      return items.join(separator);
+    },
+    deserialize(raw) {
+      if (raw === '') return [];
+      const values: T[] = [];
+      for (const part of raw.split(separator)) {
+        if (part === '') return null;
+        const value = item.deserialize(part);
+        if (value === null || value === undefined) return null;
+        values.push(value);
+      }
+      return values;
+    },
   };
 }

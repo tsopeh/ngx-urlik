@@ -2,13 +2,7 @@ import { Component, inject, InjectionToken } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { AppRouterDiagnostic, defineAppRouter } from './app-router';
-import {
-  delimitedQueryParam,
-  numberCodec,
-  queryParam,
-  repeatedQueryParam,
-  stringCodec,
-} from './params';
+import { listCodec, numberCodec, queryParam, repeatedQueryParam, stringCodec } from './params';
 
 @Component({ template: '' })
 class Page {}
@@ -29,7 +23,7 @@ enum RouteNames {
 }
 
 describe('parameter state', () => {
-  it('reads repeated and delimited arrays using their declared forms', async () => {
+  it('reads repeated keys and joined lists', async () => {
     const definition = defineAppRouter(RouteNames, {
       routes: [
         {
@@ -38,7 +32,7 @@ describe('parameter state', () => {
           queryParams: {
             search: queryParam({ codec: stringCodec() }),
             tags: repeatedQueryParam({ codec: stringCodec() }),
-            ids: delimitedQueryParam({ codec: numberCodec(), separator: ',' }),
+            ids: queryParam({ codec: listCodec(numberCodec(), ','), defaultValue: [] }),
           },
           component: Page,
         },
@@ -65,7 +59,9 @@ describe('parameter state', () => {
         {
           path: 'items',
           routeName: RouteNames.ITEMS,
-          queryParams: { ids: delimitedQueryParam({ codec: numberCodec(), separator: ',' }) },
+          queryParams: {
+            ids: queryParam({ codec: listCodec(numberCodec(), ','), defaultValue: [] }),
+          },
           component: Page,
         },
       ],
@@ -74,13 +70,13 @@ describe('parameter state', () => {
     const router = TestBed.inject(Router);
     const items = TestBed.inject(definition.AppRouter).routes.ITEMS;
 
-    await router.navigateByUrl('/items?ids=1&ids=2');
+    await router.navigateByUrl('/items?ids=1,x');
     expect(items.params().query.ids).toEqual([]);
     expect(diagnostics).toEqual([
       expect.objectContaining({
         route: 'ITEMS',
         parameter: 'ids',
-        code: 'INVALID_ARRAY_REPRESENTATION',
+        code: 'PARAM_DESERIALIZE_FAILED',
       }),
     ]);
   });

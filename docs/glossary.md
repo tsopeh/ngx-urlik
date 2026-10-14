@@ -28,7 +28,7 @@ These names are used in the code and the reference.
 
 **Repeated query parameter**: An array stored as repeated keys, such as `?tag=a&tag=b`.
 
-**Delimited query parameter**: An array stored under one key, such as `?tag=a,b`. Each item is URI-encoded before joining.
+**List codec**: A codec that joins item values with a separator, such as `?tag=a,b`. It is used on an ordinary scalar query field.
 
 **Accumulated parameters**: All path and query definitions from a node and its ancestors.
 

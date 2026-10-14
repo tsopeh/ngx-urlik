@@ -1,8 +1,8 @@
 export { isEqual } from './lib/is-equal';
 export {
   booleanCodec,
-  delimitedQueryParam,
   enumCodec,
+  listCodec,
   numberCodec,
   queryParam,
   repeatedQueryParam,

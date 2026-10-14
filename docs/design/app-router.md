@@ -122,22 +122,23 @@ const route = {
   queryParams: {
     search: queryParam({ codec: id }),
     tags: repeatedQueryParam({ codec: id }),
-    ids: delimitedQueryParam({ codec: id, separator: '|' }),
+    ids: queryParam({ codec: listCodec(id, '|'), defaultValue: [] }),
   },
 };
 ```
 
-Query definitions can specify `defaultValue` and `required`; array definitions choose how several
-values share a query key. Each query property name is also its URL key.
+Query definitions can specify `defaultValue` and `required`. `repeatedQueryParam` puts each item
+under its own key; `listCodec` joins items into one value. Each query property name is also its URL key.
 
 ### Built-in scalar codecs
 
-| Codec               | Accepted values                                                                                                                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stringCodec()`     | Any string, including a present empty query value                                                                                                                                                       |
-| `numberCodec()`     | A complete decimal number with optional sign, fraction, and exponent (`-1.5`, `.5`, `1e3`), or `Infinity` and `-Infinity`. Not `NaN`, hex, whitespace, empty strings, or partial numbers such as `12px` |
-| `booleanCodec()`    | Exactly `true` and `false` in lowercase                                                                                                                                                                 |
-| `enumCodec(values)` | Values from a readonly string array, tuple, or string record. Throws at creation if any value is not a string                                                                                           |
+| Codec                        | Accepted values                                                                                                                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stringCodec()`              | Any string, including a present empty query value                                                                                                                                                       |
+| `numberCodec()`              | A complete decimal number with optional sign, fraction, and exponent (`-1.5`, `.5`, `1e3`), or `Infinity` and `-Infinity`. Not `NaN`, hex, whitespace, empty strings, or partial numbers such as `12px` |
+| `booleanCodec()`             | Exactly `true` and `false` in lowercase                                                                                                                                                                 |
+| `enumCodec(values)`          | Values from a readonly string array, tuple, or string record. Throws at creation if any value is not a string                                                                                           |
+| `listCodec(item, separator)` | A list of `item` values joined by `separator`. `''` is the empty list. Throws at creation if the separator is empty                                                                                     |
 
 A numeric TypeScript enum fails `enumCodec`, because its reverse mapping adds number values. A
 path segment cannot be empty: construction that serializes a path value to `''` fails. Use a
@@ -147,20 +148,20 @@ custom codec when the domain needs stricter rules, such as positive integers.
 
 A scalar uses the last value if its key repeats: `?page=1&page=2` reads as `2`.
 
-| Definition         | URL            | Decoded array |
-| ------------------ | -------------- | ------------- |
-| Repeated           | `?tag=a&tag=b` | `['a', 'b']`  |
-| Delimited with `,` | `?tag=a,b`     | `['a', 'b']`  |
+| Definition                                                       | URL            | Decoded array |
+| ---------------------------------------------------------------- | -------------- | ------------- |
+| `repeatedQueryParam({ codec })`                                  | `?tag=a&tag=b` | `['a', 'b']`  |
+| `queryParam({ codec: listCodec(codec, ','), defaultValue: [] })` | `?tag=a,b`     | `['a', 'b']`  |
 
-A delimited value uses exactly one physical key; repeating that key makes the field invalid. Each
-item is encoded with `encodeURIComponent` before joining, then Angular encodes the query. A comma
-inside an item therefore appears as `%252C` in the URL. The separator must be one character that
-`encodeURIComponent` escapes, such as `,` or `|`. `defineAppRouter()` checks separators on route
-definitions; `globalQueryParams()` does not.
+A repeated field reads a missing key as its default or `[]`. Empty items are kept if their codec
+accepts them, so `?tag=` reads as `['']` with `stringCodec()`. One invalid item rejects the whole
+array and uses the default or `[]`.
 
-A missing array uses its default or `[]`. Empty items are kept if their codec accepts them, so
-`?tag=` reads as `['']` with `stringCodec()`. One invalid item rejects the whole array and uses the
-default or `[]`.
+A list is an ordinary scalar field, so the scalar rules apply. Give it `defaultValue: []`, or a
+missing key reads as `null`. If the key repeats, the last value wins: `?tag=a&tag=b,c` reads as
+`['b', 'c']`. Items are not encoded separately; Angular encodes the whole value. An empty item, or
+an item whose output contains the separator, fails conversion: `?tag=a,,b` reads as the default
+with a diagnostic, and serializing `['a,b']` with `,` omits the field with a diagnostic.
 
 ## Defaults and required construction
 
@@ -403,13 +404,12 @@ Bad query data uses the default or absence behavior and emits a warning. Configu
 `AppRouterDiagnostic` contains `code`, `message`, `route`, `parameter`, and `operation`
 (`'serialize'` or `'deserialize'`), plus `index` and `cause` when available.
 
-| Code                           | When                                                                             |
-| ------------------------------ | -------------------------------------------------------------------------------- |
-| `PARAM_DESERIALIZE_FAILED`     | A codec returned `null` or threw, or a delimited item had malformed URI encoding |
-| `PARAM_SERIALIZE_FAILED`       | A query codec returned a non-string or threw, or an array field got a non-array  |
-| `INVALID_ARRAY_REPRESENTATION` | A delimited field had more than one physical key                                 |
+| Code                       | When                                                                              |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| `PARAM_DESERIALIZE_FAILED` | A codec returned `null` or threw                                                  |
+| `PARAM_SERIALIZE_FAILED`   | A query codec returned a non-string or threw, or a repeated field got a non-array |
 
-When a codec or URI decoding throws, the error is in `cause`.
+When a codec throws, the error is in `cause`. For a repeated field, `index` names the failed item.
 
 `route` names the route that declares the parameter, which may be an ancestor of the route you
 read. An unnamed ancestor is identified by position, such as `routes[0].children[1]`. Global
@@ -423,7 +423,7 @@ route reads throw, because there is no valid value to return.
 repeated or empty route names, names on redirects, wildcards, or matchers, `loadChildren` on a
 named route or its ancestors, paths that are not statically known or contain empty segments or
 reserved characters, `pathParam` maps that do not match the placeholders, repeated placeholder
-names, repeated query keys, and invalid delimited separators. Some of these are also type errors.
+names, and repeated query keys. Some of these are also type errors.
 Angular validates its own route configuration.
 
 The typed catalog is fixed when the router is defined. Replacing the named routes with

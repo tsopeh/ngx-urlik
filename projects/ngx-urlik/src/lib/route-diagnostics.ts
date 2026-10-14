@@ -1,7 +1,6 @@
 import type { RuntimeParam } from './compiled-route';
 
-export type AppRouterDiagnosticCode =
-  'PARAM_DESERIALIZE_FAILED' | 'PARAM_SERIALIZE_FAILED' | 'INVALID_ARRAY_REPRESENTATION';
+export type AppRouterDiagnosticCode = 'PARAM_DESERIALIZE_FAILED' | 'PARAM_SERIALIZE_FAILED';
 
 export interface AppRouterDiagnostic {
   readonly code: AppRouterDiagnosticCode;

@@ -55,17 +55,24 @@ per name.
 
 ## Keep codecs separate from URL placement
 
-A codec converts one string to one non-null value. `queryParam`, `repeatedQueryParam`, and
-`delimitedQueryParam` decide how that value sits in the URL, and they own defaults and `required`.
-One `numberCodec()` therefore serves a path segment, a scalar field, and both array forms. The
+A codec converts one string to one non-null value. `queryParam` and `repeatedQueryParam` decide
+how that value sits in the URL, and they own defaults and `required`. One `numberCodec()` therefore
+serves a path segment, a scalar field, a repeated field, and a joined list. The
 first design had a helper family per type and placement, which duplicated parsing and did not
 compose into arrays.
 
 Absence is part of the field definition, not of the codec. A nullable scalar reads as `null` and an
 array as `[]`, which matches Angular Signal Forms, where `undefined` means a field does not exist.
-Repeated and delimited arrays stay separate because they put different strings on the wire.
 
-**Cost:** codecs cannot use `inject()`. Default factories can, so injection-aware behavior belongs
+Repeated keys are a placement, because each item takes its own key. A joined list such as `a,b` is
+one string, so it is a codec: `listCodec(item, ',')` on an ordinary `queryParam`. The earlier
+`delimitedQueryParam` placement needed its own separator validation, item encoding, and diagnostic
+code, and a comma inside an item appeared as `%252C`. Now a custom codec can define any list format
+the same way.
+
+**Cost:** a list field needs `defaultValue: []` to read a missing key as empty. Like any scalar, a
+repeated key silently uses its last value, and a bad item fails the whole field without an item
+`index`. Codecs cannot use `inject()`; default factories can, so injection-aware behavior belongs
 there.
 
 ## Build destinations only from explicit values

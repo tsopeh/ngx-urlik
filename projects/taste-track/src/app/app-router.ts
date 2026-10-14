@@ -2,8 +2,8 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import {
   defineAppRouter,
-  delimitedQueryParam,
   enumCodec,
+  listCodec,
   numberCodec,
   queryParam,
   repeatedQueryParam,
@@ -190,7 +190,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
           routeName: RouteNames.COLLECTION,
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
-            media: delimitedQueryParam({ codec: mediaKindCodec, separator: ',' }),
+            media: queryParam({ codec: listCodec(mediaKindCodec, ','), defaultValue: [] }),
             statuses: repeatedQueryParam({ codec: statusCodec }),
             replayCount: queryParam({ codec: experienceCountCodec() }),
             minRating: queryParam({ codec: numberCodec() }),
