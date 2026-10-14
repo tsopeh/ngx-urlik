@@ -1,11 +1,30 @@
 {
   "name": "ngx-urlik",
   "version": "0.2.0",
+  "description": "Named routes and typed URL parameters for Angular Router, with signal state and coordinated query writes.",
+  "license": "MIT",
+  "keywords": [
+    "angular",
+    "router",
+    "routing",
+    "query-params",
+    "signals",
+    "forms",
+    "typescript"
+  ],
+  "homepage": "https://github.com/tsopeh/ngx-urlik#readme",
+  "bugs": {
+    "url": "https://github.com/tsopeh/ngx-urlik/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tsopeh/ngx-urlik.git"
+  },
   "peerDependencies": {
     "@angular/core": "^22.1.0",
     "@angular/forms": "^22.1.0",
     "@angular/router": "^22.1.0",
-    "rxjs": "~7.8.0"
+    "rxjs": "^7.4.0"
   },
   "peerDependenciesMeta": {
     "@angular/forms": {
