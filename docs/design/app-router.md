@@ -337,7 +337,9 @@ with `bindQueryParamsToSignalForm(results, form, options)`.
 
 The form starts from the URL. It then holds a draft while the URL holds committed values. Writes
 replace the current history entry unless you pass `replaceUrl: false`. Other coordinated writes
-update unrelated fields without touching drafts or interaction state. External navigation cancels
+update unrelated fields without touching drafts or interaction state. After a write commits, a draft that
+encodes to the committed URL value stays as typed: with a codec that trims, `'elm '` writes
+`?search=elm` and the input keeps its trailing space. External navigation cancels
 pending edits when it starts and resets the form to a pristine, untouched URL baseline, even if
 navigation is then blocked. It resets again when that navigation finishes.
 

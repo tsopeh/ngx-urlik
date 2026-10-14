@@ -173,6 +173,8 @@ type Query = Readonly<Record<string, unknown>>;
 export interface QueryBinding<Q extends Query> {
   readonly coordinator: QueryWriteCoordinator;
   read(): Q | undefined;
+  /** Whether two values of a field produce the same URL representation. */
+  sameUrlValue(param: keyof Q, left: unknown, right: unknown): boolean;
   update(
     updater: (query: Q) => Q,
     options: { replaceUrl?: boolean },

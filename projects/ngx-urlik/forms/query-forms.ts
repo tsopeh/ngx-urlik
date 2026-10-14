@@ -128,7 +128,14 @@ const bindQueryParams = <Q extends QueryState>(
     const incoming = binding.read();
     if (!incoming) return;
     const next = { ...incoming };
-    for (const [param, pending] of staged) next[param] = pending.value;
+    for (const param of Object.keys(next) as (keyof Q)[]) {
+      const pending = staged.get(param);
+      if (pending) next[param] = pending.value;
+      // A draft that encodes to the committed value is already in the URL, such as 'elm ' with a
+      // trimming codec. Keep what the user typed instead of replacing it mid-edit.
+      else if (!reset && binding.sameUrlValue(param, observed[param], incoming[param]))
+        next[param] = observed[param];
+    }
     if (reset || !isEqual(next, observed)) {
       observed = next;
       if (reset) adapter.reset(next);

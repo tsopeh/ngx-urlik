@@ -4,7 +4,7 @@ import { NavigationStart, Router } from '@angular/router';
 import { createQueryParamsFormGroup, createQueryParamsSignalForm } from 'ngx-urlik/forms';
 import { filter } from 'rxjs';
 import { defineAppRouter } from './app-router';
-import { numberCodec, queryParam, stringCodec } from './params';
+import { numberCodec, queryParam, stringCodec, UrlParamCodec } from './params';
 
 @Component({ template: '' })
 class Page {}
@@ -100,5 +100,52 @@ describe('query forms', () => {
     expect(await direct).toBe(true);
     await vi.waitFor(() => expect(router.url).toBe('/results?search=first&page=2'));
     expect(form.getRawValue()).toEqual({ search: 'first', page: 2 });
+  });
+
+  describe('with a normalizing codec', () => {
+    const trimmed: UrlParamCodec<string> = {
+      serialize: (value) => (typeof value === 'string' ? value.trim() : null),
+      deserialize: (raw) => raw.trim(),
+    };
+    const trimmedSetup = async () => {
+      const definition = defineAppRouter(RouteNames, {
+        routes: [
+          {
+            path: 'results',
+            routeName: RouteNames.RESULTS,
+            queryParams: { search: queryParam({ codec: trimmed, defaultValue: '' }) },
+            component: Page,
+          },
+        ],
+      });
+      TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+      const router = TestBed.inject(Router);
+      await router.navigateByUrl('/results');
+      return { results: TestBed.inject(definition.AppRouter).routes.RESULTS, router };
+    };
+
+    it('keeps a reactive draft that encodes to the committed value', async () => {
+      const { results, router } = await trimmedSetup();
+      const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
+      form.controls.search.setValue('elm ');
+
+      await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
+      TestBed.tick();
+      expect(form.controls.search.value).toBe('elm ');
+
+      await router.navigateByUrl('/results?search=oak');
+      await vi.waitFor(() => expect(form.controls.search.value).toBe('oak'));
+    });
+
+    it('keeps a signal form draft that encodes to the committed value', async () => {
+      const { results, router } = await trimmedSetup();
+      const binding = TestBed.runInInjectionContext(() => createQueryParamsSignalForm(results));
+      binding.model.set({ search: 'elm ' });
+      TestBed.tick();
+
+      await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
+      TestBed.tick();
+      expect(binding.model().search).toBe('elm ');
+    });
   });
 });

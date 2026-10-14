@@ -59,6 +59,8 @@ export function createAppRouter(
   destroyRef.onDestroy(() => subscription.unsubscribe());
   const { readState, readQueryState } = reader;
   const { serializePath, serializeQuery } = createParameterSerializer(injector, report);
+  // Comparisons serialize form drafts; failures there are reported when the draft is written.
+  const comparison = createParameterSerializer(injector, () => undefined);
 
   // Angular commits the new router state and creates routed components before NavigationEnd.
   // A value cached earlier in that navigation is stale then, so read the committed state directly.
@@ -180,6 +182,13 @@ export function createAppRouter(
       read: () => {
         navigation();
         return read()?.query;
+      },
+      sameUrlValue: (name, left, right) => {
+        const param = info.queryParams.find((candidate) => candidate.name === name);
+        return (
+          !!param &&
+          isEqual(comparison.serializeQuery(param, left), comparison.serializeQuery(param, right))
+        );
       },
       update,
     });
