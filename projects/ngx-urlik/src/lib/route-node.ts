@@ -45,6 +45,7 @@ function checkedSignal<T>(source: Signal<T>, check: () => void): Signal<T> {
 }
 
 export function createAppRouter(
+  routeNames: Readonly<Record<string, string>>,
   catalog: ReadonlyMap<string, CompiledRoute>,
   router: Router,
   injector: EnvironmentInjector,
@@ -190,7 +191,9 @@ export function createAppRouter(
       },
       update,
     });
-    routes[routeName] = node;
+    // Types key routes by member name, so a member whose value differs from its name still works.
+    for (const [member, value] of Object.entries(routeNames))
+      if (value === routeName) routes[member] = node;
   }
 
   const tree: Record<string, unknown> = {
@@ -246,10 +249,13 @@ export function createAppRouter(
             routeConfigBrand
           ] as CompiledRoute | undefined;
           if (!info) return null;
-          const entry = Object.entries(candidates).find(
-            ([_, c]) => (c as any)[routeNodeInfo] === info,
+          const key = Reflect.ownKeys(candidates).find(
+            (candidate) =>
+              (candidates[candidate] as Record<PropertyKey, unknown>)[routeNodeInfo] === info,
           );
-          return entry ? { key: entry[0], node: entry[1], info, active: snap } : null;
+          return key === undefined
+            ? null
+            : { key, node: candidates[key] as object, info, active: snap };
         });
         if (match) selected = match;
         if (selected) {

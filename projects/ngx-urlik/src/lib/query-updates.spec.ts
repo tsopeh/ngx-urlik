@@ -117,6 +117,64 @@ describe('query writes', () => {
     expect(router.url).toBe('/other');
   });
 
+  it('continues with later writes after a guard rejects one', async () => {
+    const { app, router } = setup((route) => route.queryParamMap.get('search') !== 'blocked');
+    await router.navigateByUrl('/results?search=old');
+    const rejected = app.routes.RESULTS.patchQuery({ search: 'blocked' });
+    const next = app.routes.ROOT.patchQuery({ locale: 'fr' });
+
+    expect(await Promise.all([rejected, next])).toEqual([false, true]);
+    expect(router.url).toBe('/results?search=old&locale=fr');
+  });
+
+  it('continues with later writes after Angular skips the same URL', async () => {
+    const { app, router } = setup();
+    await router.navigateByUrl('/results?search=old');
+    const skipped = app.routes.RESULTS.patchQuery({ search: 'old' });
+    const next = app.routes.ROOT.patchQuery({ locale: 'fr' });
+
+    expect(await Promise.all([skipped, next])).toEqual([false, true]);
+    expect(router.url).toBe('/results?search=old&locale=fr');
+  });
+
+  it('cancels waiting writes when a guard redirects the active write', async () => {
+    let router!: Router;
+    const setupResult = setup((route) =>
+      route.queryParamMap.get('search') === 'redirect' ? router.parseUrl('/other') : true,
+    );
+    router = setupResult.router;
+    const { app } = setupResult;
+    await router.navigateByUrl('/results?search=old');
+    const redirected = app.routes.RESULTS.patchQuery({ search: 'redirect' });
+    const updater = vi.fn(() => ({ locale: 'fr' }));
+    const waiting = app.routes.ROOT.patchQuery(updater);
+
+    expect(await Promise.all([redirected, waiting])).toEqual([true, false]);
+    expect(updater).not.toHaveBeenCalled();
+    expect(router.url).toBe('/other');
+  });
+
+  it('settles active and waiting writes as false when the router is destroyed', async () => {
+    const entered = deferred<void>();
+    let hold = false;
+    const { app, router } = setup(() => {
+      if (!hold) return true;
+      entered.resolve();
+      return new Promise<boolean>(() => {});
+    });
+    await router.navigateByUrl('/results?search=old');
+    hold = true;
+    const active = app.routes.RESULTS.patchQuery({ search: 'new' });
+    await entered.promise;
+    const updater = vi.fn(() => ({ locale: 'fr' }));
+    const waiting = app.routes.ROOT.patchQuery(updater);
+    TestBed.resetTestingModule();
+
+    expect(await Promise.all([active, waiting])).toEqual([false, false]);
+    expect(updater).not.toHaveBeenCalled();
+    expect(await app.routes.ROOT.patchQuery({ locale: 'de' })).toBe(false);
+  });
+
   it('uses fresh URL state even if equality retains an older signal value', async () => {
     const { app, router } = setup(undefined, () => true);
     await router.navigateByUrl('/results?locale=en&search=old');

@@ -239,6 +239,44 @@ describe('defineAppRouter with Angular route arrays', () => {
     expect(active()).toMatchObject({ route: 'landing', node: SHOW_LANDING });
   });
 
+  it('selects candidates keyed by symbols', async () => {
+    const definition = defineAppRouter(RouteNames, {
+      routes: [{ path: 'items', routeName: RouteNames.ITEMS, component: EmptyComponent }],
+    });
+    const { appRouter } = setup(definition);
+    const items = Symbol('items');
+    const active = appRouter.activeRoute({ [items]: appRouter.routes.ITEMS });
+
+    await appRouter.routes.ITEMS.navigate();
+    expect(active().route).toBe(items);
+  });
+
+  it('keys nodes by route names member, even when its value differs', async () => {
+    enum LowercaseNames {
+      Movie = 'movie',
+    }
+    const definition = defineAppRouter(LowercaseNames, {
+      routes: [{ path: 'movie', routeName: LowercaseNames.Movie, component: EmptyComponent }],
+    });
+    const { appRouter, router } = setup(definition);
+
+    expect(Object.keys(appRouter.routes)).toEqual(['Movie']);
+    expect(router.serializeUrl(appRouter.routes.Movie.createUrlTree())).toBe('/movie');
+  });
+
+  it('rejects a routeName missing from the route names', () => {
+    enum OtherNames {
+      OTHER = 'OTHER',
+    }
+    expect(() =>
+      defineAppRouter(OtherNames, {
+        routes: [{ path: 'item', routeName: RouteNames.ITEM }],
+      }),
+    ).toThrow(
+      "routeName 'ITEM' at routes[0] is not a value of the route names passed to defineAppRouter(). Add it to the route names.",
+    );
+  });
+
   it('uses Angular matching to distinguish named routes with the same URL', async () => {
     const definition = defineAppRouter(RouteNames, {
       routes: [

@@ -99,11 +99,17 @@ export function resolvePathParamDefinitions(
 }
 
 /** Validate ordered Angular routes and the statically known chains of named routes. */
-export function validateRouteDefinitions(routes: RouteDefinitions): string[] {
+export function validateRouteDefinitions(
+  routes: RouteDefinitions,
+  routeNames: Readonly<Record<string, string>>,
+): string[] {
+  if (!routeNames || typeof routeNames !== 'object')
+    return ['routeNames: pass the route names enum or object as the first argument'];
   if (!Array.isArray(routes)) return ['routes: route collection must be an array'];
+  const declaredNames = new Set(Object.values(routeNames));
   const errors: string[] = [];
   const reported = new Set<string>();
-  const routeNames = new Map<string, string>();
+  const usedNames = new Map<string, string>();
   const report = (message: string) => {
     if (!reported.has(message)) {
       errors.push(message);
@@ -127,12 +133,16 @@ export function validateRouteDefinitions(routes: RouteDefinitions): string[] {
         if (typeof routeName !== 'string' || !routeName.trim()) {
           report(`${at}: routeName must be a non-empty string`);
         } else {
-          const previous = routeNames.get(routeName);
+          const previous = usedNames.get(routeName);
           if (previous)
             report(
               `routeName '${routeName}' is used by both ${previous} and ${at}. Give each named route a different routeName.`,
             );
-          else routeNames.set(routeName, at);
+          else usedNames.set(routeName, at);
+          if (!declaredNames.has(routeName))
+            report(
+              `routeName '${routeName}' at ${at} is not a value of the route names passed to defineAppRouter(). Add it to the route names.`,
+            );
           if (route.redirectTo !== undefined || route.path === '**' || route.matcher)
             report(`${routeName}: only ordinary path routes can have a routeName`);
           if (route.loadChildren) report(`${routeName}: named routes cannot use loadChildren`);

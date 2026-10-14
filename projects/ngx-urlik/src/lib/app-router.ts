@@ -52,7 +52,9 @@ const routerConfigurationFeatureKind = 5;
  * each named route a string name, such as `routeName: RouteNames.MOVIE_DETAIL`.
  * This lets Go to Definition take you from `router.routes.MOVIE_DETAIL` to the route name
  * declaration. Keep `path` and the route name literal so TypeScript can infer the nodes.
- * Route names must be unique; this function throws during definition if they are not. The typed
+ * Route names must be unique values of `routeNames`; this function throws during definition if
+ * they are not. `AppRouter.routes` is keyed by member name, so `Movie = 'movie'` creates
+ * `routes.Movie`. The typed
  * catalog is fixed at definition time, so replacing it with `Router.resetConfig()` is unsupported.
  */
 export function defineAppRouter<
@@ -70,7 +72,7 @@ export function defineAppRouter<
   provideAppRouter: (...features: ForwardedRouterFeature[]) => EnvironmentProviders;
 } {
   const definitions = options.routes as RouteDefinitions;
-  const errors = validateRouteDefinitions(definitions);
+  const errors = validateRouteDefinitions(definitions, routeNames);
   if (errors.length) throw new Error(`Invalid app router definition:\n- ${errors.join('\n- ')}`);
 
   const report = createDiagnosticReporter(options.diagnostics);
@@ -93,6 +95,7 @@ export function defineAppRouter<
         provide: AppRouter,
         useFactory: () =>
           createAppRouter(
+            routeNames,
             catalog,
             inject(Router),
             inject(EnvironmentInjector),
