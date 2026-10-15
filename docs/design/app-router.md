@@ -556,6 +556,14 @@ path to continue. An ancestor's check runs before Angular knows whether its chil
 layout route never redirects a URL that then fails to match below it. The redirect replaces the
 original navigation, which Angular reports with `NavigationCancel`.
 
+Because the check runs during matching, the guard phase of the original navigation never starts.
+`canActivate`, `canActivateChild`, resolvers, and the `canDeactivate` of the page you leave run
+once, and only see the URL with the value filled in. `canMatch` guards are the exception: the
+route's own `canMatch` guards and those of its ancestors run before the check, so they run twice
+when a value is restored, first without it and then with it. Do not make a `canMatch` decision
+depend on a persisted query value. A path value restored by its redirect is not affected: the
+route that declares it is matched only once, with the full path.
+
 When an earlier redirect in the same navigation changed the path, the check builds the redirect
 from the path Angular actually matched. If the URL also has named outlets, such as
 `/library/(books//side:panel)`, the check keeps them only when the primary path is unchanged, and

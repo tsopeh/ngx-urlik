@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { RouterTestingHarness } from '@angular/router/testing';
 import {
@@ -26,6 +26,8 @@ enum RouteNames {
   ITEMS = 'ITEMS',
   OTHER = 'OTHER',
   PLAIN = 'PLAIN',
+  SEASON = 'SEASON',
+  SHOW = 'SHOW',
   USER = 'USER',
 }
 
@@ -637,5 +639,90 @@ describe('clearPersisted', () => {
     fill();
 
     expect(() => app.clearPersisted()).not.toThrow();
+  });
+});
+
+describe('what user guards see during a restore', () => {
+  function guardSetup() {
+    const seen: string[] = [];
+    // Records the URL of the navigation a guard runs in.
+    const record = (name: string) => () => {
+      const url = inject(Router).currentNavigation()?.extractedUrl;
+      seen.push(`${name} ${url ? inject(Router).serializeUrl(url) : '?'}`);
+      return true;
+    };
+    const definition = defineAppRouter(RouteNames, {
+      routes: [
+        {
+          path: 'shows/:showId',
+          routeName: RouteNames.SHOW,
+          canMatch: [record('show canMatch')],
+          component: Layout,
+          children: [
+            {
+              path: 'items',
+              routeName: RouteNames.ITEMS,
+              queryParams: { pageSize: pageSize() },
+              canMatch: [record('items canMatch')],
+              canActivate: [record('items canActivate')],
+              component: Page,
+            },
+            {
+              path: 'season/:season',
+              routeName: RouteNames.SEASON,
+              pathParam: {
+                codec: numberCodec(),
+                persist: { key: 'season', storage: 'session', scope: ['showId'] },
+              },
+              canMatch: [
+                (_route, segments) => {
+                  seen.push(`season canMatch ${segments.map((s) => s.path).join('/')}`);
+                  return true;
+                },
+              ],
+              canActivate: [
+                (route) => {
+                  seen.push(`season canActivate season=${route.paramMap.get('season')}`);
+                  return true;
+                },
+              ],
+              component: Page,
+            },
+          ],
+        },
+      ],
+    });
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    return { router: TestBed.inject(Router), seen };
+  }
+
+  it('runs canMatch guards twice for a restored query value, and canActivate once', async () => {
+    localStorage.setItem('ngx-urlik:pageSize', '48');
+    const { router, seen } = guardSetup();
+
+    await router.navigateByUrl('/shows/7/items');
+    expect(router.url).toBe('/shows/7/items?pageSize=48');
+    expect(seen).toEqual([
+      'show canMatch /shows/7/items',
+      'items canMatch /shows/7/items',
+      'show canMatch /shows/7/items?pageSize=48',
+      'items canMatch /shows/7/items?pageSize=48',
+      'items canActivate /shows/7/items?pageSize=48',
+    ]);
+  });
+
+  it('runs the guards of a restored path value once, with the full path', async () => {
+    sessionStorage.setItem('ngx-urlik:season:7', '2');
+    const { router, seen } = guardSetup();
+
+    await router.navigateByUrl('/shows/7/season');
+    expect(router.url).toBe('/shows/7/season/2');
+    expect(seen.filter((entry) => entry.startsWith('season'))).toEqual([
+      'season canMatch season/2',
+      'season canActivate season=2',
+    ]);
+    expect(seen.filter((entry) => entry.startsWith('show'))).toEqual([
+      'show canMatch /shows/7/season',
+    ]);
   });
 });

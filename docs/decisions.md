@@ -214,6 +214,46 @@ first navigation to a page without a query value is cancelled and replaced by on
 filled in. A path value is restored inside the same navigation. The server cannot see browser storage, so a server-rendered page shows the
 default and changes after hydration.
 
+### Where a missing query value is restored
+
+The restore has to happen before user code reads the URL, or that code sees a page without its
+remembered values and then sees it again with them. A guard that runs twice with different inputs
+is hard to reason about, which defeats the point of remembering the value. Three places were
+tried.
+
+**A `canMatch` check (current).** ngx-urlik appends a check to the `canMatch` guards of each route
+in a chain with a persisted query field. It redirects while Angular is still matching, so the
+guard phase of the first navigation never starts: `canActivate`, `canActivateChild`, resolvers,
+and `canDeactivate` run once, with the complete URL. `canMatch` guards on the route and its
+ancestors still run twice. An ancestor's check runs before its children match, so each check
+records the segments its route consumed for the current navigation, and only the route that ends
+the match redirects.
+
+**Cost:** the bookkeeping, about 50 lines in `persistence.ts`, depends on the order in which
+Angular calls `canMatch` while it matches. The tests in `persistence.spec.ts` cover unmatched
+URLs, earlier redirects, named outlets, and combined path and query restores; a change in Angular's
+matching order would show up there first.
+
+**A `canActivate` guard (replaced).** Commit `9d6b5d4` put the restore in a `canActivate` guard in
+front of the route's own guards. The code was simpler: the guard sees the activated route
+snapshot, so it needs no bookkeeping. Angular skips guards on a reused route when only the query
+changes, so the library wrapped each persisting route's `runGuardsAndResolvers` with a copy of
+Angular's rules (about 15 lines) to run them when a value needs restoring. The incomplete URL
+reached more user code: `canActivate` and `canActivateChild` ran with it and then again, the
+`canDeactivate` of the page being left ran twice, and the route's own guards ran on navigations
+where Angular would normally skip them. Commit `d479ccb` replaced it with the `canMatch` check. To
+return to it, start from `restoreQueryGuard` and `runGuardsWhenRestoring` in `git show
+9d6b5d4:projects/ngx-urlik/src/lib/persistence.ts`.
+
+**`UrlHandlingStrategy.extract()` (prototyped, rejected).** Angular hands every new navigation's
+URL to `extract()` before matching. Filling remembered values there meant no user code, not even
+`canMatch`, ever saw an incomplete URL, and every restore was one navigation. But `extract()`
+runs before Angular knows which route matches, so the library had to predict the route by
+copying Angular's matching rules (about 340 lines), assume user `canMatch` guards pass, and accept
+that function and absolute redirects drop the filled query. It was too much logic to maintain
+alongside Angular's own. The prototype is on the branch `prototype/extract-restore`, commit
+`8d1a9c7`.
+
 ## Let shared components name the routes they serve
 
 One component may serve routes with different parameters, such as a movie detail and an episode
