@@ -24,7 +24,7 @@ import {
   getPrimaryActiveChain,
 } from './compiled-route';
 import { isEqual } from './is-equal';
-import { Persistence, persistOf } from './persistence';
+import { ClearPersistedOptions, Persistence, persistOf } from './persistence';
 import { QueryWriteCoordinator, registerQueryBinding } from './query-write-coordinator';
 import { QueryDefinitions } from './route-definition';
 import { ReportParameterFailure } from './route-diagnostics';
@@ -227,6 +227,7 @@ export function createAppRouter(
       options?.isEqual ?? isEqual,
     );
   };
+  tree['clearPersisted'] = (options?: ClearPersistedOptions) => persistence.clear(options);
   tree['activeRoute'] = (candidates: Readonly<Record<PropertyKey, object>>) => {
     for (const key of Reflect.ownKeys(candidates)) {
       const node = candidates[key] as Record<PropertyKey, unknown>;

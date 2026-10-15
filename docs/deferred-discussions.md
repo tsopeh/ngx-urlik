@@ -18,5 +18,8 @@ in concepts, types, and runtime behavior.
 | Add tracing or editor diagnostics?                       | Runtime validation and parameter diagnostics are available.                                |
 | Warn about bypassing the typed router?                   | The docs give a core ESLint configuration; there is no plugin or runtime warning.          |
 | Infer accumulated state in route equality callbacks?     | Equality callbacks currently receive `unknown`; construction and state reads are inferred. |
+| Follow stored values changed in other tabs?              | Storage is read only when a URL lacks a value; there is no `storage` event listener.       |
+| Restore a path value after an earlier redirect?          | The restore route reads the URL that started the navigation, so it restores nothing then.  |
+| Forbid `:` in persist keys?                              | Keys are any non-empty string; clearing `a` also removes an unscoped key named `a:b`.      |
 
 The [reference](design/app-router.md) describes what callers can rely on today.

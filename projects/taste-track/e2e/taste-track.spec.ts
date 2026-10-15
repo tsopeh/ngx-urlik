@@ -233,3 +233,12 @@ test('opens the last season of a show from a URL without the season', async ({ p
     page.getByRole('heading', { name: 'Only Mergers in the Building · Season 2' }),
   ).toBeVisible();
 });
+
+test('resetting TasteTrack forgets the remembered page size', async ({ page }) => {
+  await page.goto('/screen/movies?pageSize=12');
+  await expect(page.locator('app-media-card')).toHaveCount(12);
+  await page.goto('/settings');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Reset TasteTrack' }).click();
+  await expect(page).toHaveURL(/\/screen\/movies\?pageSize=24$/);
+});

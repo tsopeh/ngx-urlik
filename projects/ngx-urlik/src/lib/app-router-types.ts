@@ -258,5 +258,15 @@ export type GeneratedAppRouter<E extends Record<string, string>, R> = {
   activeRoute<const C extends Readonly<Record<PropertyKey, AnyStatefulNode>>>(
     candidates: C,
   ): Signal<ActiveRoute<C>>;
+  /**
+   * Removes values that `persist` options stored. Without an argument, removes every key with the
+   * router's prefix from both storages. With an object, touches only the storages set to `true`
+   * (every prefixed key) or to an array of keys (each key with all of its scopes). The current URL
+   * does not change.
+   */
+  clearPersisted(options?: {
+    local?: boolean | readonly string[];
+    session?: boolean | readonly string[];
+  }): void;
   readonly escapeHatch: AppRouterEscapeHatch;
 };

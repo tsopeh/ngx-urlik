@@ -4,7 +4,7 @@ These names are used in the code and the reference.
 
 ## Routes
 
-**AppRouter**: The injection token returned by `defineAppRouter()`. Inject it to get the flat `routes` object, `activeRoute()`, `globalQueryParams()`, and `escapeHatch`.
+**AppRouter**: The injection token returned by `defineAppRouter()`. Inject it to get the flat `routes` object, `activeRoute()`, `globalQueryParams()`, `clearPersisted()`, and `escapeHatch`.
 
 **Route names**: The enum or string map passed as the first argument to `defineAppRouter()`. Its members key `AppRouter.routes`.
 
@@ -60,7 +60,7 @@ These names are used in the code and the reference.
 
 ## Errors and native operations
 
-**Diagnostic**: An `AppRouterDiagnostic` reported for bad query data or a failed serialization. The operation continues with a default or an omitted key.
+**Diagnostic**: An `AppRouterDiagnostic` reported for bad query data, a failed serialization, a stored value that fails to decode, or an unknown key passed to `clearPersisted()`. The operation continues with a default or an omitted key.
 
 **Semantic state error**: Reading an inactive route or an invalid active path. These reads throw because there is no valid state to return.
 

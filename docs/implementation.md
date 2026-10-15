@@ -47,7 +47,7 @@ For a named route with persisted trailing placeholders, `compileRoutes` inserts 
 right after it, one per count of missing placeholders. Their `canMatch` guard, `restorePathGuard`,
 reads ancestor values by position from the navigation's extracted URL, because Angular passes it
 only the segments below the parent. It returns a `RedirectCommand` with the stored values appended,
-or `false`.
+or `false`. `clearPersisted()` on the router removes keys through the same storage wrapper.
 
 ## Write
 

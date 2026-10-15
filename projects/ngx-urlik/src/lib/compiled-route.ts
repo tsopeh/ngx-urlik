@@ -53,8 +53,11 @@ export function compileRoutes(
 ): {
   readonly routes: Routes;
   readonly catalog: ReadonlyMap<string, CompiledRoute>;
+  /** Every `persist` key the routes declare. */
+  readonly persistKeys: ReadonlySet<string>;
 } {
   const catalog = new Map<string, CompiledRoute>();
+  const persistKeys = new Set<string>();
   const hasLibraryFields = (routes: readonly RouteDefinition[]): boolean =>
     routes.some(
       (route) =>
@@ -64,7 +67,8 @@ export function compileRoutes(
         'isEqual' in route ||
         (route.children ? hasLibraryFields(route.children) : false),
     );
-  if (!hasLibraryFields(definitions)) return { routes: definitions as Routes, catalog };
+  if (!hasLibraryFields(definitions))
+    return { routes: definitions as Routes, catalog, persistKeys };
 
   const compile = (
     definitions: readonly RouteDefinition[],
@@ -141,13 +145,18 @@ export function compileRoutes(
         );
       }
 
+      for (const param of [...info.pathParams, ...info.queryParams])
+        if (param.owner === info) {
+          const persist = persistOf(param);
+          if (persist) persistKeys.add(persist.key);
+        }
       (angular as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
       if (routeName) catalog.set(routeName, info);
       if (children) angular.children = compile(children, info, `${at}.children`);
       return [angular, ...restoreRoutes(info, persistence)];
     });
 
-  return { routes: compile(definitions), catalog };
+  return { routes: compile(definitions), catalog, persistKeys };
 }
 
 /**

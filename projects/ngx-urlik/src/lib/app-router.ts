@@ -17,7 +17,11 @@ import {
 } from '@angular/router';
 import type { ContextualRouteArray, GeneratedAppRouter, InferDefinition } from './app-router-types';
 import { RouteDefinitions, validateRouteDefinitions } from './route-definition';
-import { AppRouterDiagnostics, createDiagnosticReporter } from './route-diagnostics';
+import {
+  AppRouterDiagnostics,
+  createDiagnosticReporter,
+  createDiagnosticWarn,
+} from './route-diagnostics';
 import { compileRoutes } from './compiled-route';
 import { createAppRouter } from './route-node';
 import { createParameterReader } from './route-params-runtime';
@@ -26,6 +30,8 @@ import { createPersistence, defaultPersistencePrefix, Persistence } from './pers
 export type {
   AppRouterDiagnostic,
   AppRouterDiagnosticCode,
+  AppRouterParameterDiagnostic,
+  AppRouterUnknownKeyDiagnostic,
   AppRouterDiagnostics,
 } from './route-diagnostics';
 export type {
@@ -80,11 +86,12 @@ export function defineAppRouter<
   const errors = validateRouteDefinitions(definitions, routeNames);
   if (errors.length) throw new Error(`Invalid app router definition:\n- ${errors.join('\n- ')}`);
 
-  const report = createDiagnosticReporter(options.diagnostics);
+  const warn = createDiagnosticWarn(options.diagnostics);
+  const report = createDiagnosticReporter(warn);
   const reader = createParameterReader(report);
   const prefix = options.persistence?.prefix ?? defaultPersistencePrefix;
   const PersistenceRuntime = new InjectionToken<Persistence>('AppRouter persistence');
-  const { routes, catalog } = compileRoutes(definitions, PersistenceRuntime);
+  const { routes, catalog, persistKeys } = compileRoutes(definitions, PersistenceRuntime);
   const AppRouter = new InjectionToken<GeneratedAppRouter<E, R>>('AppRouter');
 
   function provideAppRouter(...features: ForwardedRouterFeature[]): EnvironmentProviders {
@@ -103,7 +110,9 @@ export function defineAppRouter<
         useFactory: () =>
           createPersistence(
             prefix,
+            persistKeys,
             report,
+            warn,
             isPlatformBrowser(inject(PLATFORM_ID)),
             inject(EnvironmentInjector),
           ),

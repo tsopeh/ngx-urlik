@@ -610,11 +610,31 @@ decode. Form drafts are never saved.
 Storage is read only when the URL lacks a usable value. Changes made in another tab are not
 observed; they apply at the next restore.
 
+### Forget stored values
+
+A reset button can forget what the router remembered:
+
+```ts
+router.clearPersisted();
+router.clearPersisted({ session: true });
+router.clearPersisted({ local: ['pageSize'] });
+```
+
+Without an argument, `clearPersisted()` removes every key with the router's prefix from both
+`localStorage` and `sessionStorage`. With an object, it touches only the storages set to `true` or
+to an array; an omitted or `false` storage is left alone, so `{}` removes nothing. `true` removes
+every prefixed key in that storage. An array removes each listed key with all of its scopes:
+`['tab']` removes `ngx-urlik:tab` and `ngx-urlik:tab:7`, but not `ngx-urlik:tabs`. A listed key
+that no route declares is reported as `UNKNOWN_PERSIST_KEY` and otherwise ignored.
+
+Clearing does not change the current URL. The current page's values are saved again at its next
+committed navigation.
+
 ### Without storage
 
 On the server, and when browser storage is unavailable or throws (private browsing, a full quota,
-blocked access), persistence does nothing: reads use the default, nothing is saved, and nothing is
-redirected. With server rendering, the server renders the default and the browser restores the
+blocked access), persistence does nothing: reads use the default, nothing is saved or cleared, and
+nothing is redirected. With server rendering, the server renders the default and the browser restores the
 stored value in its first navigation, so the page content can change after hydration.
 
 ## Diagnostics and errors
@@ -622,14 +642,17 @@ stored value in its first navigation, so the page content can change after hydra
 Bad query data uses the default or absence behavior and emits a warning. Configure the reporter on
 `defineAppRouter` with `diagnostics: { warn }`. The default calls `console.warn` with the message.
 
-`AppRouterDiagnostic` contains `code`, `message`, `route`, `parameter`, and `operation`
-(`'serialize'` or `'deserialize'`), plus `index`, `cause`, and the storage `key` when available.
+`AppRouterDiagnostic` is a union; narrow it by `code`. A parameter diagnostic contains `code`,
+`message`, `route`, `parameter`, and `operation` (`'serialize'` or `'deserialize'`), plus `index`,
+`cause`, and the storage `key` when available. An `UNKNOWN_PERSIST_KEY` diagnostic concerns no
+parameter and contains only `code`, `message`, and `key`.
 
 | Code                              | When                                                                              |
 | --------------------------------- | --------------------------------------------------------------------------------- |
 | `PARAM_DESERIALIZE_FAILED`        | A codec returned `null` or threw                                                  |
 | `PARAM_SERIALIZE_FAILED`          | A query codec returned a non-string or threw, or a repeated field got a non-array |
 | `STORED_VALUE_DESERIALIZE_FAILED` | A stored value failed to decode; it is ignored and the default applies            |
+| `UNKNOWN_PERSIST_KEY`             | `clearPersisted()` received a key that no route declares                          |
 
 When a codec throws, the error is in `cause`. For a repeated field, `index` names the failed item.
 
@@ -679,13 +702,15 @@ application router, but calls through it bypass the typed contract and the write
 
 ## Types
 
-| Type                      | Meaning                                     |
-| ------------------------- | ------------------------------------------- |
-| `RouteNode<P, Q, R>`      | A generated route node                      |
-| `PathParamsOf<Node>`      | The node's accumulated path values          |
-| `QueryParamsOf<Node>`     | The node's accumulated query values         |
-| `RouteStateOf<Node>`      | The `{ path, query }` value of `params()`   |
-| `RouteQueryPatch<Node>`   | The argument accepted by `patchQuery`       |
-| `ActiveRoute<Candidates>` | The value of an `activeRoute()` signal      |
-| `GeneratedAppRouter`      | The value of the `AppRouter` token          |
-| `AppRouterDiagnostic`     | One diagnostic passed to `diagnostics.warn` |
+| Type                            | Meaning                                     |
+| ------------------------------- | ------------------------------------------- |
+| `RouteNode<P, Q, R>`            | A generated route node                      |
+| `PathParamsOf<Node>`            | The node's accumulated path values          |
+| `QueryParamsOf<Node>`           | The node's accumulated query values         |
+| `RouteStateOf<Node>`            | The `{ path, query }` value of `params()`   |
+| `RouteQueryPatch<Node>`         | The argument accepted by `patchQuery`       |
+| `ActiveRoute<Candidates>`       | The value of an `activeRoute()` signal      |
+| `GeneratedAppRouter`            | The value of the `AppRouter` token          |
+| `AppRouterDiagnostic`           | One diagnostic passed to `diagnostics.warn` |
+| `AppRouterParameterDiagnostic`  | A diagnostic about one parameter's value    |
+| `AppRouterUnknownKeyDiagnostic` | An `UNKNOWN_PERSIST_KEY` diagnostic         |

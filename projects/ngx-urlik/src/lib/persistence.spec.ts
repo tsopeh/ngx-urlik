@@ -419,3 +419,77 @@ describe('path persistence', () => {
     );
   });
 });
+
+describe('clearPersisted', () => {
+  const fill = () => {
+    localStorage.setItem('ngx-urlik:pageSize', '12');
+    localStorage.setItem('ngx-urlik:tab:7', 'bio');
+    localStorage.setItem('theme', 'dark');
+    sessionStorage.setItem('ngx-urlik:tab:7', 'cast');
+    sessionStorage.setItem('ngx-urlik:tab', 'info');
+    sessionStorage.setItem('ngx-urlik:tabs', 'other');
+  };
+  const keys = (storage: Storage) =>
+    Array.from({ length: storage.length }, (_, i) => storage.key(i)).sort();
+
+  it('removes every prefixed key from both storages without an argument', () => {
+    const { app } = setup();
+    fill();
+
+    app.clearPersisted();
+    expect(keys(localStorage)).toEqual(['theme']);
+    expect(keys(sessionStorage)).toEqual([]);
+  });
+
+  it('touches only the storages it names', () => {
+    const { app } = setup();
+    fill();
+
+    app.clearPersisted({});
+    expect(keys(localStorage)).toHaveLength(3);
+    app.clearPersisted({ local: true, session: false });
+    expect(keys(localStorage)).toEqual(['theme']);
+    expect(keys(sessionStorage)).toHaveLength(3);
+  });
+
+  it('removes a key with all of its scopes', () => {
+    const { app } = setup();
+    fill();
+
+    app.clearPersisted({ session: ['tab'] });
+    expect(keys(sessionStorage)).toEqual(['ngx-urlik:tabs']);
+    expect(keys(localStorage)).toHaveLength(3);
+  });
+
+  it('reports a key that no route declares', () => {
+    const { app, diagnostics } = setup();
+    fill();
+
+    app.clearPersisted({ local: ['pageSise'] });
+    expect(keys(localStorage)).toHaveLength(3);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ code: 'UNKNOWN_PERSIST_KEY', key: 'pageSise' }),
+    ]);
+  });
+
+  it('keeps the current URL and saves it again at the next navigation', async () => {
+    const { app, router } = setup({ prefix: 'app.' });
+    await router.navigateByUrl('/items?pageSize=12');
+
+    app.clearPersisted();
+    expect(router.url).toBe('/items?pageSize=12');
+    expect(localStorage.getItem('app.pageSize')).toBeNull();
+    await app.routes.ITEMS.patchQuery({ search: 'elm' });
+    expect(localStorage.getItem('app.pageSize')).toBe('12');
+  });
+
+  it('does nothing when storage throws', () => {
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    const { app } = setup();
+    fill();
+
+    expect(() => app.clearPersisted()).not.toThrow();
+  });
+});

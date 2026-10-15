@@ -15,6 +15,8 @@ export {
   type ActiveRoute,
   type AppRouterDiagnostic,
   type AppRouterDiagnosticCode,
+  type AppRouterParameterDiagnostic,
+  type AppRouterUnknownKeyDiagnostic,
   type AppRouterDiagnostics,
   type GeneratedAppRouter,
   type PathParamsOf,

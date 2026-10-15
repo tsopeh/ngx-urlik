@@ -16,7 +16,7 @@ import type { CompiledRoute, RuntimeParam } from './compiled-route';
 import { activePathParams, getPrimaryActiveChain } from './compiled-route';
 import { isEqual } from './is-equal';
 import type { PersistOptions, UrlParamCodec } from './params';
-import { ReportParameterFailure } from './route-diagnostics';
+import { ReportParameterFailure, WarnDiagnostic } from './route-diagnostics';
 import { createParameterSerializer } from './route-params-runtime';
 import { routeConfigBrand } from './route-symbols';
 
@@ -57,6 +57,16 @@ function createStorageAccess(browser: boolean) {
         return undefined;
       }
     },
+    removeWhere(kind: PersistOptions['storage'], matches: (key: string) => boolean): void {
+      try {
+        const store = get(kind);
+        if (!store) return;
+        const keys = Array.from({ length: store.length }, (_, i) => store.key(i));
+        for (const key of keys) if (key !== null && matches(key)) store.removeItem(key);
+      } catch {
+        // Clearing is best effort, like saving.
+      }
+    },
     write(kind: PersistOptions['storage'], key: string, value: string): void {
       try {
         get(kind)?.setItem(key, value);
@@ -79,9 +89,16 @@ function activeCompiledRoute(root: ActivatedRouteSnapshot) {
   return undefined;
 }
 
+export type ClearPersistedOptions = {
+  readonly local?: boolean | readonly string[];
+  readonly session?: boolean | readonly string[];
+};
+
 export function createPersistence(
   prefix: string,
+  persistKeys: ReadonlySet<string>,
   report: ReportParameterFailure,
+  warn: WarnDiagnostic,
   browser: boolean,
   injector: EnvironmentInjector,
 ) {
@@ -160,6 +177,29 @@ export function createPersistence(
         if (typeof text === 'string') fills[param.name] = text;
       }
       return Object.keys(fills).length ? fills : undefined;
+    },
+
+    /** Removes stored values: every prefixed key, or the listed keys with all of their scopes. */
+    clear(options: ClearPersistedOptions = { local: true, session: true }): void {
+      for (const kind of ['local', 'session'] as const) {
+        const selection = options[kind];
+        if (!selection) continue;
+        if (selection !== true)
+          for (const key of selection)
+            if (!persistKeys.has(key))
+              warn({
+                code: 'UNKNOWN_PERSIST_KEY',
+                key,
+                message: `clearPersisted(): no route persists the key '${key}'`,
+              });
+        storage.removeWhere(kind, (stored) =>
+          selection === true
+            ? stored.startsWith(prefix)
+            : selection.some(
+                (key) => stored === prefix + key || stored.startsWith(`${prefix}${key}:`),
+              ),
+        );
+      }
     },
 
     /** Saves the committed URL text of every persisted field of the active chain. */

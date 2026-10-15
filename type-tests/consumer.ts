@@ -407,3 +407,11 @@ defineAppRouter(SeasonRouteNames, {
     },
   ],
 });
+
+persistedRouter.clearPersisted();
+persistedRouter.clearPersisted({ local: ['pageSize'], session: true });
+// @ts-expect-error storages take true, false, or a list of keys
+persistedRouter.clearPersisted({ local: 'pageSize' });
+declare const diagnostic: import('ngx-urlik').AppRouterDiagnostic;
+if (diagnostic.code === 'UNKNOWN_PERSIST_KEY') diagnostic.key satisfies string;
+else diagnostic.route satisfies string;

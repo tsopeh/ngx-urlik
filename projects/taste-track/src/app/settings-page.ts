@@ -31,7 +31,8 @@ import { ThemeService, type ThemePreference } from './theme';
         <h2>Reset demo data</h2>
         <p>
           Restore the original fictional catalog, personal collection, ratings, counts, and
-          activity. Your theme will remain unchanged.
+          activity, and forget the remembered page size and seasons. Your theme will remain
+          unchanged.
         </p>
         <button
           class="button danger-button"
@@ -56,6 +57,7 @@ export class SettingsPage {
     this.resetting.set(true);
     try {
       await this.repository.reset();
+      this.routes.clearPersisted();
       await this.routes.routes.MOVIES.navigate();
     } finally {
       this.resetting.set(false);
