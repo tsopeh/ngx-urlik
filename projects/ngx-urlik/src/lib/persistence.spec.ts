@@ -336,6 +336,27 @@ describe('query persistence', () => {
     );
   });
 
+  it("rejects a persist key that contains ':'", () => {
+    const invalid = [
+      {
+        path: 'shows/:showId',
+        routeName: RouteNames.ITEMS,
+        pathParam: { codec: stringCodec(), persist: { key: 'show:id', storage: 'local' } },
+        queryParams: {
+          tab: queryParam({
+            codec: stringCodec(),
+            defaultValue: '',
+            persist: { key: 'tab:', storage: 'local' } as never,
+          }),
+        },
+      },
+    ] as unknown as RouteDefinitions;
+
+    expect(() => defineAppRouter(RouteNames, { routes: invalid as never })).toThrowError(
+      /pathParam 'showId' persist key 'show:id' must not contain ':'[\s\S]*query parameter 'tab' persist key 'tab:' must not contain ':'/,
+    );
+  });
+
   it('ignores persist in globalQueryParams', async () => {
     localStorage.setItem('ngx-urlik:pageSize', '48');
     const { app, router } = setup();

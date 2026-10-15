@@ -305,6 +305,12 @@ repeatedQueryParam({
   // @ts-expect-error repeated fields cannot persist
   persist: { key: 'tags', storage: 'local' },
 });
+// @ts-expect-error a persist key cannot contain ':', which separates scope values
+queryParam({
+  codec: numberCodec(),
+  defaultValue: 1,
+  persist: { key: 'page:size', storage: 'local' },
+});
 // @ts-expect-error storage is 'local' or 'session'
 queryParam({
   codec: numberCodec(),
@@ -352,6 +358,20 @@ const seasons = defineAppRouter(SeasonRouteNames, {
 });
 declare const seasonRouter: TokenValue<typeof seasons.AppRouter>;
 seasonRouter.routes.SEASON.params().path.season satisfies number;
+
+defineAppRouter(SeasonRouteNames, {
+  routes: [
+    {
+      path: 'seasons/:season',
+      routeName: SeasonRouteNames.SEASON,
+      pathParam: {
+        codec: numberCodec(),
+        // @ts-expect-error a persist key cannot contain ':'
+        persist: { key: 'show:season', storage: 'session' },
+      },
+    },
+  ],
+});
 
 defineAppRouter(SeasonRouteNames, {
   routes: [

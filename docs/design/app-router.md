@@ -521,7 +521,9 @@ checks all of them.
 
 The storage key is `${prefix}${key}`, or `${prefix}${key}:${values}` with a scope. Each scope value
 is the parameter's raw path segment passed through `encodeURIComponent`, and the values are joined
-with `:`. The prefix applies to the whole router and defaults to `'ngx-urlik:'`:
+with `:`. A key must not contain `:` itself, or `clearPersisted({ local: ['a'] })` could not tell
+the scopes of `a` from a key named `a:b`. TypeScript rejects a literal key with `:`, and
+`defineAppRouter()` rejects any such key at runtime. The prefix applies to the whole router and defaults to `'ngx-urlik:'`:
 
 ```ts
 defineAppRouter(RouteNames, { routes, persistence: { prefix: 'shop:' } });

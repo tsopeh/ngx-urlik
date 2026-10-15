@@ -2,6 +2,7 @@ import type { Signal } from '@angular/core';
 import type { ActivatedRouteSnapshot, Route, UrlTree } from '@angular/router';
 import type {
   ArrayQueryParamDefinition,
+  PersistKeyCheck,
   PersistOptions,
   QueryParamDefinition,
   UrlParamCodec,
@@ -121,9 +122,15 @@ type ScopeCheck<C, Names extends string> = C extends {
       ? unknown
       : { readonly persist?: { readonly scope?: readonly Names[] } }
   : unknown;
+type KeyCheck<C> = C extends { readonly persist?: { readonly key: infer K extends string } }
+  ? K extends PersistKeyCheck<K>
+    ? unknown
+    : { readonly persist?: { readonly key: never } }
+  : unknown;
 type StrictCodecOption<C, ScopeNames extends string> = CodecOption &
   Record<Exclude<keyof C, 'codec' | 'persist'>, never> &
-  ScopeCheck<C, ScopeNames>;
+  ScopeCheck<C, ScopeNames> &
+  KeyCheck<C>;
 type KeyedPathConfig<
   Names extends string,
   Supplied,

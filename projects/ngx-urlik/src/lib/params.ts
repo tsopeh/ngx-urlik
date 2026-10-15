@@ -13,6 +13,7 @@ type NonNullish<T> = null extends T ? never : undefined extends T ? never : unkn
  * season per show.
  */
 export interface PersistOptions<Scope extends string = string> {
+  /** Must not contain `:`, which separates the key from its scope values. */
   readonly key: string;
   readonly storage: 'local' | 'session';
   readonly scope?: readonly Scope[];
@@ -49,15 +50,19 @@ type QueryOptions<T, Required extends boolean> = {
   defaultValue?: DefaultValue<T>;
 };
 
+/** A literal persist key that contains `:` becomes `never`, so TypeScript rejects it. */
+export type PersistKeyCheck<Key extends string> = Key extends `${string}:${string}` ? never : Key;
+
 // Only a field with a default can persist: the URL always holds its value, and `null` has no URL text.
 export function queryParam<
   T,
   const Required extends boolean = false,
   const Scope extends string = never,
+  const Key extends string = string,
 >(
   options: QueryOptions<T, Required> & {
     defaultValue: DefaultValue<T>;
-    persist?: PersistOptions<Scope>;
+    persist?: PersistOptions<Scope> & { readonly key: Key & PersistKeyCheck<Key> };
   } & NonNullish<T>,
 ): QueryParamDefinition<T, Required, true, Scope>;
 export function queryParam<T, const Required extends boolean = false>(

@@ -120,6 +120,10 @@ function persistProblems(persist: unknown, scopeNames: readonly string[]): strin
   const problems: string[] = [];
   if (typeof key !== 'string' || key === '')
     problems.push('persist key must be a non-empty string');
+  else if (key.includes(':'))
+    problems.push(
+      `persist key '${key}' must not contain ':', which separates the key from its scope values`,
+    );
   if (storage !== 'local' && storage !== 'session')
     problems.push("persist storage must be 'local' or 'session'");
   if (scope !== undefined && !Array.isArray(scope)) problems.push('persist scope must be an array');
