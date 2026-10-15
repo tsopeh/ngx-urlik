@@ -28,10 +28,11 @@ redirects to the URL with the value filled in. Its `runGuardsAndResolvers` is wr
 guards also run on a reused route when a value needs restoring.
 
 A named route whose trailing placeholders persist gets unnamed sibling routes right after it, one
-for each count of missing placeholders, at the shorter path with `pathMatch: 'full'`. Their
-`canMatch` guard redirects to the full path when the missing values are stored, and otherwise
-fails, so Angular keeps matching. Angular does not run `canMatch` on a `redirectTo` route, so these
-routes have empty `children` and redirect from the guard instead.
+for each count of missing placeholders. Each has a `matcher` that accepts exactly the shorter path
+when the missing values are stored, and a `redirectTo` with the full path. Angular forbids
+`canMatch` next to `redirectTo` but allows a `matcher`, and a matcher runs outside an injection
+context, so it reads storage without `inject()`. When a value is missing, the matcher returns
+`null`, and Angular keeps matching.
 
 Put router options on `defineAppRouter(RouteNames, { routerConfig })`. ngx-urlik keeps the
 supplied `paramsInheritanceStrategy` and reads path values from the activated route chain.

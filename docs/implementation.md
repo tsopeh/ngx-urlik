@@ -44,10 +44,19 @@ module for a stored value before it falls back to a default. `route-node.ts` sav
 chain's persisted values on each `NavigationEnd`.
 
 For a named route with persisted trailing placeholders, `compileRoutes` inserts unnamed routes
-right after it, one per count of missing placeholders. Their `canMatch` guard, `restorePathGuard`,
-reads ancestor values by position from the navigation's extracted URL, because Angular passes it
-only the segments below the parent. It returns a `RedirectCommand` with the stored values appended,
-or `false`. `clearPersisted()` on the router removes keys through the same storage wrapper.
+right after it, one per count of missing placeholders, each with `restorePathMatcher` and a static
+`redirectTo` of the route's own path. Angular calls the matcher with the segments left at this
+level and their segment group. The group's earlier segments, and the segments of the groups above
+it, are the ones the ancestors consumed, so the matcher reads ancestor values from them by
+position. It returns the stored values as positional parameters, which `redirectTo` fills in.
+
+A matcher has no injection context, so it cannot ask for `PLATFORM_ID`. `defineAppRouter()` creates
+one `createStorageGate()` per definition, and an environment initializer registers each injector's
+platform with it. The matchers read storage only after a browser has registered and while no
+server has. A server process registers only servers, so Node's global `localStorage` is never
+read and one request cannot turn reads on for another. A process that renders on the server and
+also runs a browser injector of the same definition, such as a test, never restores a path value.
+`clearPersisted()` on the router removes keys through the same storage wrapper.
 
 ## Write
 

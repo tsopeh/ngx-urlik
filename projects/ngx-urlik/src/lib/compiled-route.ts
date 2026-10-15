@@ -10,9 +10,10 @@ import { isEqual } from './is-equal';
 import type { AnyQueryParamDefinition, UrlParamCodec } from './params';
 import { stringCodec } from './params';
 import {
+  PathRestoreReader,
   PersistenceToken,
   persistOf,
-  restorePathGuard,
+  restorePathMatcher,
   restoreQueryGuard,
   runGuardsWhenRestoring,
 } from './persistence';
@@ -50,6 +51,7 @@ const defaultPathCodec = stringCodec();
 export function compileRoutes(
   definitions: readonly RouteDefinition[],
   persistence: PersistenceToken,
+  readStoredPath: PathRestoreReader,
 ): {
   readonly routes: Routes;
   readonly catalog: ReadonlyMap<string, CompiledRoute>;
@@ -153,30 +155,27 @@ export function compileRoutes(
       (angular as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
       if (routeName) catalog.set(routeName, info);
       if (children) angular.children = compile(children, info, `${at}.children`);
-      return [angular, ...restoreRoutes(info, persistence)];
+      return [angular, ...restoreRoutes(info, readStoredPath)];
     });
 
   return { routes: compile(definitions), catalog, persistKeys };
 }
 
 /**
- * For each count of persisted trailing placeholders that a URL can lack, a route at the shorter
- * path that redirects to the full path when every missing value is stored.
+ * For each count of persisted trailing placeholders that a URL can lack, a route that matches the
+ * shorter path when every missing value is stored and redirects to the full path.
  */
-function restoreRoutes(info: CompiledRoute, persistence: PersistenceToken): Route[] {
+function restoreRoutes(info: CompiledRoute, read: PathRestoreReader): Route[] {
   const own = info.pathParams.filter((param) => param.owner === info);
   const persisted: RuntimeParam[] = [];
   for (let i = own.length - 1; i >= 0 && persistOf(own[i]); i--) persisted.unshift(own[i]);
-  return persisted.map((_, index) => {
-    const missing = persisted.slice(index);
-    const kept = info.segments.slice(0, info.segments.length - missing.length);
-    return {
-      path: kept.map((s) => (s.kind === 'static' ? s.value : `:${s.name}`)).join('/'),
-      pathMatch: 'full',
-      canMatch: [restorePathGuard(persistence, info, missing)],
-      children: [],
-    };
-  });
+  const redirectTo = info.segments
+    .map((s) => (s.kind === 'static' ? s.value : `:${s.name}`))
+    .join('/');
+  return persisted.map((_, index) => ({
+    matcher: restorePathMatcher(info, persisted.slice(index), read),
+    redirectTo,
+  }));
 }
 
 /** Rejects a match whose path values fail their codecs, so Angular tries the next route. */

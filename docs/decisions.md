@@ -200,7 +200,7 @@ else default.
 
 A path value follows the same rule. A URL without the remembered season, such as
 `/shows/tv_1/seasons`, redirects to the season's own URL instead of rendering it under the shorter
-address. With nothing stored, the shorter URL keeps its old meaning, so persistence never turns a
+address. The redirect happens while Angular matches routes, so it is a single navigation. With nothing stored, the shorter URL keeps its old meaning, so persistence never turns a
 not-found page into a different page by accident, and an app route declared earlier at that path
 still wins.
 

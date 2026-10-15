@@ -5,6 +5,7 @@ import {
   InjectionToken,
   makeEnvironmentProviders,
   PLATFORM_ID,
+  provideEnvironmentInitializer,
 } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import {
@@ -25,7 +26,13 @@ import {
 import { compileRoutes } from './compiled-route';
 import { createAppRouter } from './route-node';
 import { createParameterReader } from './route-params-runtime';
-import { createPersistence, defaultPersistencePrefix, Persistence } from './persistence';
+import {
+  createPathRestoreReader,
+  createPersistence,
+  createStorageGate,
+  defaultPersistencePrefix,
+  Persistence,
+} from './persistence';
 
 export type {
   AppRouterDiagnostic,
@@ -91,7 +98,12 @@ export function defineAppRouter<
   const reader = createParameterReader(report);
   const prefix = options.persistence?.prefix ?? defaultPersistencePrefix;
   const PersistenceRuntime = new InjectionToken<Persistence>('AppRouter persistence');
-  const { routes, catalog, persistKeys } = compileRoutes(definitions, PersistenceRuntime);
+  const storageGate = createStorageGate();
+  const { routes, catalog, persistKeys } = compileRoutes(
+    definitions,
+    PersistenceRuntime,
+    createPathRestoreReader(prefix, report, storageGate),
+  );
   const AppRouter = new InjectionToken<GeneratedAppRouter<E, R>>('AppRouter');
 
   function provideAppRouter(...features: ForwardedRouterFeature[]): EnvironmentProviders {
@@ -104,6 +116,9 @@ export function defineAppRouter<
         routes,
         ...(options.routerConfig ? [withRouterConfig(options.routerConfig)] : []),
         ...features,
+      ),
+      provideEnvironmentInitializer(() =>
+        storageGate.register(isPlatformBrowser(inject(PLATFORM_ID))),
       ),
       {
         provide: PersistenceRuntime,

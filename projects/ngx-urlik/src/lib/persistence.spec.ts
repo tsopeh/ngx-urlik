@@ -1,6 +1,14 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { CanActivateFn, Router, RouterOutlet } from '@angular/router';
+import {
+  CanActivateFn,
+  Event,
+  NavigationCancel,
+  NavigationEnd,
+  NavigationStart,
+  Router,
+  RouterOutlet,
+} from '@angular/router';
 import { AppRouterDiagnostic, defineAppRouter } from './app-router';
 import { numberCodec, queryParam, repeatedQueryParam, stringCodec } from './params';
 import type { RouteDefinitions } from './route-definition';
@@ -313,6 +321,7 @@ function setupPath() {
             },
             component: Page,
           },
+          { path: 'panel', outlet: 'side', component: Page },
         ],
       },
       { path: 'pair/:a', component: PairStart },
@@ -354,6 +363,28 @@ describe('path persistence', () => {
     expect(app.routes.SEASON.params().path).toEqual({ showId: 'x', season: 3 });
   });
 
+  it('restores in a single navigation', async () => {
+    sessionStorage.setItem('ngx-urlik:season:x', '3');
+    const { router } = setupPath();
+    const events: Event[] = [];
+    router.events.subscribe((event) => events.push(event));
+
+    await router.navigateByUrl('/shows/x/seasons');
+    expect(events.filter((event) => event instanceof NavigationStart)).toHaveLength(1);
+    expect(events.some((event) => event instanceof NavigationCancel)).toBe(false);
+    expect(events.find((event) => event instanceof NavigationEnd)?.urlAfterRedirects).toBe(
+      '/shows/x/seasons/3',
+    );
+  });
+
+  it('reads ancestor values from a URL with a named outlet', async () => {
+    sessionStorage.setItem('ngx-urlik:season:x', '3');
+    const { router } = setupPath();
+
+    await router.navigateByUrl('/shows/x/(seasons//side:panel)');
+    expect(router.url).toBe('/shows/x/(seasons/3//side:panel)');
+  });
+
   it('lets Angular keep matching when nothing usable is stored', async () => {
     sessionStorage.setItem('ngx-urlik:season:x', '3');
     sessionStorage.setItem('ngx-urlik:season:y', 'first');
@@ -371,6 +402,16 @@ describe('path persistence', () => {
         key: 'ngx-urlik:season:y',
       }),
     );
+  });
+
+  it('keeps matching when storage throws', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    const { router, leaf } = setupPath();
+
+    expect(await router.navigateByUrl('/shows/x/seasons')).toBe(true);
+    expect(leaf()).toBe(NotFound);
   });
 
   it('restores each missing placeholder of a trailing run', async () => {

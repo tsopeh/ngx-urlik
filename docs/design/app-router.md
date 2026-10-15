@@ -578,7 +578,7 @@ A show page can reopen the season a user watched last:
 }
 ```
 
-After a visit to `/shows/tv_1/seasons/2`, a navigation to `/shows/tv_1/seasons` redirects to
+After a visit to `/shows/tv_1/seasons/2`, a navigation to `/shows/tv_1/seasons` arrives at
 `/shows/tv_1/seasons/2`. The query and fragment stay. Without a stored season for that show, the
 shorter URL matches what it matched before: an app route declared earlier at that path, the next
 matching route, or the not-found page.
@@ -590,15 +590,17 @@ and `/pair/5` are both restored. A placeholder's scope may name only placeholder
 route chain, because the shorter URL must already contain them.
 
 For each persisted placeholder, `defineAppRouter()` adds an unnamed Angular route right after the
-named one. Its path is the named route's own path without the missing placeholders, with
-`pathMatch: 'full'`. Its `canMatch` guard reads the missing values from storage. When each one is
-stored and decodes, the guard redirects to the full URL; otherwise the route does not match, and
-Angular continues with the next route. The redirect affects history as the query redirect does.
-These routes do not appear in `AppRouter.routes`.
+named one, with a `matcher` and a `redirectTo` of the named route's own path. The matcher accepts
+exactly the own path without the missing placeholders, and only when each missing value is stored
+and decodes. It hands the stored values to `redirectTo`, so Angular rewrites the URL while it
+matches routes: the restore is part of the same navigation, with one `NavigationStart` and no
+`NavigationCancel`, and `urlAfterRedirects` is the full URL. When a value is missing, the route
+does not match, and Angular continues with the next route. These routes do not appear in
+`AppRouter.routes`.
 
-The guard reads ancestor path values from the URL that started the navigation, because Angular
-passes `canMatch` only the segments below the parent route. If an earlier redirect in the same
-navigation led to the shorter URL, those values are unknown, and nothing is restored.
+The matcher reads ancestor path values, such as `showId` for a scope, from the segments that the
+ancestor routes consumed. A redirect from a sibling route earlier in the same navigation turns
+Angular's redirects off at that level, so the shorter URL it produces is not restored.
 
 ### Save
 

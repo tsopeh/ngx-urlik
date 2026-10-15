@@ -2,15 +2,13 @@ import { EnvironmentInjector, inject, InjectionToken, runInInjectionContext } fr
 import {
   ActivatedRouteSnapshot,
   CanActivateFn,
-  CanMatchFn,
   convertToParamMap,
   ParamMap,
-  PRIMARY_OUTLET,
   RedirectCommand,
   Router,
   RunGuardsAndResolvers,
+  UrlMatcher,
   UrlSegment,
-  UrlSegmentGroup,
 } from '@angular/router';
 import type { CompiledRoute, RuntimeParam } from './compiled-route';
 import { activePathParams, getPrimaryActiveChain } from './compiled-route';
@@ -37,10 +35,30 @@ const decodes = (param: RuntimeParam, raw: string): boolean => {
   }
 };
 
+/**
+ * Decides whether a route matcher may read storage. Angular calls matchers outside an injection
+ * context, so they cannot ask for `PLATFORM_ID`. Every injector that provides the router registers
+ * its platform. Reads are allowed after a browser registers and as long as no server has. A
+ * server process registers only servers, so a request can never turn reads on for another.
+ */
+export function createStorageGate() {
+  let browser = false;
+  let server = false;
+  return {
+    register(isBrowser: boolean): void {
+      if (isBrowser) browser = true;
+      else server = true;
+    },
+    open: (): boolean => browser && !server && typeof window !== 'undefined',
+  };
+}
+
+export type StorageGate = ReturnType<typeof createStorageGate>;
+
 /** Browser storage behind try/catch. `undefined` from a read means the storage is unavailable. */
-function createStorageAccess(browser: boolean) {
+function createStorageAccess(browser: () => boolean) {
   const get = (kind: PersistOptions['storage']): Storage | null => {
-    if (!browser) return null;
+    if (!browser()) return null;
     try {
       return (kind === 'local' ? globalThis.localStorage : globalThis.sessionStorage) ?? null;
     } catch {
@@ -77,34 +95,14 @@ function createStorageAccess(browser: boolean) {
   };
 }
 
-/** The deepest compiled route of the primary chain and its snapshot. */
-function activeCompiledRoute(root: ActivatedRouteSnapshot) {
-  const chain = getPrimaryActiveChain(root);
-  for (let i = chain.length - 1; i >= 0; i--) {
-    const info = (chain[i].routeConfig as Record<PropertyKey, unknown> | null)?.[
-      routeConfigBrand
-    ] as CompiledRoute | undefined;
-    if (info) return { info, snapshot: chain[i] };
-  }
-  return undefined;
-}
+type StorageAccess = ReturnType<typeof createStorageAccess>;
 
-export type ClearPersistedOptions = {
-  readonly local?: boolean | readonly string[];
-  readonly session?: boolean | readonly string[];
-};
-
-export function createPersistence(
+/** Storage keys and stored-value reads shared by the router instance and the path matchers. */
+function createStoredValues(
   prefix: string,
-  persistKeys: ReadonlySet<string>,
   report: ReportParameterFailure,
-  warn: WarnDiagnostic,
-  browser: boolean,
-  injector: EnvironmentInjector,
+  storage: StorageAccess,
 ) {
-  const storage = createStorageAccess(browser);
-  const { serializeQuery } = createParameterSerializer(injector, report);
-
   /** `${prefix}${key}`, followed by each scoped path value when the field has a scope. */
   const storageKey = (persist: PersistOptions, path: ParamMap): string | undefined => {
     const values = (persist.scope ?? []).map((name) => path.get(name));
@@ -130,6 +128,51 @@ export function createPersistence(
     return null;
   };
 
+  return { storageKey, readStored };
+}
+
+/** Reads stored path values for the generated restore routes, without an injection context. */
+export function createPathRestoreReader(
+  prefix: string,
+  report: ReportParameterFailure,
+  gate: StorageGate,
+) {
+  const { readStored } = createStoredValues(prefix, report, createStorageAccess(gate.open));
+  return (param: RuntimeParam, path: ParamMap): string | undefined =>
+    readStored(param, path) ?? undefined;
+}
+
+export type PathRestoreReader = ReturnType<typeof createPathRestoreReader>;
+
+/** The deepest compiled route of the primary chain and its snapshot. */
+function activeCompiledRoute(root: ActivatedRouteSnapshot) {
+  const chain = getPrimaryActiveChain(root);
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const info = (chain[i].routeConfig as Record<PropertyKey, unknown> | null)?.[
+      routeConfigBrand
+    ] as CompiledRoute | undefined;
+    if (info) return { info, snapshot: chain[i] };
+  }
+  return undefined;
+}
+
+export type ClearPersistedOptions = {
+  readonly local?: boolean | readonly string[];
+  readonly session?: boolean | readonly string[];
+};
+
+export function createPersistence(
+  prefix: string,
+  persistKeys: ReadonlySet<string>,
+  report: ReportParameterFailure,
+  warn: WarnDiagnostic,
+  browser: boolean,
+  injector: EnvironmentInjector,
+) {
+  const storage = createStorageAccess(() => browser);
+  const { storageKey, readStored } = createStoredValues(prefix, report, storage);
+  const { serializeQuery } = createParameterSerializer(injector, report);
+
   /** Persisted query fields of the active chain whose URL value is missing or fails to decode. */
   const pendingQuery = (root: ActivatedRouteSnapshot) => {
     const active = activeCompiledRoute(root);
@@ -144,10 +187,6 @@ export function createPersistence(
   };
 
   return {
-    /** The stored URL text of a persisted value if it decodes. */
-    storedText: (param: RuntimeParam, path: ParamMap): string | undefined =>
-      readStored(param, path) ?? undefined,
-
     /** The stored value of a persisted field, decoded, or `undefined`. */
     restore(param: RuntimeParam, path: ParamMap): unknown {
       const raw = readStored(param, path);
@@ -222,52 +261,49 @@ export function createPersistence(
 }
 
 /**
- * Matches a URL that lacks `missing`, the persisted trailing placeholders of `info`, when each of
- * them is stored, and redirects to the URL with the stored values appended. Otherwise the route
- * does not match and Angular tries the next one.
+ * Matches the path of `info` without `missing`, its persisted trailing placeholders, when each of
+ * them is stored. The match supplies the stored values as positional parameters, so a `redirectTo`
+ * with the full path fills them in. Otherwise the route does not match and Angular tries the next.
  */
-export function restorePathGuard(
-  token: PersistenceToken,
+export function restorePathMatcher(
   info: CompiledRoute,
   missing: readonly RuntimeParam[],
-): CanMatchFn {
-  return () => {
-    const router = inject(Router);
-    const persistence = inject(token);
-    // canMatch sees only segments below its parent, so read ancestor values from the whole URL.
-    // After an earlier redirect in the same navigation this URL is stale, and nothing is restored.
-    const url = router.currentNavigation()?.extractedUrl;
-    if (!url) return false;
-    const groups: UrlSegmentGroup[] = [];
-    for (let group: UrlSegmentGroup | undefined = url.root; group;) {
-      groups.push(group);
-      group = group.children[PRIMARY_OUTLET];
-    }
-    const segments = groups.flatMap((group) => group.segments);
-    const known = info.fullSegments.slice(0, info.fullSegments.length - missing.length);
-    if (
-      segments.length !== known.length ||
-      known.some((segment, i) => segment.kind === 'static' && segment.value !== segments[i].path)
-    )
-      return false;
+  read: PathRestoreReader,
+): UrlMatcher {
+  const own = info.segments;
+  const kept = info.fullSegments
+    .slice(info.fullSegments.length - own.length)
+    .slice(0, -missing.length);
+  const ancestorCount = info.fullSegments.length - own.length;
+  return (segments, group) => {
+    if (group.hasChildren() || segments.length !== kept.length) return null;
+    // Angular passes the segments left at this level. The segments before them in the group, and
+    // in the groups above it, are the ones the ancestors consumed.
+    const ancestors = group.segments.slice(0, group.segments.length - segments.length);
+    for (let parent = group.parent; parent; parent = parent.parent)
+      ancestors.unshift(...parent.segments);
+    if (ancestors.length !== ancestorCount) return null;
     const path: Record<string, string> = {};
-    known.forEach((segment, i) => {
-      if (segment.kind === 'param') path[segment.name] = segments[i].path;
+    info.fullSegments.slice(0, ancestorCount).forEach((segment, i) => {
+      if (segment.kind === 'param') path[segment.name] = ancestors[i].path;
     });
+    const posParams: Record<string, UrlSegment> = {};
+    for (const [i, segment] of kept.entries()) {
+      if (segment.kind === 'static') {
+        if (segment.value !== segments[i].path) return null;
+      } else {
+        if (!decodes(segment.param, segments[i].path)) return null;
+        path[segment.name] = segments[i].path;
+        posParams[segment.name] = segments[i];
+      }
+    }
     for (const param of missing) {
-      const text = persistence.storedText(param, convertToParamMap(path));
-      if (text === undefined) return false;
+      const text = read(param, convertToParamMap(path));
+      if (text === undefined) return null;
       path[param.name] = text;
+      posParams[param.name] = new UrlSegment(text, {});
     }
-    const tree = router.parseUrl(router.serializeUrl(url));
-    let last = tree.root;
-    while (last.children[PRIMARY_OUTLET]) last = last.children[PRIMARY_OUTLET];
-    if (last === tree.root) {
-      last = new UrlSegmentGroup([], {});
-      tree.root.children[PRIMARY_OUTLET] = last;
-    }
-    last.segments.push(...missing.map((param) => new UrlSegment(path[param.name], {})));
-    return new RedirectCommand(tree);
+    return { consumed: segments, posParams };
   };
 }
 

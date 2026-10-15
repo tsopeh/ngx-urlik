@@ -7,6 +7,7 @@ import { numberCodec, queryParam, stringCodec } from './params';
 
 enum RouteNames {
   ITEM = 'ITEM',
+  LIST = 'LIST',
 }
 
 // The page reads the router through a token so its class can be declared before the router.
@@ -16,6 +17,12 @@ const ItemLabel = new InjectionToken<() => string>('ItemLabel');
 class ItemPage {
   protected readonly label = inject(ItemLabel);
 }
+
+@Component({ selector: 'list-page', template: '<p>list</p>' })
+class ListPage {}
+
+@Component({ selector: 'not-found-page', template: '<p>not found</p>' })
+class NotFoundPage {}
 
 @Component({ selector: 'app-root', imports: [RouterOutlet], template: '<router-outlet />' })
 class App {}
@@ -36,6 +43,13 @@ const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
       },
       component: ItemPage,
     },
+    {
+      path: 'lists/:listId',
+      routeName: RouteNames.LIST,
+      pathParam: { codec: stringCodec(), persist: { key: 'list', storage: 'local' } },
+      component: ListPage,
+    },
+    { path: '**', component: NotFoundPage },
   ],
 });
 
@@ -84,5 +98,12 @@ describe('server rendering', () => {
 
     expect(html).toContain('<p>item 7 on info as grid</p>');
     expect(localStorage.getItem('ngx-urlik:view')).toBe('list');
+  });
+
+  it('does not restore a path value, even though Node or the test DOM has localStorage', async () => {
+    localStorage.setItem('ngx-urlik:list', 'groceries');
+    const html = await render('http://localhost/lists');
+
+    expect(html).toContain('<p>not found</p>');
   });
 });
