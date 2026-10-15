@@ -11,56 +11,39 @@ export interface QueryParamDefinition<
   T,
   Required extends boolean = false,
   Defaulted extends boolean = false,
-  Reset extends string = string,
 > {
   readonly kind: 'query';
   readonly mode: 'scalar';
   readonly codec: UrlParamCodec<T>;
   readonly required: Required;
   readonly defaultValue?: DefaultValue<T>;
-  readonly resetWhen?: readonly Reset[];
 }
 
-export interface ArrayQueryParamDefinition<
-  T,
-  Required extends boolean = false,
-  Reset extends string = string,
-> {
+export interface ArrayQueryParamDefinition<T, Required extends boolean = false> {
   readonly kind: 'query';
   readonly mode: 'repeated';
   readonly codec: UrlParamCodec<T>;
   readonly required: Required;
   readonly defaultValue?: DefaultValue<readonly T[]>;
-  readonly resetWhen?: readonly Reset[];
 }
 
 export type AnyQueryParamDefinition =
   QueryParamDefinition<unknown, boolean, boolean> | ArrayQueryParamDefinition<unknown, boolean>;
 
-type QueryOptions<T, Required extends boolean, Reset extends string> = {
+type QueryOptions<T, Required extends boolean> = {
   codec: UrlParamCodec<T>;
   required?: Required;
   defaultValue?: DefaultValue<T>;
-  /** Other query fields of the route chain; changing one resets this field to its default. */
-  resetWhen?: readonly Reset[];
 };
 
-export function queryParam<
-  T,
-  const Required extends boolean = false,
-  const Reset extends string = never,
->(
-  options: QueryOptions<T, Required, Reset> & { defaultValue: DefaultValue<T> } & NonNullish<T>,
-): QueryParamDefinition<T, Required, true, Reset>;
-export function queryParam<
-  T,
-  const Required extends boolean = false,
-  const Reset extends string = never,
->(
-  options: QueryOptions<T, Required, Reset> & NonNullish<T>,
-): QueryParamDefinition<T, Required, false, Reset>;
 export function queryParam<T, const Required extends boolean = false>(
-  options: QueryOptions<T, Required, string> & NonNullish<T>,
+  options: QueryOptions<T, Required> & { defaultValue: DefaultValue<T> } & NonNullish<T>,
+): QueryParamDefinition<T, Required, true>;
+export function queryParam<T, const Required extends boolean = false>(
+  options: QueryOptions<T, Required> & NonNullish<T>,
+): QueryParamDefinition<T, Required, false>;
+export function queryParam<T, const Required extends boolean = false>(
+  options: QueryOptions<T, Required> & NonNullish<T>,
 ): QueryParamDefinition<T, Required, boolean> {
   return {
     kind: 'query',
@@ -68,33 +51,25 @@ export function queryParam<T, const Required extends boolean = false>(
     codec: options.codec,
     required: options.required ?? false,
     defaultValue: options.defaultValue,
-    resetWhen: options.resetWhen,
   } as QueryParamDefinition<T, Required, boolean>;
 }
 
-type ArrayQueryOptions<T, Required extends boolean, Reset extends string> = {
+type ArrayQueryOptions<T, Required extends boolean> = {
   codec: UrlParamCodec<T>;
   required?: Required;
   defaultValue?: DefaultValue<readonly T[]>;
-  /** Other query fields of the route chain; changing one resets this field to its default. */
-  resetWhen?: readonly Reset[];
 };
 
-export function repeatedQueryParam<
-  T,
-  const Required extends boolean = false,
-  const Reset extends string = never,
->(
-  options: ArrayQueryOptions<T, Required, Reset> & NonNullish<T>,
-): ArrayQueryParamDefinition<T, Required, Reset> {
+export function repeatedQueryParam<T, const Required extends boolean = false>(
+  options: ArrayQueryOptions<T, Required> & NonNullish<T>,
+): ArrayQueryParamDefinition<T, Required> {
   return {
     kind: 'query',
     mode: 'repeated',
     codec: options.codec,
     required: options.required ?? false,
     defaultValue: options.defaultValue,
-    resetWhen: options.resetWhen,
-  } as ArrayQueryParamDefinition<T, Required, Reset>;
+  } as ArrayQueryParamDefinition<T, Required>;
 }
 
 const numberPattern = /^[+-]?(?:Infinity|(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?)$/;

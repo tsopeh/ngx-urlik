@@ -95,7 +95,7 @@ const bindQueryParams = <Q extends QueryState>(
     };
     void binding
       .update(
-        () => patch as Partial<Q>,
+        (query) => ({ ...query, ...patch }),
         { replaceUrl: options.replaceUrl ?? true },
         owner,
         clearSubmitted,

@@ -24,7 +24,6 @@ import {
   getPrimaryActiveChain,
 } from './compiled-route';
 import { isEqual } from './is-equal';
-import type { AnyQueryParamDefinition } from './params';
 import { QueryWriteCoordinator, registerQueryBinding } from './query-write-coordinator';
 import { QueryDefinitions } from './route-definition';
 import { ReportParameterFailure } from './route-diagnostics';
@@ -88,32 +87,6 @@ export function createAppRouter(
     return Object.assign(current, cached);
   };
 
-  // Merges a patch into the current query. A field whose resetWhen names a changed field returns
-  // to its default (null removes its key) unless the patch sets it. A reset counts as a change, so
-  // resets cascade; a field that was already at its default changes nothing.
-  const mergeQuery = (info: CompiledRoute, query: AnyRecord, patch: AnyRecord): AnyRecord => {
-    const next: Record<string, unknown> = { ...query };
-    const changed = new Set<string>();
-    for (const [name, value] of Object.entries(patch)) {
-      if (value === undefined) continue;
-      next[name] = value;
-      if (!isEqual(value, query[name])) changed.add(name);
-    }
-    let resetting = true;
-    while (resetting) {
-      resetting = false;
-      for (const param of info.queryParams) {
-        const listed = (param.definition as AnyQueryParamDefinition).resetWhen;
-        if (!listed || patch[param.name] !== undefined || next[param.name] === null) continue;
-        if (!listed.some((name) => changed.has(name))) continue;
-        if (comparison.serializeQuery(param, query[param.name]) !== null) changed.add(param.name);
-        next[param.name] = null;
-        resetting = true;
-      }
-    }
-    return next;
-  };
-
   const createUrlTree = (info: CompiledRoute, values: ConstructionValues = {}): UrlTree => {
     const commands: unknown[] = ['/'];
     for (const segment of info.fullSegments) {
@@ -175,15 +148,14 @@ export function createAppRouter(
       return readActiveState(info, active);
     };
     const update = (
-      patcher: (query: AnyRecord) => AnyRecord,
+      updater: (query: AnyRecord) => AnyRecord,
       options?: { replaceUrl?: boolean },
       owner?: object,
       committed?: () => void,
     ) =>
       coordinator.enqueue(
         () => {
-          const query = requireState().query;
-          const next = mergeQuery(info, query, patcher(query));
+          const next = updater(requireState().query);
           const tree = router.parseUrl(router.url);
           for (const param of info.queryParams) {
             const output = serializeQuery(param, next[param.name]);
@@ -199,7 +171,12 @@ export function createAppRouter(
     node['patchQuery'] = (
       patch: Partial<AnyRecord> | ((query: AnyRecord) => Partial<AnyRecord>),
       options?: { replaceUrl?: boolean },
-    ) => update((query) => (typeof patch === 'function' ? patch(query) : patch), options);
+    ) =>
+      update((query) => {
+        const changes = typeof patch === 'function' ? patch(query) : patch;
+        const supplied = Object.entries(changes).filter(([, value]) => value !== undefined);
+        return { ...query, ...Object.fromEntries(supplied) };
+      }, options);
     registerQueryBinding(node, {
       coordinator,
       read: () => {
@@ -284,7 +261,7 @@ export function createAppRouter(
           createUrlTree: (patch?: { query?: AnyRecord; fragment?: string | null }) =>
             createUrlTree(info, {
               path: params.path,
-              query: mergeQuery(info, params.query, patch?.query ?? {}),
+              query: patch?.query ? { ...params.query, ...patch.query } : params.query,
               fragment: patch?.fragment,
             }),
           patchQuery: (

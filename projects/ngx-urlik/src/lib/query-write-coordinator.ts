@@ -175,9 +175,8 @@ export interface QueryBinding<Q extends Query> {
   read(): Q | undefined;
   /** Whether two values of a field produce the same URL representation. */
   sameUrlValue(param: keyof Q, left: unknown, right: unknown): boolean;
-  /** Merges the fields `patcher` returns into the committed query and writes the result. */
   update(
-    patcher: (query: Q) => Partial<Q>,
+    updater: (query: Q) => Q,
     options: { replaceUrl?: boolean },
     owner: object,
     committed: () => void,
