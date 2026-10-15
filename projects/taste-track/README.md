@@ -24,7 +24,7 @@ The server builds the library first. The app imports only the public `ngx-urlik`
 3. Follow a credit to a person or company, then follow a title back to the catalog.
 4. Change a rating and log a viewing. Reload to check that both were saved.
 5. Filter Collection, then try Viewing history. Collection uses Signal Forms; history uses
-   Reactive Forms with search debounce.
+   Reactive Forms with search debounce. Both hold searches shorter than three letters.
 6. Reset TasteTrack in Settings. The seed returns and your theme stays.
 
 ## What to look at in the code
@@ -36,13 +36,14 @@ The server builds the library first. The app imports only the public `ngx-urlik`
 | Detail section links             | URL fragments                                                                 |
 | Credits and contributor profiles | Typed navigation across branches                                              |
 | Collection                       | Signal Forms, repeated statuses, joined media list, structured viewing counts |
-| Viewing history                  | Reactive Forms and per-field RxJS debounce                                    |
+| Viewing history                  | Reactive Forms with a debounced, validated search                             |
 | Landing pages                    | Empty-path children and redirects                                             |
 | Unknown URLs                     | Wildcard routes                                                               |
 
 Shared pages use `activeRoute()` to select their route. `paginationParams()` shares definitions
-across pages. Sort order is one structured codec value, so a field and direction travel together.
-Normal navigation uses typed nodes throughout.
+across pages. Each page resets its own page number: the form pages in `beforeWrite`, the catalog
+in the same `patchQuery()` patch. Sort order is one structured codec value, so a field and
+direction travel together. Normal navigation uses typed nodes throughout.
 
 ## Backend
 

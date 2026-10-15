@@ -178,3 +178,21 @@ test('uses the screen landing redirect without losing query filters', async ({ p
   );
   await expect(page.locator('app-media-card')).toHaveCount(1);
 });
+
+test('holds short collection searches and resets the page when the search writes', async ({
+  page,
+}) => {
+  await page.goto('/collection?pageSize=12&page=2');
+  const search = page.getByRole('searchbox', { name: 'Search collection' });
+
+  await search.pressSequentially('al');
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(/\/collection\?pageSize=12&page=2$/);
+
+  await search.pressSequentially('g');
+  await expect(page).toHaveURL(/\/collection\?pageSize=12&search=alg$/);
+  await expect(page.getByText('Page 1', { exact: true })).toBeVisible();
+
+  await search.fill('');
+  await expect(page).toHaveURL(/\/collection\?pageSize=12$/);
+});

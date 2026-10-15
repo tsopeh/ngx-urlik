@@ -1,5 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { debounce, FormField, minLength } from '@angular/forms/signals';
 import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
@@ -16,7 +17,7 @@ import {
 import { MediaCard } from './media-card';
 
 @Component({
-  imports: [MediaCard],
+  imports: [FormField, MediaCard],
   template: `
     <section class="page-stack">
       <header class="page-header">
@@ -29,11 +30,7 @@ import { MediaCard } from './media-card';
       <section class="filter-panel" aria-label="Collection filters">
         <label class="search"
           ><span>Search collection</span
-          ><input
-            type="search"
-            [value]="binding.model().search"
-            (input)="setSearch($any($event.target).value)"
-            placeholder="Try “algorithm”…"
+          ><input type="search" [formField]="binding.form.search" placeholder="Try “algorithm”…"
         /></label>
         <label
           ><span>Minimum rating</span
@@ -159,7 +156,16 @@ export class CollectionPage {
   protected readonly statuses: readonly CollectionStatus[] = ['saved', 'in-progress', 'completed'];
   protected readonly routes = inject(AppRouter);
   private readonly backendApi = inject(BackendApi);
-  protected readonly binding = createQueryParamsSignalForm(this.routes.routes.COLLECTION);
+  protected readonly binding = createQueryParamsSignalForm(this.routes.routes.COLLECTION, {
+    schema: (fields) => {
+      debounce(fields.search, 300);
+      minLength(fields.search, 3);
+    },
+    writeWhen: 'valid',
+    // Any change other than the page itself starts from the first page, in the same navigation.
+    beforeWrite: (patch) =>
+      Object.keys(patch).some((field) => field !== 'page') ? { ...patch, page: 1 } : patch,
+  });
   protected readonly ratings = [6, 7, 8, 9, 10];
   protected readonly pageSizes = [12, 24, 48] as const;
 
@@ -183,17 +189,15 @@ export class CollectionPage {
     this.binding.model.update((query) => ({
       ...query,
       replayCount: experienceCountCodec().deserialize(value),
-      page: 1,
     }));
   }
   protected setSort(field: 'title' | 'rating') {
-    this.binding.model.update((query) => ({ ...query, sort: { ...query.sort, field }, page: 1 }));
+    this.binding.model.update((query) => ({ ...query, sort: { ...query.sort, field } }));
   }
   protected setDirection(direction: 'asc' | 'desc') {
     this.binding.model.update((query) => ({
       ...query,
       sort: { ...query.sort, direction },
-      page: 1,
     }));
   }
   protected setPage(page: number) {
@@ -202,7 +206,6 @@ export class CollectionPage {
   protected toggleMedia(kind: MediaKind) {
     this.binding.model.update((query) => ({
       ...query,
-      page: 1,
       media: query.media.includes(kind)
         ? query.media.filter((value) => value !== kind)
         : [...query.media, kind],
@@ -211,27 +214,21 @@ export class CollectionPage {
   protected toggleStatus(status: CollectionStatus) {
     this.binding.model.update((query) => ({
       ...query,
-      page: 1,
       statuses: query.statuses.includes(status)
         ? query.statuses.filter((value) => value !== status)
         : [...query.statuses, status],
     }));
   }
-  protected setSearch(search: string) {
-    this.binding.model.update((query) => ({ ...query, search, page: 1 }));
-  }
   protected setRating(value: string) {
     this.binding.model.update((query) => ({
       ...query,
       minRating: value ? Number(value) : null,
-      page: 1,
     }));
   }
   protected setPageSize(value: string) {
     this.binding.model.update((query) => ({
       ...query,
       pageSize: Number(value) as 12 | 24 | 48,
-      page: 1,
     }));
   }
   protected toggleFavorite(id: CatalogItem['id']) {

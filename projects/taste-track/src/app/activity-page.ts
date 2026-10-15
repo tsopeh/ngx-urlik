@@ -1,10 +1,10 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { ReactiveFormsModule } from '@angular/forms';
+import { ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
-import { debounceTime, groupBy, mergeMap, switchMap } from 'rxjs';
+import { switchMap } from 'rxjs';
 import { BackendApi, type ActivityEntry, type ActivityQuery } from './backend';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
@@ -23,21 +23,13 @@ import { CatalogLinks } from './catalog-links';
       <form class="filter-panel" [formGroup]="form" (submit)="$event.preventDefault()">
         <label class="search"
           ><span>Search history</span
-          ><input
-            type="search"
-            formControlName="search"
-            (input)="setPage(1)"
-            placeholder="Search titles…"
+          ><input type="search" formControlName="search" placeholder="Search titles…"
         /></label>
-        <label
-          ><span>From</span><input type="date" formControlName="from" (change)="setPage(1)"
-        /></label>
-        <label
-          ><span>To</span><input type="date" formControlName="to" (change)="setPage(1)"
-        /></label>
+        <label><span>From</span><input type="date" formControlName="from" /></label>
+        <label><span>To</span><input type="date" formControlName="to" /></label>
         <label
           ><span>Page size</span
-          ><select formControlName="pageSize" (change)="setPage(1)">
+          ><select formControlName="pageSize">
             <option [ngValue]="12">12</option>
             <option [ngValue]="24">24</option>
             <option [ngValue]="48">48</option>
@@ -99,11 +91,13 @@ export class ActivityPage {
   private readonly routes = inject(AppRouter);
   private readonly backendApi = inject(BackendApi);
   protected readonly form = createQueryParamsFormGroup(this.routes.routes.ACTIVITY, {
-    transformWrites: (changes) =>
-      changes.pipe(
-        groupBy((change) => change.param),
-        mergeMap((group) => (group.key === 'search' ? group.pipe(debounceTime(250)) : group)),
-      ),
+    debounce: { search: 250 },
+    writeWhen: 'valid',
+    // A new filter or order starts from the first page, in the same navigation.
+    beforeWrite: (patch) =>
+      (['search', 'from', 'to', 'sort', 'pageSize'] as const).some((field) => field in patch)
+        ? { ...patch, page: 1 }
+        : patch,
   });
   protected readonly query = computed(() => this.routes.routes.ACTIVITY.params().query);
 
@@ -119,6 +113,10 @@ export class ActivityPage {
     },
   );
 
+  constructor() {
+    this.form.controls.search.addValidators(Validators.minLength(3));
+  }
+
   protected setPage(page: number) {
     this.form.controls.page.setValue(page);
   }
@@ -128,6 +126,5 @@ export class ActivityPage {
       field: field as 'date' | 'rating',
       direction: direction as 'asc' | 'desc',
     });
-    this.setPage(1);
   }
 }
