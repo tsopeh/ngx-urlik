@@ -110,16 +110,17 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                       loadComponent: loadDetail,
                     },
                     {
-                      path: 'seasons',
-                      routeName: RouteNames.SEASONS,
+                      // The season links stay above the seasons list, a season, and its episodes.
+                      path: '',
                       loadComponent: () =>
                         import('./seasons-page').then((module) => module.SeasonsPage),
                       children: [
+                        { path: 'seasons', routeName: RouteNames.SEASONS, children: [] },
                         {
                           path: 'season/:seasonNumber',
                           routeName: RouteNames.SEASON,
                           // Each show remembers its last season for this tab, so
-                          // `seasons/season` opens it again.
+                          // `show/:showId/season` opens it again.
                           pathParam: {
                             codec: positiveIntegerCodec(),
                             persist: { key: 'season', storage: 'session', scope: ['showId'] },
@@ -150,6 +151,8 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                             },
                           ],
                         },
+                        // Without a remembered season, `season` opens the list instead.
+                        { path: 'season', pathMatch: 'full', redirectTo: 'seasons' },
                       ],
                     },
                   ],

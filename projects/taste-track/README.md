@@ -21,6 +21,8 @@ The server builds the library first. The app imports only the public `ngx-urlik`
 1. Change the movie genres, sort order, and page size. Reload. The URL restores the filters.
 2. Open TV shows → Only Mergers in the Building → Browse seasons → Season 2 → Browse
    episodes → The Callback. The address supplies the show, season, and episode parameters.
+   Then open `/screen/shows/show/tv_only-mergers/season`. It arrives at `…/season/2`, the
+   season you opened last in this tab. A show with no remembered season opens its seasons list.
 3. Follow a credit to a person or company, then follow a title back to the catalog.
 4. Change a rating and log a viewing. Reload to check that both were saved.
 5. Filter Collection, then try Viewing history. Collection uses Signal Forms; history uses

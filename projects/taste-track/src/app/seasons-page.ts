@@ -25,14 +25,18 @@ import { BackendApi, type Season } from './backend';
 export class SeasonsPage {
   private readonly routes = inject(AppRouter);
   private readonly backendApi = inject(BackendApi);
-  private readonly route = this.routes.routes.SEASONS;
+  // This layout serves the seasons list and each season with its episodes.
+  private readonly route = this.routes.activeRoute({
+    seasons: this.routes.routes.SEASONS,
+    season: this.routes.routes.SEASON,
+  });
   protected readonly showUrl = computed(() =>
     this.routes.routes.SHOW_DETAIL.createUrlTree({
-      path: this.route.params().path,
-      query: this.route.params().query,
+      path: { showId: this.showId() },
+      query: this.route().params.query,
     }),
   );
-  private readonly showId = computed(() => this.route.params().path.showId);
+  private readonly showId = computed(() => this.route().params.path.showId);
   private readonly seasons = toSignal(
     toObservable(this.showId).pipe(switchMap((showId) => this.backendApi.getSeasons(showId))),
     { initialValue: [] as readonly Season[] },
@@ -42,7 +46,7 @@ export class SeasonsPage {
       label: season.title,
       url: this.routes.routes.SEASON_DETAIL.createUrlTree({
         path: { showId: season.showId, seasonNumber: season.number },
-        query: this.route.params().query,
+        query: this.route().params.query,
       }),
     })),
   );

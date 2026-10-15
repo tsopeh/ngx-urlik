@@ -41,7 +41,7 @@ test('navigates show → season → episode and reloads the exact episode', asyn
   await page.getByRole('link', { name: 'Browse episodes' }).click();
   await expect(page.locator('app-media-card')).toHaveCount(4);
   await page.getByRole('link', { name: 'The Callback', exact: true }).click();
-  await expect(page).toHaveURL(/season\/2\/episodes\/episode\/1/);
+  await expect(page).toHaveURL(new RegExp(`${showUrl}/season/2/episodes/episode/1`));
   await page.reload();
   await expect(page.getByRole('heading', { name: 'The Callback', exact: true })).toBeVisible();
   await expect(
@@ -118,7 +118,7 @@ test('unknown paths and missing entities have useful empty states', async ({ pag
   await expect(
     page.getByRole('heading', { name: 'This page isn’t in the catalog.' }),
   ).toBeVisible();
-  await page.goto(`${showUrl}/seasons/season/99`);
+  await page.goto(`${showUrl}/season/99`);
   await expect(page.getByRole('heading', { name: 'Title not found' })).toBeVisible();
 });
 
@@ -218,20 +218,24 @@ test('remembers the page size across lists and reloads', async ({ page }) => {
 });
 
 test('opens the last season of a show from a URL without the season', async ({ page }) => {
-  await page.goto(`${showUrl}/seasons/season`);
-  await expect(
-    page.getByRole('heading', { name: 'This page isn’t in the catalog.' }),
-  ).toBeVisible();
-  await page.goto(`${showUrl}/seasons`);
-  await page.getByRole('link', { name: 'Season 2', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Only Mergers in the Building · Season 2' }),
-  ).toBeVisible();
-  await page.goto(`${showUrl}/seasons/season?pageSize=12#episodes`);
-  await expect(page).toHaveURL(new RegExp(`${showUrl}/seasons/season/2\\?pageSize=12#episodes$`));
+  const seasons = page.getByRole('navigation', { name: 'Seasons' });
+  // With no season stored for this show, the URL falls back to the seasons list.
+  await page.goto(`${showUrl}/season`);
+  await expect(page).toHaveURL(new RegExp(`${showUrl}/seasons\\?pageSize=24$`));
+  await seasons.getByRole('link', { name: 'Season 2', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`${showUrl}/season/2\\?pageSize=24$`));
+  await expect(seasons).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Only Mergers in the Building · Season 2' }),
   ).toBeVisible();
+  await page.goto(`${showUrl}/season?pageSize=12#episodes`);
+  await expect(page).toHaveURL(new RegExp(`${showUrl}/season/2\\?pageSize=12#episodes$`));
+  await expect(
+    page.getByRole('heading', { name: 'Only Mergers in the Building · Season 2' }),
+  ).toBeVisible();
+  // Each show remembers its own season.
+  await page.goto('/screen/shows/show/tv_stranger-strings/season');
+  await expect(page).toHaveURL(/\/show\/tv_stranger-strings\/seasons\?pageSize=12$/);
 });
 
 test('resetting TasteTrack forgets the remembered page size', async ({ page }) => {
