@@ -56,6 +56,10 @@ Codecs strictly translate between strings and types.
 - `queryParam`: A single deterministic value.
 - `repeatedQueryParam`: An array represented as repeated keys (`?a=1&a=2`).
 
+**Persistence**
+
+- `queryParam({ codec, defaultValue, persist: { key, storage: 'local' | 'session', scope? } })` saves the committed value and writes it back into a URL that lacks it. Persisted fields always appear in the URL; repeated fields and fields without a default cannot persist.
+
 **Comparators (`isEqual`)**
 You can provide a custom `isEqual` function in the node configuration to override how the `params` signal evaluates equality for complex objects.
 

@@ -4,7 +4,9 @@ import {
   inject,
   InjectionToken,
   makeEnvironmentProviders,
+  PLATFORM_ID,
 } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import {
   provideRouter,
   Router,
@@ -19,6 +21,7 @@ import { AppRouterDiagnostics, createDiagnosticReporter } from './route-diagnost
 import { compileRoutes } from './compiled-route';
 import { createAppRouter } from './route-node';
 import { createParameterReader } from './route-params-runtime';
+import { createPersistence, defaultPersistencePrefix, Persistence } from './persistence';
 
 export type {
   AppRouterDiagnostic,
@@ -66,6 +69,8 @@ export function defineAppRouter<
     routes: InferDefinition<R> & ContextualRouteArray<NoInfer<R>>;
     routerConfig?: RouterConfigOptions;
     diagnostics?: AppRouterDiagnostics;
+    /** `prefix` starts every storage key that `persist` options use. Default: `'ngx-urlik:'`. */
+    persistence?: { prefix?: string };
   },
 ): {
   AppRouter: InjectionToken<GeneratedAppRouter<E, R>>;
@@ -77,7 +82,9 @@ export function defineAppRouter<
 
   const report = createDiagnosticReporter(options.diagnostics);
   const reader = createParameterReader(report);
-  const { routes, catalog } = compileRoutes(definitions);
+  const prefix = options.persistence?.prefix ?? defaultPersistencePrefix;
+  const PersistenceRuntime = new InjectionToken<Persistence>('AppRouter persistence');
+  const { routes, catalog } = compileRoutes(definitions, PersistenceRuntime);
   const AppRouter = new InjectionToken<GeneratedAppRouter<E, R>>('AppRouter');
 
   function provideAppRouter(...features: ForwardedRouterFeature[]): EnvironmentProviders {
@@ -92,6 +99,16 @@ export function defineAppRouter<
         ...features,
       ),
       {
+        provide: PersistenceRuntime,
+        useFactory: () =>
+          createPersistence(
+            prefix,
+            report,
+            isPlatformBrowser(inject(PLATFORM_ID)),
+            inject(EnvironmentInjector),
+          ),
+      },
+      {
         provide: AppRouter,
         useFactory: () =>
           createAppRouter(
@@ -101,6 +118,7 @@ export function defineAppRouter<
             inject(EnvironmentInjector),
             reader,
             report,
+            inject(PersistenceRuntime),
           ) as GeneratedAppRouter<E, R>,
       },
     ]);

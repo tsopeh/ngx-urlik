@@ -32,6 +32,17 @@ Angular commits the new router state and creates routed components before it emi
 decodes again when Angular has committed a newer one. Guards and resolvers run before the commit,
 so `paramsFrom()` decodes the snapshot they receive instead.
 
+## Remember values
+
+`persistence.ts` reads and writes browser storage, always inside `try`/`catch`, and only on the
+browser platform. `compileRoutes` puts its `canActivate` guard in front of the guards of each route
+that declares a persisted query field, and wraps that route's `runGuardsAndResolvers` so the guard
+also runs on a reused route. The guard finds the deepest compiled route of the destination's
+primary chain, collects the persisted fields whose URL value is missing or fails to decode, and
+returns a `RedirectCommand` to the same URL with those fields filled in. The reader asks the same
+module for a stored value before it falls back to a default. `route-node.ts` saves the active
+chain's persisted values on each `NavigationEnd`.
+
 ## Write
 
 Suppose two controls change different filters before either navigation finishes. If both build a
@@ -84,6 +95,7 @@ Library test paths below are relative to `projects/ngx-urlik`.
 | Query form bindings       | `src/lib/query-forms.spec.ts`                   |
 | Global query observations | `src/lib/global-query.spec.ts`                  |
 | Default equality          | `src/lib/is-equal.spec.ts`                      |
+| Storage persistence       | `src/lib/persistence.spec.ts`                   |
 | Consumer type inference   | `type-tests/consumer.ts` at the repository root |
 
 Build before running the type tests: `type-tests` and the demo resolve `ngx-urlik` from `dist`.

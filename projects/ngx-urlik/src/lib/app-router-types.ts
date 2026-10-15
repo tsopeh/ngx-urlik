@@ -119,13 +119,30 @@ type OwnPath<D> = {
 };
 type AccumulatedPath<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
 type AccumulatedQuery<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
+// A persisted query field's scope may name the path parameters of its route chain. A scope typed
+// as a wide string, such as one from an annotated helper, is checked at runtime.
+type ScopeChecks<Q, Names extends string> = {
+  readonly [P in keyof Q]: Q[P] extends {
+    readonly persist?: { readonly scope?: readonly (infer S)[] };
+  }
+    ? string extends S
+      ? unknown
+      : [Exclude<S, Names>] extends [never]
+        ? unknown
+        : { readonly persist?: { readonly scope?: readonly Names[] } }
+    : unknown;
+};
 type RouteKey = keyof Route | 'routeName' | 'pathParam' | 'queryParams' | 'isEqual';
 
-type ContextualRoute<D, AncestorQuery> = {
+type ContextualRoute<D, AncestorQuery, AncestorPath extends string> = {
   [K in keyof D]: K extends RouteKey
     ? K extends 'children'
       ? D[K] extends readonly unknown[]
-        ? ContextualRouteArray<D[K], AccumulatedQuery<D, AncestorQuery>>
+        ? ContextualRouteArray<
+            D[K],
+            AccumulatedQuery<D, AncestorQuery>,
+            AncestorPath | OwnPathNames<D>
+          >
         : never
       : K extends 'routeName'
         ? D extends { path: '**' } | { redirectTo: unknown }
@@ -139,7 +156,8 @@ type ContextualRoute<D, AncestorQuery> = {
           ? PathConfig<OwnPathNames<D>, D[K]>
           : K extends 'queryParams'
             ? D[K] extends QueryDefinitions
-              ? Record<Extract<keyof D[K], keyof AncestorQuery>, never>
+              ? Record<Extract<keyof D[K], keyof AncestorQuery>, never> &
+                  ScopeChecks<D[K], AncestorPath | OwnPathNames<D>>
               : never
             : K extends 'isEqual'
               ? RouteDefinition['isEqual']
@@ -150,12 +168,16 @@ type ContextualRoute<D, AncestorQuery> = {
 } & (D extends { matcher: unknown } ? { readonly path?: string } : { readonly path: string });
 
 /** Contextual checks for a literal Angular-shaped route array. */
-export type ContextualRouteArray<R, AncestorQuery = object> = R extends readonly unknown[]
+export type ContextualRouteArray<
+  R,
+  AncestorQuery = object,
+  AncestorPath extends string = never,
+> = R extends readonly unknown[]
   ? number extends R['length']
     ? R extends readonly Route[]
       ? R
-      : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery> }
-    : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery> }
+      : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery, AncestorPath> }
+    : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery, AncestorPath> }
   : never;
 
 type CompiledRouteNode<D, AP, AQ, Required extends PropertyKey> = RouteNode<

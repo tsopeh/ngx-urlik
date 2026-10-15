@@ -7,6 +7,8 @@ import { ReportParameterFailure } from './route-diagnostics';
 import type { AnyRecord } from './type-utils';
 
 export type RuntimeState = Readonly<{ path: AnyRecord; query: AnyRecord }>;
+/** Returns a persisted field's decoded stored value, or `undefined`. */
+type Restore = (param: RuntimeParam) => unknown;
 
 const resolveDefault = <T>(value: DefaultValue<T> | undefined): T | undefined =>
   typeof value === 'function' ? (value as () => T)() : value;
@@ -37,13 +39,15 @@ export function createParameterReader(report: ReportParameterFailure) {
     return fallback ?? (definition.mode === 'scalar' ? null : []);
   };
 
-  const readQuery = (param: RuntimeParam, query: ParamMap): unknown => {
+  const readQuery = (param: RuntimeParam, query: ParamMap, restore?: Restore): unknown => {
     const definition = param.definition as AnyQueryParamDefinition;
+    // A persisted field falls back to its stored value before its default.
+    const fallback = () => restore?.(param) ?? queryFallback(definition);
     const raws = query.getAll(param.name);
-    if (raws.length === 0) return queryFallback(definition);
+    if (raws.length === 0) return fallback();
     if (definition.mode === 'scalar') {
       const value = decode(param, raws.at(-1)!);
-      return value ?? queryFallback(definition);
+      return value ?? fallback();
     }
     const values: unknown[] = [];
     let invalid = false;
@@ -55,10 +59,14 @@ export function createParameterReader(report: ReportParameterFailure) {
     return invalid ? queryFallback(definition) : values;
   };
 
-  const readQueryState = (params: readonly RuntimeParam[], query: ParamMap): AnyRecord => {
+  const readQueryState = (
+    params: readonly RuntimeParam[],
+    query: ParamMap,
+    restore?: Restore,
+  ): AnyRecord => {
     const result: Record<string, unknown> = {};
     for (const param of params) {
-      result[param.name] = readQuery(param, query);
+      result[param.name] = readQuery(param, query, restore);
     }
     return result;
   };
@@ -68,6 +76,7 @@ export function createParameterReader(report: ReportParameterFailure) {
     params: ParamMap,
     query: ParamMap,
     attemptedPath: string,
+    restore?: Restore,
   ): RuntimeState => {
     const path: Record<string, unknown> = {};
     for (const param of info.pathParams) {
@@ -79,7 +88,7 @@ export function createParameterReader(report: ReportParameterFailure) {
         );
       path[param.name] = value;
     }
-    return { path, query: readQueryState(info.queryParams, query) };
+    return { path, query: readQueryState(info.queryParams, query, restore) };
   };
 
   return { readState, readQueryState };
@@ -139,7 +148,9 @@ export function createParameterSerializer(
     const fallback = runInInjectionContext(injector, () =>
       resolveDefault(definition.defaultValue as DefaultValue<unknown> | undefined),
     );
-    if (fallback !== undefined && isEqual(value, fallback)) return null;
+    // A persisted field always appears in the URL, so its default is written too.
+    const persisted = 'persist' in definition && !!definition.persist;
+    if (!persisted && fallback !== undefined && isEqual(value, fallback)) return null;
     if (definition.mode === 'scalar') return value === null ? null : encode(param, value);
     if (!Array.isArray(value)) {
       report(

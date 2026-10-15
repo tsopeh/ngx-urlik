@@ -26,43 +26,63 @@ const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
       path: 'items/:id',
       routeName: RouteNames.ITEM,
       pathParam: { codec: numberCodec() },
-      queryParams: { tab: queryParam({ codec: stringCodec(), defaultValue: 'info' }) },
+      queryParams: {
+        tab: queryParam({ codec: stringCodec(), defaultValue: 'info' }),
+        view: queryParam({
+          codec: stringCodec(),
+          defaultValue: 'grid',
+          persist: { key: 'view', storage: 'local' },
+        }),
+      },
       component: ItemPage,
     },
   ],
 });
 
-describe('server rendering', () => {
-  it('renders route state from the requested URL', async () => {
-    const html = await renderApplication(
-      (context: BootstrapContext) =>
-        bootstrapApplication(
-          App,
-          {
-            providers: [
-              provideServerRendering(),
-              provideAppRouter(),
-              {
-                provide: ItemLabel,
-                useFactory: () => {
-                  const item = inject(AppRouter).routes.ITEM;
-                  return computed(() => {
-                    const { path, query } = item.params();
-                    return `item ${path.id} on ${query.tab}`;
-                  });
-                },
+const render = (url: string) =>
+  renderApplication(
+    (context: BootstrapContext) =>
+      bootstrapApplication(
+        App,
+        {
+          providers: [
+            provideServerRendering(),
+            provideAppRouter(),
+            {
+              provide: ItemLabel,
+              useFactory: () => {
+                const item = inject(AppRouter).routes.ITEM;
+                return computed(() => {
+                  const { path, query } = item.params();
+                  return `item ${path.id} on ${query.tab} as ${query.view}`;
+                });
               },
-            ],
-          },
-          context,
-        ),
-      {
-        document: '<app-root></app-root>',
-        url: 'http://localhost/items/7?tab=cast',
-        allowedHosts: ['localhost'],
-      },
-    );
+            },
+          ],
+        },
+        context,
+      ),
+    {
+      document: '<app-root></app-root>',
+      url,
+      allowedHosts: ['localhost'],
+    },
+  );
 
-    expect(html).toContain('<p>item 7 on cast</p>');
+describe('server rendering', () => {
+  afterEach(() => localStorage.clear());
+
+  it('renders route state from the requested URL', async () => {
+    const html = await render('http://localhost/items/7?tab=cast&view=list');
+
+    expect(html).toContain('<p>item 7 on cast as list</p>');
+  });
+
+  it('renders the default of a persisted field, because the server has no storage', async () => {
+    localStorage.setItem('ngx-urlik:view', 'list');
+    const html = await render('http://localhost/items/7');
+
+    expect(html).toContain('<p>item 7 on info as grid</p>');
+    expect(localStorage.getItem('ngx-urlik:view')).toBe('list');
   });
 });

@@ -9,6 +9,7 @@ import {
 import { isEqual } from './is-equal';
 import type { AnyQueryParamDefinition, UrlParamCodec } from './params';
 import { stringCodec } from './params';
+import { PersistenceToken, restoreQueryGuard, runGuardsWhenRestoring } from './persistence';
 import { parseRoutePath, resolvePathParamDefinitions, RouteDefinition } from './route-definition';
 import { routeConfigBrand } from './route-symbols';
 
@@ -40,7 +41,10 @@ export interface CompiledRoute {
 
 const defaultPathCodec = stringCodec();
 
-export function compileRoutes(definitions: readonly RouteDefinition[]): {
+export function compileRoutes(
+  definitions: readonly RouteDefinition[],
+  persistence: PersistenceToken,
+): {
   readonly routes: Routes;
   readonly catalog: ReadonlyMap<string, CompiledRoute>;
 } {
@@ -115,6 +119,16 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
       );
       if (codecs.some(Boolean))
         angular.canMatch = [matchPathCodecs(codecs), ...(angular.canMatch ?? [])];
+      const persistsQuery = Object.values(queryParams ?? {}).some(
+        (definition) => 'persist' in definition && definition.persist,
+      );
+      if (persistsQuery && angular.redirectTo === undefined) {
+        angular.canActivate = [restoreQueryGuard(persistence), ...(angular.canActivate ?? [])];
+        angular.runGuardsAndResolvers = runGuardsWhenRestoring(
+          persistence,
+          angular.runGuardsAndResolvers,
+        );
+      }
 
       (angular as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
       if (routeName) catalog.set(routeName, info);

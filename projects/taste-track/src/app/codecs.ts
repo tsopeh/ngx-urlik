@@ -81,6 +81,11 @@ export function paginationParams(options: {
   };
   return {
     page: queryParam({ codec: positiveIntegerCodec(), defaultValue: 1 }),
-    pageSize: queryParam({ codec: pageSizeCodec, defaultValue: options.defaultPageSize }),
+    // Every list that uses this key remembers the last page size the user chose.
+    pageSize: queryParam({
+      codec: pageSizeCodec,
+      defaultValue: options.defaultPageSize,
+      persist: { key: 'pageSize', storage: 'local' },
+    }),
   } as const;
 }

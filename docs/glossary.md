@@ -32,7 +32,11 @@ These names are used in the code and the reference.
 
 **Accumulated parameters**: All path and query definitions from a node and its ancestors.
 
-**Default value**: A value, or a synchronous injection-aware factory, used for missing or malformed query input. Values equal to the default are omitted from URLs.
+**Default value**: A value, or a synchronous injection-aware factory, used for missing or malformed query input. Values equal to the default are omitted from URLs, except for persisted fields.
+
+**Persisted field**: A query field with `persist`. The router saves its committed value in browser storage and writes the stored value into a URL that lacks one.
+
+**Storage key**: The name a persisted value is stored under: the router's prefix, the field's `key`, and, with a `scope`, the scoped path values.
 
 **Required query input**: A field marked `required: true` that callers must supply during construction. It does not require a key in the URL.
 

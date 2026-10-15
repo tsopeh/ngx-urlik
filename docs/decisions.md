@@ -180,6 +180,34 @@ supported. Failed writes are reported, not retried. Debounce is configured diffe
 form systems. Policies beyond a delay and validity, such as throttling, need code around the form.
 Each page writes its own resets.
 
+## Write remembered values into the URL
+
+A user who picks 48 items per page expects the next visit to the list to show 48, even when the
+link they followed carries no page size. The value has to live somewhere outside the URL, so a
+persisted field saves its committed value in browser storage after each navigation.
+
+The stored value could have been read silently whenever the URL lacks one. Then two people with
+the same link would see different pages, and a copied URL would not reproduce what its sender
+saw. Instead, a navigation that arrives without a usable value redirects to the same URL with the
+value filled in. The URL stays the full description of the page, which is the premise of the
+library.
+
+For the same reason a persisted field always appears in the URL, even at its default. If
+`?pageSize=24` were omitted like other defaults, a missing key would mean both "use the default"
+and "restore the stored value", and the second reading would win, so the user could never get back
+to 24 through the URL. With the field always written, a missing key has one meaning: restore,
+else default.
+
+A persisted field therefore needs URL text for every value. A scalar without a default reads
+missing as `null`, which has no URL text, so `persist` requires `defaultValue`. A repeated field
+writes `[]` as no keys at all, so it cannot persist; a `listCodec` field writes `[]` as `?tags=`
+and can.
+
+**Cost:** URLs grow by the persisted fields, including defaults that were omitted before. The
+first navigation to a page without the value takes an extra redirect, and the route's guards may
+run again on it. The server cannot see browser storage, so a server-rendered page shows the
+default and changes after hydration.
+
 ## Let shared components name the routes they serve
 
 One component may serve routes with different parameters, such as a movie detail and an episode

@@ -7,16 +7,29 @@ export type DefaultValue<T> = T | (() => T);
 
 type NonNullish<T> = null extends T ? never : undefined extends T ? never : unknown;
 
+/**
+ * Remembers a URL value in browser storage. `key` names the stored value; fields that use the same
+ * key share it. `scope` names path parameters whose values narrow the key, such as one stored
+ * season per show.
+ */
+export interface PersistOptions<Scope extends string = string> {
+  readonly key: string;
+  readonly storage: 'local' | 'session';
+  readonly scope?: readonly Scope[];
+}
+
 export interface QueryParamDefinition<
   T,
   Required extends boolean = false,
   Defaulted extends boolean = false,
+  Scope extends string = string,
 > {
   readonly kind: 'query';
   readonly mode: 'scalar';
   readonly codec: UrlParamCodec<T>;
   readonly required: Required;
   readonly defaultValue?: DefaultValue<T>;
+  readonly persist?: PersistOptions<Scope>;
 }
 
 export interface ArrayQueryParamDefinition<T, Required extends boolean = false> {
@@ -36,14 +49,22 @@ type QueryOptions<T, Required extends boolean> = {
   defaultValue?: DefaultValue<T>;
 };
 
-export function queryParam<T, const Required extends boolean = false>(
-  options: QueryOptions<T, Required> & { defaultValue: DefaultValue<T> } & NonNullish<T>,
-): QueryParamDefinition<T, Required, true>;
+// Only a field with a default can persist: the URL always holds its value, and `null` has no URL text.
+export function queryParam<
+  T,
+  const Required extends boolean = false,
+  const Scope extends string = never,
+>(
+  options: QueryOptions<T, Required> & {
+    defaultValue: DefaultValue<T>;
+    persist?: PersistOptions<Scope>;
+  } & NonNullish<T>,
+): QueryParamDefinition<T, Required, true, Scope>;
 export function queryParam<T, const Required extends boolean = false>(
   options: QueryOptions<T, Required> & NonNullish<T>,
 ): QueryParamDefinition<T, Required, false>;
 export function queryParam<T, const Required extends boolean = false>(
-  options: QueryOptions<T, Required> & NonNullish<T>,
+  options: QueryOptions<T, Required> & { persist?: PersistOptions } & NonNullish<T>,
 ): QueryParamDefinition<T, Required, boolean> {
   return {
     kind: 'query',
@@ -51,6 +72,7 @@ export function queryParam<T, const Required extends boolean = false>(
     codec: options.codec,
     required: options.required ?? false,
     defaultValue: options.defaultValue,
+    ...(options.persist ? { persist: options.persist } : {}),
   } as QueryParamDefinition<T, Required, boolean>;
 }
 

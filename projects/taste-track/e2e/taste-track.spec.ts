@@ -52,7 +52,7 @@ test('navigates show → season → episode and reloads the exact episode', asyn
   await page.getByRole('link', { name: 'Signal House Studios', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Signal House Studios' })).toBeVisible();
   await page.getByRole('link', { name: 'Only Mergers in the Building', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${showUrl}$`));
+  await expect(page).toHaveURL(new RegExp(`${showUrl}\\?pageSize=24$`));
 });
 
 test('people profiles show actual credits and link to movies', async ({ page }) => {
@@ -60,7 +60,7 @@ test('people profiles show actual credits and link to movies', async ({ page }) 
   await page.getByRole('link', { name: 'Wes Andersonville', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Filmography' })).toBeVisible();
   await page.getByRole('link', { name: 'The Last Algorithm', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${movieUrl}$`));
+  await expect(page).toHaveURL(new RegExp(`${movieUrl}\\?pageSize=24$`));
 });
 
 test('restores Signal Forms and writes array and structured query values', async ({ page }) => {
@@ -128,6 +128,7 @@ test('restores collection select values and browser back/forward state', async (
     '9',
   );
   await expect(page.getByRole('combobox', { name: 'Page size', exact: true })).toHaveValue('48');
+  await expect(page.locator('app-media-card .rating').first()).toBeVisible();
   const ratings = await page.locator('app-media-card .rating').allTextContents();
   expect(ratings.length).toBeGreaterThan(0);
   expect(ratings.every((rating) => /(?:9|10)\/10/.test(rating))).toBe(true);
@@ -161,7 +162,7 @@ test('browser back cancels a staged search instead of replaying it on forward', 
     element.dispatchEvent(new Event('input', { bubbles: true }));
     history.back();
   });
-  await expect(page).toHaveURL(/\/collection$/);
+  await expect(page).toHaveURL(/\/collection\?pageSize=24$/);
   await expect(page.getByRole('searchbox', { name: 'Search collection' })).toBeVisible();
   await page.goForward();
   await expect(search).toHaveValue('');
@@ -195,4 +196,23 @@ test('holds short collection searches and resets the page when the search writes
 
   await search.fill('');
   await expect(page).toHaveURL(/\/collection\?pageSize=12$/);
+});
+
+test('remembers the page size across lists and reloads', async ({ page }) => {
+  const nav = page.getByRole('navigation', { name: 'Primary navigation' });
+  await page.goto('/settings');
+  await nav.getByRole('link', { name: /Browse/ }).click();
+  await expect(page).toHaveURL(/\/screen\/movies\?pageSize=24$/);
+  await page.getByRole('combobox', { name: 'Page size', exact: true }).selectOption('12');
+  await expect(page).toHaveURL(/pageSize=12/);
+  await nav.getByRole('link', { name: /Collection/ }).click();
+  await expect(page).toHaveURL(/\/collection\?pageSize=12$/);
+  await nav.getByRole('link', { name: /Browse/ }).click();
+  await expect(page).toHaveURL(/\/screen\/movies\?pageSize=12$/);
+  // The restoring redirect adds no history entry of its own.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/collection\?pageSize=12$/);
+  await page.goto('/screen/movies');
+  await expect(page).toHaveURL(/\/screen\/movies\?pageSize=12$/);
+  await expect(page.locator('app-media-card')).toHaveCount(12);
 });

@@ -256,3 +256,74 @@ const activeContext = router.activeRoute({
 });
 declare const currentActive: ReturnType<typeof activeContext>;
 currentActive.createUrlTree({ fragment: 'bio' }) satisfies UrlTree;
+
+// Remember values in storage
+enum PersistRouteNames {
+  USER = 'USER',
+  TAB = 'TAB',
+}
+const persisted = defineAppRouter(PersistRouteNames, {
+  persistence: { prefix: 'app:' },
+  routes: [
+    {
+      path: 'users/:userId',
+      routeName: PersistRouteNames.USER,
+      queryParams: {
+        pageSize: queryParam({
+          codec: numberCodec(),
+          defaultValue: 24,
+          persist: { key: 'pageSize', storage: 'local' },
+        }),
+      },
+      children: [
+        {
+          path: 'tabs',
+          routeName: PersistRouteNames.TAB,
+          queryParams: {
+            tab: queryParam({
+              codec: stringCodec(),
+              defaultValue: 'info',
+              persist: { key: 'tab', storage: 'session', scope: ['userId'] },
+            }),
+          },
+        },
+      ],
+    },
+  ],
+});
+declare const persistedRouter: TokenValue<typeof persisted.AppRouter>;
+persistedRouter.routes.TAB.params().query.pageSize satisfies number;
+persistedRouter.routes.TAB.params().query.tab satisfies string;
+
+// @ts-expect-error a persisted field needs a defaultValue
+queryParam({
+  codec: numberCodec(),
+  persist: { key: 'pageSize', storage: 'local' },
+});
+repeatedQueryParam({
+  codec: stringCodec(),
+  // @ts-expect-error repeated fields cannot persist
+  persist: { key: 'tags', storage: 'local' },
+});
+// @ts-expect-error storage is 'local' or 'session'
+queryParam({
+  codec: numberCodec(),
+  defaultValue: 1,
+  persist: { key: 'page', storage: 'cookie' },
+});
+defineAppRouter(PersistRouteNames, {
+  routes: [
+    {
+      path: 'users/:userId',
+      routeName: PersistRouteNames.USER,
+      queryParams: {
+        // @ts-expect-error scope names path parameters of the route chain
+        tab: queryParam({
+          codec: stringCodec(),
+          defaultValue: 'info',
+          persist: { key: 'tab', storage: 'session', scope: ['teamId'] },
+        }),
+      },
+    },
+  ],
+});

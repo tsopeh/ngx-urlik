@@ -116,6 +116,21 @@ the form.
 See the [forms reference](docs/design/app-router.md#query-form-bindings) for validation, existing
 forms, and debounce examples.
 
+## Remember a value
+
+```ts
+pageSize: queryParam({
+  codec: numberCodec(),
+  defaultValue: 24,
+  persist: { key: 'pageSize', storage: 'local' },
+}),
+```
+
+The router saves the page size after each navigation. A later link without `pageSize` arrives
+with the saved value written into the URL, or with the default when nothing is saved. See
+[storage persistence](docs/design/app-router.md#remember-values-in-storage) for scopes, path
+values, and server rendering.
+
 ## Run the project
 
 The library targets Angular 22 and is not published. Use the Node version in `.nvmrc`:

@@ -1,5 +1,5 @@
 import { Route } from '@angular/router';
-import { AnyQueryParamDefinition, UrlParamCodec } from './params';
+import { AnyQueryParamDefinition, PersistOptions, UrlParamCodec } from './params';
 
 export type QueryDefinitions = Readonly<Record<string, AnyQueryParamDefinition>>;
 
@@ -94,6 +94,25 @@ export function resolvePathParamDefinitions(
   return typeof option === 'object' && !Array.isArray(option)
     ? (option as Readonly<Record<string, PathParamCodecDefinition>>)
     : {};
+}
+
+/** Problems with a `persist` option. `scopeNames` are the path parameters its scope may name. */
+function persistProblems(persist: unknown, scopeNames: readonly string[]): string[] {
+  if (!persist || typeof persist !== 'object') return ['persist must be an object'];
+  const { key, storage, scope } = persist as Partial<PersistOptions>;
+  const problems: string[] = [];
+  if (typeof key !== 'string' || key === '')
+    problems.push('persist key must be a non-empty string');
+  if (storage !== 'local' && storage !== 'session')
+    problems.push("persist storage must be 'local' or 'session'");
+  if (scope !== undefined && !Array.isArray(scope)) problems.push('persist scope must be an array');
+  else
+    for (const name of scope ?? [])
+      if (!scopeNames.includes(name))
+        problems.push(
+          `persist scope names '${name}', which is not a path parameter before it in the route chain`,
+        );
+  return problems;
 }
 
 /** Validate ordered Angular routes and the statically known chains of named routes. */
@@ -223,6 +242,22 @@ export function validateRouteDefinitions(
                       `${routeName}: query parameter '${name}' is defined in both '${previous}' and '${member.path}'`,
                     );
                   else queryOwners.set(name, member.path ?? '');
+                  const definition = member.queryParams[name] as
+                    (AnyQueryParamDefinition & { persist?: unknown }) | undefined;
+                  if (definition?.persist !== undefined) {
+                    if (definition.mode === 'repeated')
+                      report(
+                        `${routeName}: query parameter '${name}' cannot persist, because an empty repeated field has no URL key. Use queryParam({ codec: listCodec(...), defaultValue: [] }) instead.`,
+                      );
+                    else if (definition.defaultValue === undefined)
+                      report(
+                        `${routeName}: query parameter '${name}' persists, so it needs a defaultValue`,
+                      );
+                    for (const problem of persistProblems(definition.persist, [
+                      ...pathOwners.keys(),
+                    ]))
+                      report(`${routeName}: query parameter '${name}' ${problem}`);
+                  }
                 }
             }
           }

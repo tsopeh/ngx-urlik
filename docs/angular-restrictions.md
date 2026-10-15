@@ -22,6 +22,11 @@ lazily with `loadComponent`; the route declarations and named chains must be ava
 `defineAppRouter()` runs. Replacing them later with `Router.resetConfig()` is unsupported and not
 detected.
 
+A route that declares a [persisted](design/app-router.md#remember-values-in-storage) query field
+gets a `canActivate` guard in front of its own guards. When the URL lacks a usable value, the guard
+redirects to the URL with the value filled in. Its `runGuardsAndResolvers` is wrapped so the
+guards also run on a reused route when a value needs restoring.
+
 Put router options on `defineAppRouter(RouteNames, { routerConfig })`. ngx-urlik keeps the
 supplied `paramsInheritanceStrategy` and reads path values from the activated route chain.
 Passing `withRouterConfig()` to `provideAppRouter()` throws.

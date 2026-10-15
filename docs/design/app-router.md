@@ -132,7 +132,8 @@ const route = {
 };
 ```
 
-Query definitions can specify `defaultValue` and `required`. `repeatedQueryParam` puts each item
+Query definitions can specify `defaultValue` and `required`; a scalar with a default can also
+[persist](#remember-values-in-storage) its value in browser storage. `repeatedQueryParam` puts each item
 under its own key; `listCodec` joins items into one value. Each query property name is also its URL key.
 
 ### Built-in scalar codecs
@@ -176,7 +177,8 @@ queryParam({ codec: stringCodec(), defaultValue: () => inject(LocaleSettings).lo
 ```
 
 A missing or malformed query value reads as its current default. A value deeply equal to that
-default is omitted from a constructed or patched URL. Factories are synchronous and run in the
+default is omitted from a constructed or patched URL, except for a
+[persisted field](#remember-values-in-storage), which always appears. Factories are synchronous and run in the
 injection context of the environment that provided the router. They run on every read and write,
 so a factory that reads a signal can change the decoded state without a navigation. Their errors
 propagate; they are not treated as malformed URL data.
@@ -480,18 +482,110 @@ A route inherits its parent's `isEqual` unless it declares its own. The comparat
 notifications. Patches and form initialization read fresh committed state, so a retained signal
 value cannot make a write use an old query.
 
+## Remember values in storage
+
+A list page can remember the page size a user chose, so a plain link back to the list shows it
+again:
+
+```ts
+pageSize: queryParam({
+  codec: numberCodec(),
+  defaultValue: 24,
+  persist: { key: 'pageSize', storage: 'local' },
+}),
+```
+
+After a navigation to `/results?pageSize=48`, `localStorage` holds `48` under `ngx-urlik:pageSize`.
+A later navigation to `/results` arrives at `/results?pageSize=48`.
+
+### Declare a persisted field
+
+| Option    | Meaning                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `key`     | Names the stored value. Fields that use the same key share one value, even on different routes                      |
+| `storage` | `'local'` for `localStorage`, which outlives the tab, or `'session'` for `sessionStorage`, which belongs to one tab |
+| `scope`   | Optional. Path parameter names whose values narrow the key                                                          |
+
+Only `queryParam` with a `defaultValue` accepts `persist`. A persisted field always has a value in
+the URL, and `null` has no URL text. `repeatedQueryParam` does not accept it, because an empty
+array has no URL keys. Persist an array with a list instead:
+`queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [], persist })` writes the empty
+list as `?tags=`. TypeScript rejects both cases, and `defineAppRouter()` checks them again at
+runtime.
+
+`scope` gives each path value its own stored value. On `users/:userId`, a tab field with
+`scope: ['userId']` stores the tab of user 7 under `ngx-urlik:tab:7`. A query field's scope may
+name any path parameter of its route chain. TypeScript checks literal names; `defineAppRouter()`
+checks all of them.
+
+The storage key is `${prefix}${key}`, or `${prefix}${key}:${values}` with a scope. Each scope value
+is the parameter's raw path segment passed through `encodeURIComponent`, and the values are joined
+with `:`. The prefix applies to the whole router and defaults to `'ngx-urlik:'`:
+
+```ts
+defineAppRouter(RouteNames, { routes, persistence: { prefix: 'shop:' } });
+```
+
+### Read
+
+A valid URL value wins. Otherwise the stored value is used if it decodes with the field's codec,
+and otherwise the default. A URL value that fails to decode falls back the same way. `params()`,
+`paramsFrom()`, `activeRoute()`, and form bindings all follow this order. `globalQueryParams()`
+ignores `persist`.
+
+### Restored values go into the URL
+
+When a navigation arrives at a route chain with a persisted field that is missing from the URL or
+fails to decode, ngx-urlik redirects to the same URL with that field filled in: from storage, or
+with the default when nothing usable is stored. The path, the other query keys, and the fragment
+stay. One redirect fills every persisted field of the chain.
+
+The redirect adds no history entry of its own. A link click adds one entry, for the restored URL;
+the first page load and the Back button replace the current entry. This is how Angular treats a
+redirect from a guard: the redirected navigation inherits the original's history behavior.
+
+The redirect comes from a `canActivate` guard that ngx-urlik puts in front of the route's own
+guards on each route that declares a persisted field. Angular skips the guards of a reused route,
+such as the list page itself when only its query changes. The library therefore wraps the route's
+`runGuardsAndResolvers`: guards run when the route's own rule says so, and also when a persisted
+field needs restoring. On such a navigation, the route's own guards run too.
+
+A persisted field always appears in the URL, including at its default. `patchQuery()`, form
+writes, and `activeRoute().createUrlTree()` write `?pageSize=24` instead of omitting it.
+`createUrlTree()` and `navigate()` on a node leave out a persisted field you do not supply, and the
+arrival restores it, so a missing key always means "restore, else default". A supplied value equal
+to the default is written.
+
+### Save
+
+After every committed navigation (`NavigationEnd`), whatever started it, ngx-urlik saves each
+persisted field of the active route chain. A form write, `patchQuery()`, a link, and the Back
+button all count. It stores the URL text of the committed value, and skips a value that does not
+decode. Form drafts are never saved.
+
+Storage is read only when the URL lacks a usable value. Changes made in another tab are not
+observed; they apply at the next restore.
+
+### Without storage
+
+On the server, and when browser storage is unavailable or throws (private browsing, a full quota,
+blocked access), persistence does nothing: reads use the default, nothing is saved, and nothing is
+redirected. With server rendering, the server renders the default and the browser restores the
+stored value in its first navigation, so the page content can change after hydration.
+
 ## Diagnostics and errors
 
 Bad query data uses the default or absence behavior and emits a warning. Configure the reporter on
 `defineAppRouter` with `diagnostics: { warn }`. The default calls `console.warn` with the message.
 
 `AppRouterDiagnostic` contains `code`, `message`, `route`, `parameter`, and `operation`
-(`'serialize'` or `'deserialize'`), plus `index` and `cause` when available.
+(`'serialize'` or `'deserialize'`), plus `index`, `cause`, and the storage `key` when available.
 
-| Code                       | When                                                                              |
-| -------------------------- | --------------------------------------------------------------------------------- |
-| `PARAM_DESERIALIZE_FAILED` | A codec returned `null` or threw                                                  |
-| `PARAM_SERIALIZE_FAILED`   | A query codec returned a non-string or threw, or a repeated field got a non-array |
+| Code                              | When                                                                              |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| `PARAM_DESERIALIZE_FAILED`        | A codec returned `null` or threw                                                  |
+| `PARAM_SERIALIZE_FAILED`          | A query codec returned a non-string or threw, or a repeated field got a non-array |
+| `STORED_VALUE_DESERIALIZE_FAILED` | A stored value failed to decode; it is ignored and the default applies            |
 
 When a codec throws, the error is in `cause`. For a repeated field, `index` names the failed item.
 
@@ -508,7 +602,8 @@ route does not match.
 repeated or empty route names, names on redirects, wildcards, or matchers, `loadChildren` on a
 named route or its ancestors, paths that are not statically known or contain empty segments or
 reserved characters, `pathParam` maps that do not match the placeholders, repeated placeholder
-names, and repeated query keys. Some of these are also type errors.
+names, repeated query keys, and `persist` options that are malformed, lack a default, sit on a
+repeated field, or name an unknown scope. Some of these are also type errors.
 Angular validates its own route configuration.
 
 The typed catalog is fixed when the router is defined. Replacing the named routes with

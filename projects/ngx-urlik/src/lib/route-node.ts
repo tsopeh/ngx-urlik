@@ -24,6 +24,7 @@ import {
   getPrimaryActiveChain,
 } from './compiled-route';
 import { isEqual } from './is-equal';
+import { Persistence, persistOf } from './persistence';
 import { QueryWriteCoordinator, registerQueryBinding } from './query-write-coordinator';
 import { QueryDefinitions } from './route-definition';
 import { ReportParameterFailure } from './route-diagnostics';
@@ -49,13 +50,17 @@ export function createAppRouter(
   injector: EnvironmentInjector,
   reader: ReturnType<typeof createParameterReader>,
   report: ReportParameterFailure,
+  persistence: Persistence,
 ): Record<string, unknown> {
   const destroyRef = injector.get(DestroyRef);
   const coordinator = new QueryWriteCoordinator(router, destroyRef);
   const navigation = signal(0);
   const subscription = router.events
     .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
-    .subscribe(() => navigation.update((value) => value + 1));
+    .subscribe(() => {
+      persistence.save(router.routerState.snapshot.root);
+      navigation.update((value) => value + 1);
+    });
   destroyRef.onDestroy(() => subscription.unsubscribe());
   const { readState, readQueryState } = reader;
   const { serializePath, serializeQuery } = createParameterSerializer(injector, report);
@@ -109,15 +114,18 @@ export function createAppRouter(
     });
   };
 
-  const readActiveState = (info: CompiledRoute, active: ActivatedRouteSnapshot) =>
-    runInInjectionContext(injector, () =>
+  const readActiveState = (info: CompiledRoute, active: ActivatedRouteSnapshot) => {
+    const path = activePathParams(info, active);
+    return runInInjectionContext(injector, () =>
       readState(
         info,
-        activePathParams(info, active),
+        path,
         active.queryParamMap,
         '/' + active.pathFromRoot.flatMap((snapshot) => snapshot.url.map((s) => s.path)).join('/'),
+        (param) => (persistOf(param) ? persistence.restore(param, path) : undefined),
       ),
     );
+  };
 
   const routes: Record<string, unknown> = Object.create(null);
   for (const [routeName, info] of catalog) {

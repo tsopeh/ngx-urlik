@@ -1,6 +1,7 @@
 import type { RuntimeParam } from './compiled-route';
 
-export type AppRouterDiagnosticCode = 'PARAM_DESERIALIZE_FAILED' | 'PARAM_SERIALIZE_FAILED';
+export type AppRouterDiagnosticCode =
+  'PARAM_DESERIALIZE_FAILED' | 'PARAM_SERIALIZE_FAILED' | 'STORED_VALUE_DESERIALIZE_FAILED';
 
 export interface AppRouterDiagnostic {
   readonly code: AppRouterDiagnosticCode;
@@ -10,6 +11,8 @@ export interface AppRouterDiagnostic {
   readonly operation: 'serialize' | 'deserialize';
   readonly index?: number;
   readonly cause?: unknown;
+  /** The storage key of a stored value. */
+  readonly key?: string;
 }
 
 export interface AppRouterDiagnostics {
