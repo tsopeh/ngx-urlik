@@ -1,18 +1,19 @@
 import { EnvironmentInjector, inject, InjectionToken, runInInjectionContext } from '@angular/core';
 import {
   ActivatedRouteSnapshot,
-  CanActivateFn,
+  CanMatchFn,
   convertToParamMap,
   ParamMap,
+  PRIMARY_OUTLET,
   RedirectCommand,
   Router,
-  RunGuardsAndResolvers,
   UrlMatcher,
   UrlSegment,
+  UrlSegmentGroup,
+  UrlTree,
 } from '@angular/router';
 import type { CompiledRoute, RuntimeParam } from './compiled-route';
 import { activePathParams, getPrimaryActiveChain } from './compiled-route';
-import { isEqual } from './is-equal';
 import type { PersistOptions, UrlParamCodec } from './params';
 import { ReportParameterFailure, WarnDiagnostic } from './route-diagnostics';
 import { createParameterSerializer } from './route-params-runtime';
@@ -173,18 +174,9 @@ export function createPersistence(
   const { storageKey, readStored } = createStoredValues(prefix, report, storage);
   const { serializeQuery } = createParameterSerializer(injector, report);
 
-  /** Persisted query fields of the active chain whose URL value is missing or fails to decode. */
-  const pendingQuery = (root: ActivatedRouteSnapshot) => {
-    const active = activeCompiledRoute(root);
-    if (!active) return undefined;
-    const params = active.info.queryParams.filter((param) => {
-      const persist = persistOf(param);
-      if (!persist || !storage.available(persist.storage)) return false;
-      const raw = root.queryParamMap.getAll(param.name).at(-1);
-      return raw === undefined || !decodes(param, raw);
-    });
-    return params.length ? { ...active, params } : undefined;
-  };
+  // The segments each route of the primary chain consumed in the navigation being matched.
+  let matchedNavigation = -1;
+  const matched: (readonly UrlSegment[])[] = [];
 
   return {
     /** The stored value of a persisted field, decoded, or `undefined`. */
@@ -193,15 +185,34 @@ export function createPersistence(
       return typeof raw === 'string' ? param.definition.codec.deserialize(raw) : undefined;
     },
 
-    needsQueryRestore: (root: ActivatedRouteSnapshot) => !!pendingQuery(root),
+    /** Records the segments a route at `depth` of the primary chain consumed. */
+    recordMatch(navigation: number, depth: number, url: readonly UrlSegment[]): void {
+      if (navigation !== matchedNavigation) {
+        matchedNavigation = navigation;
+        matched.length = 0;
+      }
+      matched.length = depth;
+      matched[depth] = url;
+    },
 
-    /** URL text for each persisted query field to fill: the stored value, else the default. */
-    queryFills(root: ActivatedRouteSnapshot): Record<string, string> | undefined {
-      const pending = pendingQuery(root);
-      if (!pending) return undefined;
-      const path = activePathParams(pending.info, pending.snapshot);
+    /** The segments that the routes above `depth` consumed, if each of them recorded its match. */
+    matchedAbove(navigation: number, depth: number): UrlSegment[] | undefined {
+      if (navigation !== matchedNavigation) return undefined;
+      const above = matched.slice(0, depth);
+      return above.length === depth && above.every(Boolean) ? above.flat() : undefined;
+    },
+
+    /**
+     * URL text for each persisted query field of `info` whose value in `query` is missing or fails
+     * to decode: the stored value, else the default. Skips fields whose storage is unavailable.
+     */
+    queryFills(info: CompiledRoute, path: ParamMap, query: ParamMap): Record<string, string> {
       const fills: Record<string, string> = {};
-      for (const param of pending.params) {
+      for (const param of info.queryParams) {
+        const persist = persistOf(param);
+        if (!persist || !storage.available(persist.storage)) continue;
+        const raw = query.getAll(param.name).at(-1);
+        if (raw !== undefined && decodes(param, raw)) continue;
         const stored = readStored(param, path);
         if (stored === undefined) continue;
         const definition = param.definition as { defaultValue?: unknown };
@@ -215,7 +226,7 @@ export function createPersistence(
           );
         if (typeof text === 'string') fills[param.name] = text;
       }
-      return Object.keys(fills).length ? fills : undefined;
+      return fills;
     },
 
     /** Removes stored values: every prefixed key, or the listed keys with all of their scopes. */
@@ -307,56 +318,79 @@ export function restorePathMatcher(
   };
 }
 
-/** Fills persisted query fields from storage, else from their defaults, in one redirect. */
-export function restoreQueryGuard(token: PersistenceToken): CanActivateFn {
-  return (_route, state) => {
-    const fills = inject(token).queryFills(state.root);
-    if (!fills) return true;
+/**
+ * The `canMatch` check that ngx-urlik appends to each route of a chain with persisted query
+ * fields, and to the ancestors of such routes. Angular runs `canMatch` on every navigation, also
+ * for a route it will reuse, but runs an ancestor's check before its children match. So every
+ * route records the segments it consumed, and only the route that ends the match fills the
+ * persisted fields of its chain: it redirects to the matched URL with every field that is missing
+ * or fails to decode filled in at once.
+ */
+export function restoreQueryCheck(
+  token: PersistenceToken,
+  info: CompiledRoute,
+  options: {
+    /** The number of compiled routes above this one. */
+    readonly depth: number;
+    /** False when a child with an empty or wildcard path continues the match. */
+    readonly endsMatch: boolean;
+    /** Whether the route's chain declares a persisted query field. */
+    readonly restores: boolean;
+    /** The route's own path-codec check, so a route that does not match records nothing. */
+    readonly codecsMatch: (segments: readonly UrlSegment[]) => boolean;
+  },
+): CanMatchFn {
+  return (_route, segments, current) => {
+    if (current.outlet !== PRIMARY_OUTLET || !options.codecsMatch(segments)) return true;
     const router = inject(Router);
-    const tree = router.parseUrl(state.url);
-    tree.queryParams = { ...tree.queryParams, ...fills };
+    const navigation = router.currentNavigation();
+    if (!navigation) return true;
+    const persistence = inject(token);
+    persistence.recordMatch(navigation.id, options.depth, current.url);
+    if (!options.restores || !options.endsMatch || segments.length !== current.url.length)
+      return true;
+    const above = persistence.matchedAbove(navigation.id, options.depth);
+    if (!above) return true;
+    const path = [...above, ...segments];
+    const values: Record<string, string> = {};
+    if (path.length === info.fullSegments.length)
+      info.fullSegments.forEach((segment, i) => {
+        if (segment.kind === 'param') values[segment.name] = path[i].path;
+      });
+    const fills = persistence.queryFills(info, convertToParamMap(values), current.queryParamMap);
+    if (!Object.keys(fills).length) return true;
+    const tree = matchedUrl(router, navigation.extractedUrl, path);
+    if (!tree) return true;
+    tree.queryParams = { ...current.queryParams, ...fills };
+    tree.fragment = current.fragment;
     return new RedirectCommand(tree);
   };
 }
 
 /**
- * Angular skips guards of a reused route unless `runGuardsAndResolvers` says otherwise. Keep the
- * route's own rule, and also run them when a persisted query field needs restoring.
+ * The URL whose primary path is `path`. Earlier redirects in the navigation may have changed the
+ * path since `extracted`, so a URL with only a primary path is rebuilt from `path`. A URL with
+ * named outlets is kept only if its primary path still equals `path`.
  */
-export function runGuardsWhenRestoring(
-  token: PersistenceToken,
-  mode: RunGuardsAndResolvers | undefined,
-): RunGuardsAndResolvers {
-  return (from, to) => inject(token).needsQueryRestore(to.root) || shouldRun(mode, from, to);
-}
-
-const samePath = (a: readonly UrlSegment[], b: readonly UrlSegment[]) =>
-  a.length === b.length && a.every((segment, index) => segment.path === b[index].path);
-const sameSegments = (a: readonly UrlSegment[], b: readonly UrlSegment[]) =>
-  samePath(a, b) && a.every((segment, index) => isEqual(segment.parameters, b[index].parameters));
-const sameParamsAndSegments = (a: ActivatedRouteSnapshot, b: ActivatedRouteSnapshot): boolean =>
-  isEqual(a.params, b.params) &&
-  sameSegments(a.url, b.url) &&
-  !a.parent === !b.parent &&
-  (!a.parent || sameParamsAndSegments(a.parent, b.parent!));
-
-// The same rules as Angular's `shouldRunGuardsAndResolvers()`.
-function shouldRun(
-  mode: RunGuardsAndResolvers | undefined,
-  from: ActivatedRouteSnapshot,
-  to: ActivatedRouteSnapshot,
-): boolean {
-  if (typeof mode === 'function') return mode(from, to);
-  switch (mode) {
-    case 'pathParamsChange':
-      return !samePath(from.url, to.url);
-    case 'pathParamsOrQueryParamsChange':
-      return !samePath(from.url, to.url) || !isEqual(from.queryParams, to.queryParams);
-    case 'always':
-      return true;
-    case 'paramsOrQueryParamsChange':
-      return !sameParamsAndSegments(from, to) || !isEqual(from.queryParams, to.queryParams);
-    default:
-      return !sameParamsAndSegments(from, to);
-  }
+function matchedUrl(router: Router, extracted: UrlTree, path: UrlSegment[]): UrlTree | undefined {
+  const primary: UrlSegment[] = [];
+  let outlets = false;
+  const visit = (group: UrlSegmentGroup, onPrimary: boolean) => {
+    if (onPrimary) primary.push(...group.segments);
+    for (const [outlet, child] of Object.entries(group.children)) {
+      if (outlet !== PRIMARY_OUTLET) outlets = true;
+      visit(child, onPrimary && outlet === PRIMARY_OUTLET);
+    }
+  };
+  visit(extracted.root, true);
+  if (!outlets)
+    return new UrlTree(
+      new UrlSegmentGroup(
+        [],
+        path.length ? { [PRIMARY_OUTLET]: new UrlSegmentGroup(path, {}) } : {},
+      ),
+    );
+  const same =
+    primary.length === path.length && primary.every((segment, i) => segment.path === path[i].path);
+  return same ? router.parseUrl(router.serializeUrl(extracted)) : undefined;
 }

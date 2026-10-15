@@ -210,8 +210,8 @@ writes `[]` as no keys at all, so it cannot persist; a `listCodec` field writes 
 and can.
 
 **Cost:** URLs grow by the persisted fields, including defaults that were omitted before. The
-first navigation to a page without the value takes an extra redirect, and the route's guards may
-run again on it. The server cannot see browser storage, so a server-rendered page shows the
+first navigation to a page without a query value is cancelled and replaced by one with the value
+filled in. A path value is restored inside the same navigation. The server cannot see browser storage, so a server-rendered page shows the
 default and changes after hydration.
 
 ## Let shared components name the routes they serve

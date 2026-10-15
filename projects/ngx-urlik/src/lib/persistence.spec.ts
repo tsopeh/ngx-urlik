@@ -1,7 +1,9 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { RouterTestingHarness } from '@angular/router/testing';
 import {
   CanActivateFn,
+  CanDeactivateFn,
   Event,
   NavigationCancel,
   NavigationEnd,
@@ -20,6 +22,7 @@ class Page {}
 class Layout {}
 
 enum RouteNames {
+  BOOKS = 'BOOKS',
   ITEMS = 'ITEMS',
   OTHER = 'OTHER',
   PLAIN = 'PLAIN',
@@ -34,7 +37,12 @@ const pageSize = () =>
   });
 
 function setup(
-  options: { prefix?: string; guard?: CanActivateFn; runGuardsAndResolvers?: 'always' } = {},
+  options: {
+    prefix?: string;
+    guard?: CanActivateFn;
+    leave?: CanDeactivateFn<unknown>;
+    runGuardsAndResolvers?: 'always';
+  } = {},
 ) {
   const diagnostics: AppRouterDiagnostic[] = [];
   const definition = defineAppRouter(RouteNames, {
@@ -50,6 +58,7 @@ function setup(
         },
         component: Page,
         canActivate: [options.guard ?? (() => true)],
+        canDeactivate: [options.leave ?? (() => true)],
         ...(options.runGuardsAndResolvers
           ? { runGuardsAndResolvers: options.runGuardsAndResolvers }
           : {}),
@@ -73,6 +82,18 @@ function setup(
         component: Page,
       },
       { path: 'plain', routeName: RouteNames.PLAIN, component: Page },
+      {
+        path: 'library',
+        queryParams: { pageSize: pageSize() },
+        component: Layout,
+        children: [
+          { path: 'books', routeName: RouteNames.BOOKS, component: Page },
+          { path: 'panel', outlet: 'side', component: Page },
+        ],
+      },
+      { path: 'legacy', redirectTo: 'items' },
+      { path: 'old', redirectTo: '/items' },
+      { path: '**', component: Page },
     ],
   });
   TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
@@ -153,6 +174,47 @@ describe('query persistence', () => {
     await router.navigateByUrl('/items?pageSize=12');
     await app.routes.ITEMS.navigate({ query: { search: 'elm' } });
     expect(router.url).toBe('/items?search=elm&pageSize=12');
+  });
+
+  it("does not run the route's own guards again on a reused route", async () => {
+    const runs: string[] = [];
+    const { app, router } = setup({
+      guard: () => runs.push('activate') > 0,
+      leave: () => runs.push('deactivate') > 0,
+    });
+    // Angular runs canDeactivate only for a component that an outlet has activated.
+    await RouterTestingHarness.create();
+
+    await router.navigateByUrl('/items?pageSize=12');
+    await app.routes.ITEMS.navigate({ query: { search: 'elm' } });
+    expect(router.url).toBe('/items?search=elm&pageSize=12');
+    expect(runs).toEqual(['activate']);
+  });
+
+  it('fills the fields of the route that is activated, not of an ancestor alone', async () => {
+    const { router } = setup();
+
+    await router.navigateByUrl('/library/bogus');
+    expect(router.url).toBe('/library/bogus');
+    await router.navigateByUrl('/library/books');
+    expect(router.url).toBe('/library/books?pageSize=24');
+  });
+
+  it('keeps named outlets', async () => {
+    const { router } = setup();
+
+    await router.navigateByUrl('/library/(books//side:panel)#top');
+    expect(router.url).toBe('/library/(books//side:panel)?pageSize=24#top');
+  });
+
+  it('restores after a redirect route', async () => {
+    localStorage.setItem('ngx-urlik:pageSize', '48');
+    const { router } = setup();
+
+    await router.navigateByUrl('/legacy?search=elm');
+    expect(router.url).toBe('/items?search=elm&pageSize=48');
+    await router.navigateByUrl('/old?search=elm');
+    expect(router.url).toBe('/items?pageSize=48');
   });
 
   it("keeps the route's own runGuardsAndResolvers rule", async () => {
@@ -293,6 +355,7 @@ class NotFound {}
 class PairStart {}
 
 enum PathRouteNames {
+  LIST = 'LIST',
   SHOW = 'SHOW',
   SEASON = 'SEASON',
   PAIR = 'PAIR',
@@ -329,6 +392,19 @@ function setupPath() {
         path: 'pair/:a/:b',
         routeName: PathRouteNames.PAIR,
         pathParam: { a: persistedNumber('a'), b: persistedNumber('b') },
+        component: Page,
+      },
+      {
+        path: 'lists/:listId',
+        routeName: PathRouteNames.LIST,
+        pathParam: persistedNumber('list'),
+        queryParams: {
+          sort: queryParam({
+            codec: stringCodec(),
+            defaultValue: 'asc',
+            persist: { key: 'sort', storage: 'local' },
+          }),
+        },
         component: Page,
       },
       { path: '**', component: NotFound },
@@ -429,10 +505,18 @@ describe('path persistence', () => {
     expect(leaf()).toBe(PairStart);
   });
 
+  it('restores a path value and a query value together', async () => {
+    localStorage.setItem('ngx-urlik:list', '5');
+    const { router } = setupPath();
+
+    await router.navigateByUrl('/lists?q=1#top');
+    expect(router.url).toBe('/lists/5?q=1&sort=asc#top');
+  });
+
   it('keeps generated routes out of AppRouter.routes', () => {
     const { app } = setupPath();
 
-    expect(Object.keys(app.routes).sort()).toEqual(['PAIR', 'SEASON', 'SHOW']);
+    expect(Object.keys(app.routes).sort()).toEqual(['LIST', 'PAIR', 'SEASON', 'SHOW']);
   });
 
   it('rejects persist on unnamed routes, before the trailing run, and with a later scope', () => {

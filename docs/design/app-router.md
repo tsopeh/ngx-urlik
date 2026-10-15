@@ -545,11 +545,19 @@ The redirect adds no history entry of its own. A link click adds one entry, for 
 the first page load and the Back button replace the current entry. This is how Angular treats a
 redirect from a guard: the redirected navigation inherits the original's history behavior.
 
-The redirect comes from a `canActivate` guard that ngx-urlik puts in front of the route's own
-guards on each route that declares a persisted field. Angular skips the guards of a reused route,
-such as the list page itself when only its query changes. The library therefore wraps the route's
-`runGuardsAndResolvers`: guards run when the route's own rule says so, and also when a persisted
-field needs restoring. On such a navigation, the route's own guards run too.
+The redirect comes from a `canMatch` check that ngx-urlik appends to the `canMatch` guards of each
+route in a chain with a persisted query field. Angular runs `canMatch` on every navigation, also
+when it reuses the route, such as the list page itself when only its query changes, so the
+route's own guards and `runGuardsAndResolvers` stay as they are. Only the route that ends the match
+redirects: the route that consumes the rest of the URL and has no child with an empty or `**`
+path to continue. An ancestor's check runs before Angular knows whether its children match, so a
+layout route never redirects a URL that then fails to match below it. The redirect replaces the
+original navigation, which Angular reports with `NavigationCancel`.
+
+When an earlier redirect in the same navigation changed the path, the check builds the redirect
+from the path Angular actually matched. If the URL also has named outlets, such as
+`/library/(books//side:panel)`, the check keeps them only when the primary path is unchanged, and
+otherwise does not redirect; `params()` still reads the stored value.
 
 A persisted field always appears in the URL, including at its default. `patchQuery()`, form
 writes, and `activeRoute().createUrlTree()` write `?pageSize=24` instead of omitting it.

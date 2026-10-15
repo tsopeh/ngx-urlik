@@ -35,12 +35,17 @@ so `paramsFrom()` decodes the snapshot they receive instead.
 ## Remember values
 
 `persistence.ts` reads and writes browser storage, always inside `try`/`catch`, and only on the
-browser platform. `compileRoutes` puts its `canActivate` guard in front of the guards of each route
-that declares a persisted query field, and wraps that route's `runGuardsAndResolvers` so the guard
-also runs on a reused route. The guard finds the deepest compiled route of the destination's
-primary chain, collects the persisted fields whose URL value is missing or fails to decode, and
-returns a `RedirectCommand` to the same URL with those fields filled in. The reader asks the same
-module for a stored value before it falls back to a default. `route-node.ts` saves the active
+browser platform. `compileRoutes` appends `restoreQueryCheck` to the `canMatch` guards of each
+route whose chain declares a persisted query field, and of every ancestor of such a route. Angular
+calls `canMatch` with only the segments left at the route's level, and before the children match.
+So each check first records the segments its route consumed, by depth, in the router's
+persistence instance for the current navigation. The route that consumes the rest of the URL and
+has no empty-path or `**` child then joins the recorded ancestor segments with its own to get the
+matched path, reads scope values from it by position, collects the persisted fields whose URL
+value is missing or fails to decode, and returns a `RedirectCommand` with those fields filled in.
+The path-codec check comes first in `canMatch` and the restore check last, so a route that fails
+its codecs or its own `canMatch` guards never redirects. The reader asks the same module for a
+stored value before it falls back to a default. `route-node.ts` saves the active
 chain's persisted values on each `NavigationEnd`.
 
 For a named route with persisted trailing placeholders, `compileRoutes` inserts unnamed routes

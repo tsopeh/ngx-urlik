@@ -1,10 +1,11 @@
 import {
   ActivatedRouteSnapshot,
-  CanMatchFn,
   convertToParamMap,
   ParamMap,
+  PRIMARY_OUTLET,
   Route,
   Routes,
+  UrlSegment,
 } from '@angular/router';
 import { isEqual } from './is-equal';
 import type { AnyQueryParamDefinition, UrlParamCodec } from './params';
@@ -14,8 +15,7 @@ import {
   PersistenceToken,
   persistOf,
   restorePathMatcher,
-  restoreQueryGuard,
-  runGuardsWhenRestoring,
+  restoreQueryCheck,
 } from './persistence';
 import { parseRoutePath, resolvePathParamDefinitions, RouteDefinition } from './route-definition';
 import { routeConfigBrand } from './route-symbols';
@@ -72,10 +72,13 @@ export function compileRoutes(
   if (!hasLibraryFields(definitions))
     return { routes: definitions as Routes, catalog, persistKeys };
 
+  // Routes that carry the query-restore check, so their ancestors carry it too.
+  const checked = new Set<Route>();
   const compile = (
     definitions: readonly RouteDefinition[],
     parent?: CompiledRoute,
     location = 'routes',
+    depth = 0,
   ): Routes =>
     definitions.flatMap((definition, index) => {
       const at = `${location}[${index}]`;
@@ -134,18 +137,8 @@ export function compileRoutes(
       const codecs = parsed.segments.map((segment) =>
         segment.kind === 'param' ? configured[segment.name]?.codec : undefined,
       );
-      if (codecs.some(Boolean))
-        angular.canMatch = [matchPathCodecs(codecs), ...(angular.canMatch ?? [])];
-      const persistsQuery = Object.values(queryParams ?? {}).some(
-        (definition) => 'persist' in definition && definition.persist,
-      );
-      if (persistsQuery && angular.redirectTo === undefined) {
-        angular.canActivate = [restoreQueryGuard(persistence), ...(angular.canActivate ?? [])];
-        angular.runGuardsAndResolvers = runGuardsWhenRestoring(
-          persistence,
-          angular.runGuardsAndResolvers,
-        );
-      }
+      const codecsMatch = matchPathCodecs(codecs);
+      if (codecs.some(Boolean)) angular.canMatch = [codecsMatch, ...(angular.canMatch ?? [])];
 
       for (const param of [...info.pathParams, ...info.queryParams])
         if (param.owner === info) {
@@ -154,7 +147,28 @@ export function compileRoutes(
         }
       (angular as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
       if (routeName) catalog.set(routeName, info);
-      if (children) angular.children = compile(children, info, `${at}.children`);
+      if (children) angular.children = compile(children, info, `${at}.children`, depth + 1);
+      const restores = info.queryParams.some((param) => persistOf(param));
+      if (
+        (restores || angular.children?.some((child) => checked.has(child))) &&
+        angular.redirectTo === undefined
+      ) {
+        checked.add(angular);
+        const endsMatch = !children?.some(
+          (child) =>
+            (child.outlet ?? PRIMARY_OUTLET) === PRIMARY_OUTLET &&
+            (child.path === '' || child.path === '**'),
+        );
+        angular.canMatch = [
+          ...(angular.canMatch ?? []),
+          restoreQueryCheck(persistence, info, {
+            depth,
+            endsMatch,
+            restores,
+            codecsMatch: (segments) => codecsMatch(angular, segments),
+          }),
+        ];
+      }
       return [angular, ...restoreRoutes(info, readStoredPath)];
     });
 
@@ -179,7 +193,9 @@ function restoreRoutes(info: CompiledRoute, read: PathRestoreReader): Route[] {
 }
 
 /** Rejects a match whose path values fail their codecs, so Angular tries the next route. */
-function matchPathCodecs(codecs: readonly (UrlParamCodec<unknown> | undefined)[]): CanMatchFn {
+function matchPathCodecs(
+  codecs: readonly (UrlParamCodec<unknown> | undefined)[],
+): (_route: unknown, segments: readonly UrlSegment[]) => boolean {
   return (_route, segments) =>
     codecs.every((codec, index) => {
       if (!codec) return true;

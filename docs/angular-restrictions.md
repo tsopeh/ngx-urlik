@@ -22,10 +22,11 @@ lazily with `loadComponent`; the route declarations and named chains must be ava
 `defineAppRouter()` runs. Replacing them later with `Router.resetConfig()` is unsupported and not
 detected.
 
-A route that declares a [persisted](design/app-router.md#remember-values-in-storage) query field
-gets a `canActivate` guard in front of its own guards. When the URL lacks a usable value, the guard
-redirects to the URL with the value filled in. Its `runGuardsAndResolvers` is wrapped so the
-guards also run on a reused route when a value needs restoring.
+Each route in a chain with a [persisted](design/app-router.md#remember-values-in-storage) query
+field, and each ancestor of one, gets a `canMatch` check after its own `canMatch` guards. On the
+route that ends the match, the check redirects to the URL with the missing values filled in when
+the URL lacks a usable value. Angular runs `canMatch` on reused routes too, so the route's own
+guards and `runGuardsAndResolvers` are left alone.
 
 A named route whose trailing placeholders persist gets unnamed sibling routes right after it, one
 for each count of missing placeholders. Each has a `matcher` that accepts exactly the shorter path
