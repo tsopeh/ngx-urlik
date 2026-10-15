@@ -216,3 +216,20 @@ test('remembers the page size across lists and reloads', async ({ page }) => {
   await expect(page).toHaveURL(/\/screen\/movies\?pageSize=12$/);
   await expect(page.locator('app-media-card')).toHaveCount(12);
 });
+
+test('opens the last season of a show from a URL without the season', async ({ page }) => {
+  await page.goto(`${showUrl}/seasons/season`);
+  await expect(
+    page.getByRole('heading', { name: 'This page isn’t in the catalog.' }),
+  ).toBeVisible();
+  await page.goto(`${showUrl}/seasons`);
+  await page.getByRole('link', { name: 'Season 2', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Only Mergers in the Building · Season 2' }),
+  ).toBeVisible();
+  await page.goto(`${showUrl}/seasons/season?pageSize=12#episodes`);
+  await expect(page).toHaveURL(new RegExp(`${showUrl}/seasons/season/2\\?pageSize=12#episodes$`));
+  await expect(
+    page.getByRole('heading', { name: 'Only Mergers in the Building · Season 2' }),
+  ).toBeVisible();
+});

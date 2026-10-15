@@ -198,6 +198,12 @@ and "restore the stored value", and the second reading would win, so the user co
 to 24 through the URL. With the field always written, a missing key has one meaning: restore,
 else default.
 
+A path value follows the same rule. A URL without the remembered season, such as
+`/shows/tv_1/seasons`, redirects to the season's own URL instead of rendering it under the shorter
+address. With nothing stored, the shorter URL keeps its old meaning, so persistence never turns a
+not-found page into a different page by accident, and an app route declared earlier at that path
+still wins.
+
 A persisted field therefore needs URL text for every value. A scalar without a default reads
 missing as `null`, which has no URL text, so `persist` requires `defaultValue`. A repeated field
 writes `[]` as no keys at all, so it cannot persist; a `listCodec` field writes `[]` as `?tags=`

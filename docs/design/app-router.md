@@ -47,12 +47,12 @@ route uses an ngx-urlik field, `defineAppRouter()` passes the route array to Ang
 
 ngx-urlik adds four optional fields to Angular's `Route` object:
 
-| Field         | What it does                                                                                                                                                                                    |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `routeName`   | Adds a node under `AppRouter.routes`. Names must be unique across the whole route array; `defineAppRouter()` throws and identifies both declarations. The name does not change the URL.         |
-| `pathParam`   | Sets codecs for placeholders declared in this route's `path`. Without it, placeholders are strings. Use `{ codec }` for one placeholder or a map keyed by placeholder name.                     |
-| `queryParams` | Declares query fields this route owns. Named descendants inherit them, including fields on unnamed ancestors. Each key has one definition along a named route's chain.                          |
-| `isEqual`     | Compares decoded `{ path, query }` state for the route's `params` signal. Descendants inherit it unless they provide their own. It controls signal updates, not which URL values a patch reads. |
+| Field         | What it does                                                                                                                                                                                          |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `routeName`   | Adds a node under `AppRouter.routes`. Names must be unique across the whole route array; `defineAppRouter()` throws and identifies both declarations. The name does not change the URL.               |
+| `pathParam`   | Sets codecs for placeholders declared in this route's `path`, and optionally `persist`. Without it, placeholders are strings. Use `{ codec }` for one placeholder or a map keyed by placeholder name. |
+| `queryParams` | Declares query fields this route owns. Named descendants inherit them, including fields on unnamed ancestors. Each key has one definition along a named route's chain.                                |
+| `isEqual`     | Compares decoded `{ path, query }` state for the route's `params` signal. Descendants inherit it unless they provide their own. It controls signal updates, not which URL values a patch reads.       |
 
 Keep `path` and `routeName` literal so TypeScript can infer the nodes. A route array already
 widened to Angular's `Routes` type type-checks, but its named routes produce no typed nodes. A key
@@ -60,7 +60,8 @@ that is neither an Angular `Route` field nor one of the four above is a type err
 
 Paths can contain static segments and named placeholders, such as `shows/:showId/seasons/:season`.
 For a single placeholder, `pathParam` can be `{ codec }` or `{ showId: { codec } }`. For several
-placeholders, use a map with exactly one `{ codec }` entry per placeholder on that route. Path
+placeholders, use a map with exactly one `{ codec }` entry per placeholder on that route. An entry
+can also [persist](#remember-a-path-value) its value. Path
 values are required when constructing a destination. Placeholder names cannot repeat along a named
 route chain. A path and query field may use the same name, because state keeps them under
 separate `path` and `query` objects.
@@ -556,10 +557,53 @@ writes, and `activeRoute().createUrlTree()` write `?pageSize=24` instead of omit
 arrival restores it, so a missing key always means "restore, else default". A supplied value equal
 to the default is written.
 
+### Remember a path value
+
+A show page can reopen the season a user watched last:
+
+```ts
+{
+  path: 'shows/:showId',
+  routeName: RouteNames.SHOW,
+  children: [
+    {
+      path: 'seasons/:season',
+      routeName: RouteNames.SEASON,
+      pathParam: {
+        codec: numberCodec(),
+        persist: { key: 'season', storage: 'session', scope: ['showId'] },
+      },
+    },
+  ],
+}
+```
+
+After a visit to `/shows/tv_1/seasons/2`, a navigation to `/shows/tv_1/seasons` redirects to
+`/shows/tv_1/seasons/2`. The query and fragment stay. Without a stored season for that show, the
+shorter URL matches what it matched before: an app route declared earlier at that path, the next
+matching route, or the not-found page.
+
+Only a named route can persist a placeholder, and the persisted placeholders must end the route's
+own `path`: no static segment or unpersisted placeholder may follow them. In
+`shows/:showId/seasons/:season`, only `season` can persist. In `pair/:a/:b`, both can; then `/pair`
+and `/pair/5` are both restored. A placeholder's scope may name only placeholders before it in the
+route chain, because the shorter URL must already contain them.
+
+For each persisted placeholder, `defineAppRouter()` adds an unnamed Angular route right after the
+named one. Its path is the named route's own path without the missing placeholders, with
+`pathMatch: 'full'`. Its `canMatch` guard reads the missing values from storage. When each one is
+stored and decodes, the guard redirects to the full URL; otherwise the route does not match, and
+Angular continues with the next route. The redirect affects history as the query redirect does.
+These routes do not appear in `AppRouter.routes`.
+
+The guard reads ancestor path values from the URL that started the navigation, because Angular
+passes `canMatch` only the segments below the parent route. If an earlier redirect in the same
+navigation led to the shorter URL, those values are unknown, and nothing is restored.
+
 ### Save
 
 After every committed navigation (`NavigationEnd`), whatever started it, ngx-urlik saves each
-persisted field of the active route chain. A form write, `patchQuery()`, a link, and the Back
+persisted field and placeholder of the active route chain. A form write, `patchQuery()`, a link, and the Back
 button all count. It stores the URL text of the committed value, and skips a value that does not
 decode. Form drafts are never saved.
 
@@ -603,7 +647,8 @@ repeated or empty route names, names on redirects, wildcards, or matchers, `load
 named route or its ancestors, paths that are not statically known or contain empty segments or
 reserved characters, `pathParam` maps that do not match the placeholders, repeated placeholder
 names, repeated query keys, and `persist` options that are malformed, lack a default, sit on a
-repeated field, or name an unknown scope. Some of these are also type errors.
+repeated field, name an unknown scope, or persist a placeholder that is not at the end of a named
+route's path. Some of these are also type errors.
 Angular validates its own route configuration.
 
 The typed catalog is fixed when the router is defined. Replacing the named routes with

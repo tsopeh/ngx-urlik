@@ -6,6 +6,8 @@ export type QueryDefinitions = Readonly<Record<string, AnyQueryParamDefinition>>
 /** A codec attached to a placeholder already declared by an Angular route path. */
 export interface PathParamCodecDefinition<T = unknown> {
   readonly codec: UrlParamCodec<T>;
+  /** Remembers the value. Allowed on the trailing placeholders of a named route's own path. */
+  readonly persist?: PersistOptions;
 }
 
 export type PathParamOptions =
@@ -71,7 +73,8 @@ export function parseRoutePath(path: string): ParsedRoutePath {
 }
 
 function isCodecDefinition(value: unknown): value is PathParamCodecDefinition {
-  if (!value || typeof value !== 'object' || Object.keys(value).length !== 1) return false;
+  if (!value || typeof value !== 'object') return false;
+  if (Object.keys(value).some((key) => key !== 'codec' && key !== 'persist')) return false;
   const codec = (value as Partial<PathParamCodecDefinition>).codec;
   return (
     !!codec &&
@@ -94,6 +97,20 @@ export function resolvePathParamDefinitions(
   return typeof option === 'object' && !Array.isArray(option)
     ? (option as Readonly<Record<string, PathParamCodecDefinition>>)
     : {};
+}
+
+/** The persisted placeholders at the end of a path, with no other segment after them. */
+function persistedTrailingPlaceholders(
+  segments: readonly ParsedRoutePathSegment[],
+  definitions: Readonly<Record<string, PathParamCodecDefinition>>,
+): string[] {
+  const names: string[] = [];
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const segment = segments[i];
+    if (segment.kind !== 'param' || !definitions[segment.name]?.persist) break;
+    names.unshift(segment.name);
+  }
+  return names;
 }
 
 /** Problems with a `persist` option. `scopeNames` are the path parameters its scope may name. */
@@ -195,7 +212,9 @@ export function validateRouteDefinitions(
                 'serialize' in codecOptions['codec'] &&
                 'deserialize' in codecOptions['codec']
               )
-                report(`${routeName}: ${owner}: pathParam shorthand supports only 'codec'`);
+                report(
+                  `${routeName}: ${owner}: pathParam shorthand supports only 'codec' and 'persist'`,
+                );
               if (shorthand && parsed.placeholders.length !== 1)
                 report(
                   `${routeName}: ${owner}: pathParam shorthand requires exactly one path placeholder`,
@@ -218,6 +237,24 @@ export function validateRouteDefinitions(
                 report(
                   `${routeName}: ${owner}: pathParam map must define exactly the path placeholders`,
                 );
+              const trailing = persistedTrailingPlaceholders(parsed.segments, definitions);
+              for (const [name, definition] of Object.entries(definitions)) {
+                const persist = (definition as { persist?: unknown } | undefined)?.persist;
+                if (persist === undefined) continue;
+                if (member.routeName === undefined)
+                  report(
+                    `${routeName}: ${owner}: pathParam '${name}' can persist only on a named route`,
+                  );
+                else if (depth === chain.length - 1) {
+                  if (!trailing.includes(name))
+                    report(
+                      `${routeName}: pathParam '${name}' can persist only in the trailing placeholders of the route's path, after which every placeholder persists`,
+                    );
+                  const before = parsed.placeholders.slice(0, parsed.placeholders.indexOf(name));
+                  for (const problem of persistProblems(persist, [...pathOwners.keys(), ...before]))
+                    report(`${routeName}: pathParam '${name}' ${problem}`);
+                }
+              }
             }
             for (const name of parsed.placeholders) {
               const previous = pathOwners.get(name);

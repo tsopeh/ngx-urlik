@@ -58,7 +58,7 @@ Codecs strictly translate between strings and types.
 
 **Persistence**
 
-- `queryParam({ codec, defaultValue, persist: { key, storage: 'local' | 'session', scope? } })` saves the committed value and writes it back into a URL that lacks it. Persisted fields always appear in the URL; repeated fields and fields without a default cannot persist.
+- `queryParam({ codec, defaultValue, persist: { key, storage: 'local' | 'session', scope? } })` saves the committed value and writes it back into a URL that lacks it. Persisted fields always appear in the URL; repeated fields and fields without a default cannot persist. A named route's trailing placeholders can persist too (`pathParam: { codec, persist }`): the URL without them redirects to the stored values.
 
 **Comparators (`isEqual`)**
 You can provide a custom `isEqual` function in the node configuration to override how the `params` signal evaluates equality for complex objects.

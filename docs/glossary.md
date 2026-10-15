@@ -34,7 +34,9 @@ These names are used in the code and the reference.
 
 **Default value**: A value, or a synchronous injection-aware factory, used for missing or malformed query input. Values equal to the default are omitted from URLs, except for persisted fields.
 
-**Persisted field**: A query field with `persist`. The router saves its committed value in browser storage and writes the stored value into a URL that lacks one.
+**Persisted field**: A query field or path placeholder with `persist`. The router saves its committed value in browser storage and writes the stored value into a URL that lacks one.
+
+**Restore route**: An unnamed route that `defineAppRouter()` adds after a named route with persisted trailing placeholders. It matches the shorter URL and redirects to the full one when the values are stored.
 
 **Storage key**: The name a persisted value is stored under: the router's prefix, the field's `key`, and, with a `scope`, the scoped path values.
 

@@ -46,6 +46,7 @@ export enum RouteNames {
   SHOWS = 'SHOWS',
   SHOW_DETAIL = 'SHOW_DETAIL',
   SEASONS = 'SEASONS',
+  SEASON = 'SEASON',
   SEASON_DETAIL = 'SEASON_DETAIL',
   EPISODES = 'EPISODES',
   EPISODE_DETAIL = 'EPISODE_DETAIL',
@@ -116,7 +117,13 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                       children: [
                         {
                           path: 'season/:seasonNumber',
-                          pathParam: { codec: positiveIntegerCodec() },
+                          routeName: RouteNames.SEASON,
+                          // Each show remembers its last season for this tab, so
+                          // `seasons/season` opens it again.
+                          pathParam: {
+                            codec: positiveIntegerCodec(),
+                            persist: { key: 'season', storage: 'session', scope: ['showId'] },
+                          },
                           children: [
                             {
                               path: '',

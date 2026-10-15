@@ -1,6 +1,11 @@
 import type { Signal } from '@angular/core';
 import type { ActivatedRouteSnapshot, Route, UrlTree } from '@angular/router';
-import type { ArrayQueryParamDefinition, QueryParamDefinition, UrlParamCodec } from './params';
+import type {
+  ArrayQueryParamDefinition,
+  PersistOptions,
+  QueryParamDefinition,
+  UrlParamCodec,
+} from './params';
 import type { QueryDefinitions, RouteDefinition } from './route-definition';
 import type { QueryPatch, TypedNavigationBehaviorOptions, UrlParamsState } from './route-node';
 import type { routeNodeInfo } from './route-symbols';
@@ -96,18 +101,47 @@ type PathNames<S extends string> = S extends `${infer Head}/${infer Tail}`
   ? PathSegmentName<Head> | PathNames<Tail>
   : PathSegmentName<S>;
 type OwnPathNames<D> = D extends { path: infer P extends string } ? PathNames<P> : never;
-type CodecOption = Readonly<{ codec: UrlParamCodec<unknown> }>;
+// Placeholders of a path that come before the placeholder `Name`.
+type NamesBefore<S extends string, Name extends string> = S extends `${infer Head}/${infer Tail}`
+  ? Head extends `:${Name}`
+    ? never
+    : PathSegmentName<Head> | NamesBefore<Tail, Name>
+  : never;
+type CodecOption = Readonly<{ codec: UrlParamCodec<unknown>; persist?: PersistOptions }>;
 type CodecValue<C> = C extends { codec: UrlParamCodec<infer T> } ? T : string;
 type IsUnion<T, C = T> = T extends C ? ([C] extends [T] ? false : true) : never;
-type StrictCodecOption<C> = CodecOption & Record<Exclude<keyof C, 'codec'>, never>;
-type KeyedPathConfig<Names extends string, Supplied> = {
-  readonly [K in Names]: K extends keyof Supplied ? StrictCodecOption<Supplied[K]> : CodecOption;
+// A scope may name only path parameters known before this value. A scope typed as a wide string,
+// such as one from an annotated helper, is checked at runtime.
+type ScopeCheck<C, Names extends string> = C extends {
+  readonly persist?: { readonly scope?: readonly (infer S)[] };
+}
+  ? string extends S
+    ? unknown
+    : [Exclude<S, Names>] extends [never]
+      ? unknown
+      : { readonly persist?: { readonly scope?: readonly Names[] } }
+  : unknown;
+type StrictCodecOption<C, ScopeNames extends string> = CodecOption &
+  Record<Exclude<keyof C, 'codec' | 'persist'>, never> &
+  ScopeCheck<C, ScopeNames>;
+type KeyedPathConfig<
+  Names extends string,
+  Supplied,
+  Path extends string,
+  Ancestor extends string,
+> = {
+  readonly [K in Names]: K extends keyof Supplied
+    ? StrictCodecOption<Supplied[K], Ancestor | NamesBefore<Path, K>>
+    : CodecOption;
 } & Record<Exclude<keyof Supplied, Names>, never>;
-type PathConfig<Names extends string, Supplied> = [Names] extends [never]
+type PathConfig<Names extends string, Supplied, Path extends string, Ancestor extends string> = [
+  Names,
+] extends [never]
   ? never
   : IsUnion<Names> extends true
-    ? KeyedPathConfig<Names, Supplied>
-    : StrictCodecOption<Supplied> | KeyedPathConfig<Names, Supplied>;
+    ? KeyedPathConfig<Names, Supplied, Path, Ancestor>
+    : | StrictCodecOption<Supplied, Ancestor | NamesBefore<Path, Names>>
+      | KeyedPathConfig<Names, Supplied, Path, Ancestor>;
 type OwnPath<D> = {
   [K in OwnPathNames<D>]: D extends { pathParam: infer P }
     ? P extends CodecOption
@@ -119,19 +153,8 @@ type OwnPath<D> = {
 };
 type AccumulatedPath<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
 type AccumulatedQuery<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
-// A persisted query field's scope may name the path parameters of its route chain. A scope typed
-// as a wide string, such as one from an annotated helper, is checked at runtime.
-type ScopeChecks<Q, Names extends string> = {
-  readonly [P in keyof Q]: Q[P] extends {
-    readonly persist?: { readonly scope?: readonly (infer S)[] };
-  }
-    ? string extends S
-      ? unknown
-      : [Exclude<S, Names>] extends [never]
-        ? unknown
-        : { readonly persist?: { readonly scope?: readonly Names[] } }
-    : unknown;
-};
+// A persisted query field's scope may name the path parameters of its route chain.
+type ScopeChecks<Q, Names extends string> = { readonly [P in keyof Q]: ScopeCheck<Q[P], Names> };
 type RouteKey = keyof Route | 'routeName' | 'pathParam' | 'queryParams' | 'isEqual';
 
 type ContextualRoute<D, AncestorQuery, AncestorPath extends string> = {
@@ -153,7 +176,12 @@ type ContextualRoute<D, AncestorQuery, AncestorPath extends string> = {
               : D[K]
             : never
         : K extends 'pathParam'
-          ? PathConfig<OwnPathNames<D>, D[K]>
+          ? PathConfig<
+              OwnPathNames<D>,
+              D[K],
+              D extends { path: infer P extends string } ? P : '',
+              AncestorPath
+            >
           : K extends 'queryParams'
             ? D[K] extends QueryDefinitions
               ? Record<Extract<keyof D[K], keyof AncestorQuery>, never> &

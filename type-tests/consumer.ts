@@ -327,3 +327,83 @@ defineAppRouter(PersistRouteNames, {
     },
   ],
 });
+
+enum SeasonRouteNames {
+  SHOW = 'SHOW',
+  SEASON = 'SEASON',
+}
+const seasons = defineAppRouter(SeasonRouteNames, {
+  routes: [
+    {
+      path: 'shows/:showId',
+      routeName: SeasonRouteNames.SHOW,
+      children: [
+        {
+          path: 'seasons/:season',
+          routeName: SeasonRouteNames.SEASON,
+          pathParam: {
+            codec: numberCodec(),
+            persist: { key: 'season', storage: 'session', scope: ['showId'] },
+          },
+        },
+      ],
+    },
+  ],
+});
+declare const seasonRouter: TokenValue<typeof seasons.AppRouter>;
+seasonRouter.routes.SEASON.params().path.season satisfies number;
+
+defineAppRouter(SeasonRouteNames, {
+  routes: [
+    {
+      path: 'pair/:a/:b',
+      routeName: SeasonRouteNames.SEASON,
+      pathParam: {
+        a: { codec: numberCodec(), persist: { key: 'a', storage: 'local' } },
+        b: { codec: numberCodec(), persist: { key: 'b', storage: 'local', scope: ['a'] } },
+      },
+    },
+  ],
+});
+defineAppRouter(SeasonRouteNames, {
+  routes: [
+    {
+      path: 'pair/:a/:b',
+      routeName: SeasonRouteNames.SEASON,
+      pathParam: {
+        // @ts-expect-error a placeholder's scope names only placeholders before it
+        a: { codec: numberCodec(), persist: { key: 'a', storage: 'local', scope: ['b'] } },
+        b: { codec: numberCodec() },
+      },
+    },
+  ],
+});
+defineAppRouter(SeasonRouteNames, {
+  routes: [
+    {
+      path: 'shows/:showId',
+      routeName: SeasonRouteNames.SHOW,
+      children: [
+        {
+          path: 'seasons/:season',
+          routeName: SeasonRouteNames.SEASON,
+          pathParam: {
+            codec: numberCodec(),
+            // @ts-expect-error a scope names placeholders of the route chain
+            persist: { key: 'season', storage: 'session', scope: ['episode'] },
+          },
+        },
+      ],
+    },
+  ],
+});
+defineAppRouter(SeasonRouteNames, {
+  routes: [
+    {
+      path: 'shows/:showId',
+      routeName: SeasonRouteNames.SHOW,
+      // @ts-expect-error pathParam entries accept only codec and persist
+      pathParam: { codec: numberCodec(), other: true },
+    },
+  ],
+});

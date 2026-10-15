@@ -1,12 +1,15 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { CanActivateFn, Router } from '@angular/router';
+import { CanActivateFn, Router, RouterOutlet } from '@angular/router';
 import { AppRouterDiagnostic, defineAppRouter } from './app-router';
 import { numberCodec, queryParam, repeatedQueryParam, stringCodec } from './params';
 import type { RouteDefinitions } from './route-definition';
 
 @Component({ template: '' })
 class Page {}
+
+@Component({ imports: [RouterOutlet], template: '<router-outlet />' })
+class Layout {}
 
 enum RouteNames {
   ITEMS = 'ITEMS',
@@ -272,5 +275,147 @@ describe('query persistence', () => {
 
     await router.navigateByUrl('/plain');
     expect(observed().pageSize).toBe(24);
+  });
+});
+
+@Component({ template: 'not found' })
+class NotFound {}
+
+@Component({ template: 'pair start' })
+class PairStart {}
+
+enum PathRouteNames {
+  SHOW = 'SHOW',
+  SEASON = 'SEASON',
+  PAIR = 'PAIR',
+}
+
+function setupPath() {
+  const diagnostics: AppRouterDiagnostic[] = [];
+  const persistedNumber = (key: string) => ({
+    codec: numberCodec(),
+    persist: { key, storage: 'local' as const },
+  });
+  const definition = defineAppRouter(PathRouteNames, {
+    diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
+    routes: [
+      {
+        path: 'shows/:showId',
+        routeName: PathRouteNames.SHOW,
+        component: Layout,
+        children: [
+          {
+            path: 'seasons/:season',
+            routeName: PathRouteNames.SEASON,
+            pathParam: {
+              codec: numberCodec(),
+              persist: { key: 'season', storage: 'session', scope: ['showId'] },
+            },
+            component: Page,
+          },
+        ],
+      },
+      { path: 'pair/:a', component: PairStart },
+      {
+        path: 'pair/:a/:b',
+        routeName: PathRouteNames.PAIR,
+        pathParam: { a: persistedNumber('a'), b: persistedNumber('b') },
+        component: Page,
+      },
+      { path: '**', component: NotFound },
+    ],
+  });
+  TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+  const router = TestBed.inject(Router);
+  const leaf = () => getLeaf(router);
+  return { app: TestBed.inject(definition.AppRouter), router, diagnostics, leaf };
+}
+
+function getLeaf(router: Router) {
+  let snapshot = router.routerState.snapshot.root;
+  while (snapshot.firstChild) snapshot = snapshot.firstChild;
+  return snapshot.component;
+}
+
+describe('path persistence', () => {
+  it('saves a persisted placeholder under its scoped key', async () => {
+    const { router } = setupPath();
+
+    await router.navigateByUrl('/shows/a%20b/seasons/2');
+    expect(sessionStorage.getItem('ngx-urlik:season:a%20b')).toBe('2');
+  });
+
+  it('redirects a URL without the placeholder to the stored value', async () => {
+    sessionStorage.setItem('ngx-urlik:season:x', '3');
+    const { app, router } = setupPath();
+
+    expect(await router.navigateByUrl('/shows/x/seasons?tab=cast#top')).toBe(true);
+    expect(router.url).toBe('/shows/x/seasons/3?tab=cast#top');
+    expect(app.routes.SEASON.params().path).toEqual({ showId: 'x', season: 3 });
+  });
+
+  it('lets Angular keep matching when nothing usable is stored', async () => {
+    sessionStorage.setItem('ngx-urlik:season:x', '3');
+    sessionStorage.setItem('ngx-urlik:season:y', 'first');
+    const { router, leaf, diagnostics } = setupPath();
+
+    await router.navigateByUrl('/shows/z/seasons');
+    expect(router.url).toBe('/shows/z/seasons');
+    expect(leaf()).toBe(NotFound);
+    await router.navigateByUrl('/shows/y/seasons');
+    expect(leaf()).toBe(NotFound);
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'STORED_VALUE_DESERIALIZE_FAILED',
+        parameter: 'season',
+        key: 'ngx-urlik:season:y',
+      }),
+    );
+  });
+
+  it('restores each missing placeholder of a trailing run', async () => {
+    localStorage.setItem('ngx-urlik:a', '1');
+    localStorage.setItem('ngx-urlik:b', '2');
+    const { router, leaf } = setupPath();
+
+    await router.navigateByUrl('/pair');
+    expect(router.url).toBe('/pair/1/2');
+    await router.navigateByUrl('/pair/5/6');
+    expect(localStorage.getItem('ngx-urlik:a')).toBe('5');
+    // An app route declared earlier at the shorter path wins.
+    await router.navigateByUrl('/pair/7');
+    expect(router.url).toBe('/pair/7');
+    expect(leaf()).toBe(PairStart);
+  });
+
+  it('keeps generated routes out of AppRouter.routes', () => {
+    const { app } = setupPath();
+
+    expect(Object.keys(app.routes).sort()).toEqual(['PAIR', 'SEASON', 'SHOW']);
+  });
+
+  it('rejects persist on unnamed routes, before the trailing run, and with a later scope', () => {
+    const codec = stringCodec();
+    const persist = (key: string, scope?: string[]) => ({
+      codec,
+      persist: { key, storage: 'local', scope },
+    });
+    const invalid = [
+      {
+        path: 'u/:unnamed',
+        pathParam: persist('u'),
+        children: [{ path: 'named', routeName: PathRouteNames.SHOW }],
+      },
+      {
+        path: 'a/:first/b/:second',
+        routeName: PathRouteNames.SEASON,
+        pathParam: { first: persist('f'), second: persist('s', ['third']) },
+        children: [{ path: ':third', routeName: PathRouteNames.PAIR }],
+      },
+    ] as unknown as RouteDefinitions;
+
+    expect(() => defineAppRouter(PathRouteNames, { routes: invalid as never })).toThrowError(
+      /'unnamed' can persist only on a named route[\s\S]*'first' can persist only in the trailing placeholders[\s\S]*scope names 'third'/,
+    );
   });
 });

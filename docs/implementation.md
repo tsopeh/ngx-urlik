@@ -43,6 +43,12 @@ returns a `RedirectCommand` to the same URL with those fields filled in. The rea
 module for a stored value before it falls back to a default. `route-node.ts` saves the active
 chain's persisted values on each `NavigationEnd`.
 
+For a named route with persisted trailing placeholders, `compileRoutes` inserts unnamed routes
+right after it, one per count of missing placeholders. Their `canMatch` guard, `restorePathGuard`,
+reads ancestor values by position from the navigation's extracted URL, because Angular passes it
+only the segments below the parent. It returns a `RedirectCommand` with the stored values appended,
+or `false`.
+
 ## Write
 
 Suppose two controls change different filters before either navigation finishes. If both build a

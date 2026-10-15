@@ -2,11 +2,15 @@ import { EnvironmentInjector, inject, InjectionToken, runInInjectionContext } fr
 import {
   ActivatedRouteSnapshot,
   CanActivateFn,
+  CanMatchFn,
+  convertToParamMap,
   ParamMap,
+  PRIMARY_OUTLET,
   RedirectCommand,
   Router,
   RunGuardsAndResolvers,
   UrlSegment,
+  UrlSegmentGroup,
 } from '@angular/router';
 import type { CompiledRoute, RuntimeParam } from './compiled-route';
 import { activePathParams, getPrimaryActiveChain } from './compiled-route';
@@ -123,6 +127,10 @@ export function createPersistence(
   };
 
   return {
+    /** The stored URL text of a persisted value if it decodes. */
+    storedText: (param: RuntimeParam, path: ParamMap): string | undefined =>
+      readStored(param, path) ?? undefined,
+
     /** The stored value of a persisted field, decoded, or `undefined`. */
     restore(param: RuntimeParam, path: ParamMap): unknown {
       const raw = readStored(param, path);
@@ -159,14 +167,67 @@ export function createPersistence(
       const active = activeCompiledRoute(root);
       if (!active) return;
       const path = activePathParams(active.info, active.snapshot);
-      for (const param of active.info.queryParams) {
+      for (const param of [...active.info.pathParams, ...active.info.queryParams]) {
         const persist = persistOf(param);
-        const raw = root.queryParamMap.getAll(param.name).at(-1);
+        const raw =
+          param.placement === 'path'
+            ? (path.get(param.name) ?? undefined)
+            : root.queryParamMap.getAll(param.name).at(-1);
         if (!persist || raw === undefined || !decodes(param, raw)) continue;
         const key = storageKey(persist, path);
         if (key !== undefined) storage.write(persist.storage, key, raw);
       }
     },
+  };
+}
+
+/**
+ * Matches a URL that lacks `missing`, the persisted trailing placeholders of `info`, when each of
+ * them is stored, and redirects to the URL with the stored values appended. Otherwise the route
+ * does not match and Angular tries the next one.
+ */
+export function restorePathGuard(
+  token: PersistenceToken,
+  info: CompiledRoute,
+  missing: readonly RuntimeParam[],
+): CanMatchFn {
+  return () => {
+    const router = inject(Router);
+    const persistence = inject(token);
+    // canMatch sees only segments below its parent, so read ancestor values from the whole URL.
+    // After an earlier redirect in the same navigation this URL is stale, and nothing is restored.
+    const url = router.currentNavigation()?.extractedUrl;
+    if (!url) return false;
+    const groups: UrlSegmentGroup[] = [];
+    for (let group: UrlSegmentGroup | undefined = url.root; group;) {
+      groups.push(group);
+      group = group.children[PRIMARY_OUTLET];
+    }
+    const segments = groups.flatMap((group) => group.segments);
+    const known = info.fullSegments.slice(0, info.fullSegments.length - missing.length);
+    if (
+      segments.length !== known.length ||
+      known.some((segment, i) => segment.kind === 'static' && segment.value !== segments[i].path)
+    )
+      return false;
+    const path: Record<string, string> = {};
+    known.forEach((segment, i) => {
+      if (segment.kind === 'param') path[segment.name] = segments[i].path;
+    });
+    for (const param of missing) {
+      const text = persistence.storedText(param, convertToParamMap(path));
+      if (text === undefined) return false;
+      path[param.name] = text;
+    }
+    const tree = router.parseUrl(router.serializeUrl(url));
+    let last = tree.root;
+    while (last.children[PRIMARY_OUTLET]) last = last.children[PRIMARY_OUTLET];
+    if (last === tree.root) {
+      last = new UrlSegmentGroup([], {});
+      tree.root.children[PRIMARY_OUTLET] = last;
+    }
+    last.segments.push(...missing.map((param) => new UrlSegment(path[param.name], {})));
+    return new RedirectCommand(tree);
   };
 }
 

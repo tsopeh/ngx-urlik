@@ -12,8 +12,8 @@ supplies landing content, and redirects are ordinary unnamed Angular routes. The
 `params` and `patchQuery()`. Later in 0.2.0, `defineAppRouter()` began taking a `RouteNames` enum
 as its first argument so Go to Definition reaches the route name. Form bindings then replaced the
 `transformWrites` RxJS stream with `writeWhen`, a Reactive Forms `debounce` option, and
-`beforeWrite`, which lets a page reset fields such as the page number. Query fields can now persist their values in
-browser storage and restore them into the URL.
+`beforeWrite`, which lets a page reset fields such as the page number. Query fields and trailing path placeholders can now persist
+their values in browser storage and restore them into the URL.
 
 Several 0.1.0 ideas carried over: codecs separate from placement, deterministic construction, the
 shared write queue, form drafts, `activeRoute()`, and read-only global observation.

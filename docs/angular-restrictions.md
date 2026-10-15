@@ -27,6 +27,12 @@ gets a `canActivate` guard in front of its own guards. When the URL lacks a usab
 redirects to the URL with the value filled in. Its `runGuardsAndResolvers` is wrapped so the
 guards also run on a reused route when a value needs restoring.
 
+A named route whose trailing placeholders persist gets unnamed sibling routes right after it, one
+for each count of missing placeholders, at the shorter path with `pathMatch: 'full'`. Their
+`canMatch` guard redirects to the full path when the missing values are stored, and otherwise
+fails, so Angular keeps matching. Angular does not run `canMatch` on a `redirectTo` route, so these
+routes have empty `children` and redirect from the guard instead.
+
 Put router options on `defineAppRouter(RouteNames, { routerConfig })`. ngx-urlik keeps the
 supplied `paramsInheritanceStrategy` and reads path values from the activated route chain.
 Passing `withRouterConfig()` to `provideAppRouter()` throws.

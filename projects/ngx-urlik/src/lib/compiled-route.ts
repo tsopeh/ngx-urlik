@@ -9,7 +9,13 @@ import {
 import { isEqual } from './is-equal';
 import type { AnyQueryParamDefinition, UrlParamCodec } from './params';
 import { stringCodec } from './params';
-import { PersistenceToken, restoreQueryGuard, runGuardsWhenRestoring } from './persistence';
+import {
+  PersistenceToken,
+  persistOf,
+  restorePathGuard,
+  restoreQueryGuard,
+  runGuardsWhenRestoring,
+} from './persistence';
 import { parseRoutePath, resolvePathParamDefinitions, RouteDefinition } from './route-definition';
 import { routeConfigBrand } from './route-symbols';
 
@@ -65,7 +71,7 @@ export function compileRoutes(
     parent?: CompiledRoute,
     location = 'routes',
   ): Routes =>
-    definitions.map((definition, index) => {
+    definitions.flatMap((definition, index) => {
       const at = `${location}[${index}]`;
       const {
         routeName,
@@ -96,7 +102,12 @@ export function compileRoutes(
       for (const name of parsed.placeholders) {
         info.pathParams.push({
           name,
-          definition: { codec: configured[name]?.codec ?? defaultPathCodec },
+          definition: {
+            codec: configured[name]?.codec ?? defaultPathCodec,
+            ...(routeName && configured[name]?.persist
+              ? { persist: configured[name].persist }
+              : {}),
+          },
           owner: info,
           placement: 'path',
         });
@@ -133,10 +144,30 @@ export function compileRoutes(
       (angular as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
       if (routeName) catalog.set(routeName, info);
       if (children) angular.children = compile(children, info, `${at}.children`);
-      return angular;
+      return [angular, ...restoreRoutes(info, persistence)];
     });
 
   return { routes: compile(definitions), catalog };
+}
+
+/**
+ * For each count of persisted trailing placeholders that a URL can lack, a route at the shorter
+ * path that redirects to the full path when every missing value is stored.
+ */
+function restoreRoutes(info: CompiledRoute, persistence: PersistenceToken): Route[] {
+  const own = info.pathParams.filter((param) => param.owner === info);
+  const persisted: RuntimeParam[] = [];
+  for (let i = own.length - 1; i >= 0 && persistOf(own[i]); i--) persisted.unshift(own[i]);
+  return persisted.map((_, index) => {
+    const missing = persisted.slice(index);
+    const kept = info.segments.slice(0, info.segments.length - missing.length);
+    return {
+      path: kept.map((s) => (s.kind === 'static' ? s.value : `:${s.name}`)).join('/'),
+      pathMatch: 'full',
+      canMatch: [restorePathGuard(persistence, info, missing)],
+      children: [],
+    };
+  });
 }
 
 /** Rejects a match whose path values fail their codecs, so Angular tries the next route. */
