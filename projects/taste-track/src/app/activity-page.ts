@@ -96,7 +96,7 @@ export class ActivityPage {
     // A new filter or order starts from the first page, in the same navigation.
     beforeWrite: (patch) =>
       (['search', 'from', 'to', 'sort', 'pageSize'] as const).some((field) => field in patch)
-        ? { ...patch, page: 1 }
+        ? { page: 1, ...patch }
         : patch,
   });
   protected readonly query = computed(() => this.routes.routes.ACTIVITY.params().query);

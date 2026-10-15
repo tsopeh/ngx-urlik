@@ -36,7 +36,7 @@ There is a fundamental difference between draft state (what the user is typing r
 - **Binding:** Use `createQueryParamsSignalForm(node)` to isolate the draft state. The form holds the user's unfinished edits; the URL holds the committed truth. If an external navigation occurs (like a back button press), the form automatically resets to match the URL.
 
 - **Timing and validity:** Delay Signal Forms fields with Angular's `debounce()` schema rule and Reactive Forms fields with the binding's `debounce` option. Pass `writeWhen: 'valid'` to hold invalid input back. Put value shaping, such as trimming, in the codec.
-- **Dependent fields:** Reset fields such as `page` in the binding's `beforeWrite` (`(patch) => ('search' in patch ? { ...patch, page: 1 } : patch)`), or set them in the same `patchQuery()` patch (`patchQuery({ search, page: 1 })`).
+- **Dependent fields:** Reset fields such as `page` in the binding's `beforeWrite` (`(patch) => ('search' in patch ? { page: 1, ...patch } : patch)`), or set them in the same `patchQuery()` patch (`patchQuery({ search, page: 1 })`).
 
 **Completion criterion**: Text inputs and debounced controls bind to a draft form, never directly to `patchQuery`.
 

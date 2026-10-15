@@ -164,7 +164,7 @@ export class CollectionPage {
     writeWhen: 'valid',
     // Any change other than the page itself starts from the first page, in the same navigation.
     beforeWrite: (patch) =>
-      Object.keys(patch).some((field) => field !== 'page') ? { ...patch, page: 1 } : patch,
+      Object.keys(patch).some((field) => field !== 'page') ? { page: 1, ...patch } : patch,
   });
   protected readonly ratings = [6, 7, 8, 9, 10];
   protected readonly pageSizes = [12, 24, 48] as const;

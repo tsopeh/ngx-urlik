@@ -237,7 +237,7 @@ describe('query forms', () => {
 
   describe('beforeWrite', () => {
     const resetPage = <P extends { search?: string; page?: number }>(patch: P): P =>
-      'search' in patch ? { ...patch, page: 1 } : patch;
+      'search' in patch ? { page: 1, ...patch } : patch;
 
     it('resets the page in the same reactive write as a debounced search', async () => {
       const { results, router } = await setup();

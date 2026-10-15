@@ -405,16 +405,17 @@ on the page, so the binding asks the component through `beforeWrite`:
 ```ts
 const filters = createQueryParamsFormGroup(results, {
   debounce: { search: 300 },
-  beforeWrite: (patch) => ('search' in patch ? { ...patch, page: 1 } : patch),
+  beforeWrite: (patch) => ('search' in patch ? { page: 1, ...patch } : patch),
 });
 ```
 
 On `/results?page=4`, typing `elm` writes `?search=elm` in one navigation, and the page control
-then shows 1. A page change on its own is written unchanged. Signal Forms take the same option:
+then shows 1. A page change on its own is written unchanged. Because `patch` is spread last, a
+`patchValue({ search: 'elm', page: 3 })` keeps page 3. Signal Forms take the same option:
 
 ```ts
 const { model, form } = createQueryParamsSignalForm(results, {
-  beforeWrite: (patch) => ('search' in patch ? { ...patch, page: 1 } : patch),
+  beforeWrite: (patch) => ('search' in patch ? { page: 1, ...patch } : patch),
 });
 ```
 
