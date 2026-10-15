@@ -161,9 +161,15 @@ should not commit, such as a one-letter search. Timing follows each form system:
 Angular's `debounce()` rule, and Reactive Forms, which have none, take a `debounce` option on the
 binding.
 
+The page decides which fields reset when another one changes, through the binding's `beforeWrite`
+hook, such as setting `page: 1` whenever the search writes. Code that calls `patchQuery()` sets
+the same fields in its patch. A `resetWhen` option on the route's query fields was tried and
+removed: it applied one rule to every writer on the route, while resets differ from page to page,
+and the rule was hard to see from the component whose edit triggered it.
+
 An earlier design exposed an RxJS stream of field changes. It could express any timing policy, but
-the common case took a `groupBy`/`mergeMap` pipeline, and it duplicated native Signal Forms
-debounce.
+the common case took a `groupBy`/`mergeMap` pipeline, it duplicated native Signal Forms debounce,
+and it could not reset another field, such as the page.
 
 The URL wins after external navigation: pending edits are dropped and the form resets, so a stale
 debounced value cannot overwrite a page the user moved to. Writes replace the history entry by
@@ -172,6 +178,7 @@ default, because each keystroke is not a place the user wants to return to.
 **Cost:** forms bind only query fields, as flat controls; nested groups and `FormArray` are not
 supported. Failed writes are reported, not retried. Debounce is configured differently in the two
 form systems. Policies beyond a delay and validity, such as throttling, need code around the form.
+Each page writes its own resets.
 
 ## Let shared components name the routes they serve
 

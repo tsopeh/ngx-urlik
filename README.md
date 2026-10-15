@@ -108,8 +108,10 @@ model.update((query) => ({ ...query, search: 'elm' }));
 
 The form holds the draft. The URL holds the committed value. A multi-field edit writes together.
 Signal Forms delay a field with Angular's `debounce()` rule; Reactive Forms take a `debounce`
-option. `writeWhen: 'valid'` holds a field until its validators pass. Forms replace the current history entry by default.
-Browser navigation cancels pending edits and resets the form.
+option. `writeWhen: 'valid'` holds a field until its validators pass. `beforeWrite` lets the page
+change other fields in the same write, such as resetting the page when the search changes. Forms
+replace the current history entry by default. Browser navigation cancels pending edits and resets
+the form.
 
 See the [forms reference](docs/design/app-router.md#query-form-bindings) for validation, existing
 forms, and debounce examples.

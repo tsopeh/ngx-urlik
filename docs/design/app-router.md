@@ -397,12 +397,45 @@ when the validator passes. A held field keeps its draft until it becomes valid, 
 it, or external navigation resets the form. Reactive Forms take the same option; add validators to
 the controls.
 
+#### Change other fields before a write
+
+A new search usually sends the user back to the first page. Which fields reset, and when, depends
+on the page, so the binding asks the component through `beforeWrite`:
+
+```ts
+const filters = createQueryParamsFormGroup(results, {
+  debounce: { search: 300 },
+  beforeWrite: (patch) => ('search' in patch ? { ...patch, page: 1 } : patch),
+});
+```
+
+On `/results?page=4`, typing `elm` writes `?search=elm` in one navigation, and the page control
+then shows 1. A page change on its own is written unchanged. Signal Forms take the same option:
+
+```ts
+const { model, form } = createQueryParamsSignalForm(results, {
+  beforeWrite: (patch) => ('search' in patch ? { ...patch, page: 1 } : patch),
+});
+```
+
+`beforeWrite(patch, draft)` runs right before a write is queued: after `writeWhen` has held back
+invalid fields and after a debounced field's delay ends. `patch` holds only the fields about to be
+written; `draft` is the whole form value. The returned object is what the binding writes, and an
+`undefined` field keeps its URL value, as in `patchQuery()`.
+
+Use `beforeWrite` to change other fields. Shape a field's own value in its codec instead: a field
+that `beforeWrite` trims writes a URL value that differs from the draft, so the committed value
+replaces the draft in the form. Fields that `beforeWrite` adds are not drafts; after the write
+commits, the form reads them from the URL.
+
 #### Failures
 
 Failed writes keep the entered values and are not retried. `onWriteFailure` receives
 `{ kind: 'declined' }` or `{ kind: 'error', error }`. Without a callback, errors go to Angular's
-`ErrorHandler` and declined writes are silent. Destroying a binding cancels its waiting writes; it
-does not abort a navigation that already started.
+`ErrorHandler` and declined writes are silent. If `beforeWrite` throws, the error goes to
+`ErrorHandler`, not to `onWriteFailure`; nothing is written, and the edited fields keep their
+drafts. Destroying a binding cancels its waiting writes; it does not abort a navigation that
+already started.
 
 ## Typed activation context
 

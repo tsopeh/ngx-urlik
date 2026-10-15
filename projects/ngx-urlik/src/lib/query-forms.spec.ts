@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ErrorHandler } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NavigationStart, Router } from '@angular/router';
 import { createQueryParamsFormGroup, createQueryParamsSignalForm } from 'ngx-urlik/forms';
@@ -232,6 +232,76 @@ describe('query forms', () => {
       await new Promise((resolve) => setTimeout(resolve, 80));
       expect(router.url).toBe('/results?page=3');
       expect(form.controls.search.value).toBe('');
+    });
+  });
+
+  describe('beforeWrite', () => {
+    const resetPage = <P extends { search?: string; page?: number }>(patch: P): P =>
+      'search' in patch ? { ...patch, page: 1 } : patch;
+
+    it('resets the page in the same reactive write as a debounced search', async () => {
+      const { results, router } = await setup();
+      await router.navigateByUrl('/results?page=4');
+      const starts: string[] = [];
+      router.events.subscribe((event) => {
+        if (event instanceof NavigationStart) starts.push(event.url);
+      });
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { debounce: { search: 40 }, beforeWrite: resetPage }),
+      );
+
+      form.controls.search.setValue('el');
+      form.controls.search.setValue('elm');
+      await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
+      expect(starts).toEqual(['/results?search=elm']);
+      await vi.waitFor(() => expect(form.controls.page.value).toBe(1));
+      expect(form.controls.search.value).toBe('elm');
+
+      form.controls.page.setValue(3);
+      await vi.waitFor(() => expect(router.url).toBe('/results?search=elm&page=3'));
+      expect(starts).toEqual(['/results?search=elm', '/results?search=elm&page=3']);
+    });
+
+    it('resets the page in the same signal form write as a search', async () => {
+      const { results, router } = await setup();
+      await router.navigateByUrl('/results?page=4');
+      const starts: string[] = [];
+      router.events.subscribe((event) => {
+        if (event instanceof NavigationStart) starts.push(event.url);
+      });
+      const binding = TestBed.runInInjectionContext(() =>
+        createQueryParamsSignalForm(results, { beforeWrite: resetPage }),
+      );
+
+      binding.model.update((query) => ({ ...query, search: 'elm' }));
+      TestBed.tick();
+      await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
+      expect(starts).toEqual(['/results?search=elm']);
+      await vi.waitFor(() => expect(binding.model()).toEqual({ search: 'elm', page: 1 }));
+    });
+
+    it('reports a throwing beforeWrite and skips the write', async () => {
+      const { results, router } = await setup();
+      const handleError = vi.spyOn(TestBed.inject(ErrorHandler), 'handleError');
+      const failure = new Error('beforeWrite failed');
+      const starts: string[] = [];
+      router.events.subscribe((event) => {
+        if (event instanceof NavigationStart) starts.push(event.url);
+      });
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, {
+          beforeWrite: () => {
+            throw failure;
+          },
+        }),
+      );
+
+      form.controls.search.setValue('elm');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(handleError).toHaveBeenCalledWith(failure);
+      expect(starts).toEqual([]);
+      expect(router.url).toBe('/results');
+      expect(form.controls.search.value).toBe('elm');
     });
   });
 });

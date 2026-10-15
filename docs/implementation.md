@@ -59,7 +59,9 @@ values are combined with outstanding edits before the form is updated.
 One form notification can change several fields; the fields that write at once share one queued
 write. A Reactive Forms field with a `debounce` entry waits on its own timer. With
 `writeWhen: 'valid'`, an invalid field goes into a held set, and the binding retries the held set
-whenever the form's validity changes, which is how a field waits for an async validator. All of
+whenever the form's validity changes, which is how a field waits for an async validator. Right
+before a write is queued, `beforeWrite` may change its fields; only the edited fields are
+acknowledged when the write commits, so fields it adds return to the form from the URL. All of
 these writes go through the router's queue.
 
 External navigation clears the edits, the held set, and the debounce timers, then resets the

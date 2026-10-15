@@ -22,19 +22,24 @@ export type QueryParamsFormControls<Q extends QueryState> = {
 export type QueryWriteFailure =
   Readonly<{ kind: 'declined' }> | Readonly<{ kind: 'error'; error: unknown }>;
 
-export interface QueryParamsBindingOptions {
+export interface QueryParamsBindingOptions<Q extends QueryState> {
   readonly replaceUrl?: boolean;
   /**
    * `'valid'` holds a field's draft until its validators pass, including async ones. The default,
    * `'always'`, writes every change.
    */
   readonly writeWhen?: 'always' | 'valid';
+  /**
+   * Adjusts a write right before it is queued. Receives the fields about to be written and the
+   * whole draft, and returns the fields to write, such as the same patch with `page: 1`.
+   */
+  readonly beforeWrite?: (patch: Partial<Q>, draft: Q) => Partial<Q>;
   readonly onWriteFailure?: (failure: QueryWriteFailure) => void;
 }
 
 export interface QueryParamsFormGroupOptions<
   Q extends QueryState,
-> extends QueryParamsBindingOptions {
+> extends QueryParamsBindingOptions<Q> {
   /**
    * Milliseconds a field waits after its last change before it writes. Signal Forms use the
    * schema's `debounce()` rule instead.
@@ -95,13 +100,29 @@ const bindQueryParams = <Q extends QueryState>(
       }
     }
     if (!edits.size) return;
-    const patch = Object.fromEntries([...edits].map(([param, edit]) => [param, edit.value]));
+    let patch = Object.fromEntries(
+      [...edits].map(([param, edit]) => [param, edit.value]),
+    ) as Partial<Q>;
+    if (options.beforeWrite) {
+      try {
+        patch = options.beforeWrite(patch, observed);
+      } catch (error) {
+        // The edits stay staged, so the form keeps the draft and a later change can write it.
+        errorHandler.handleError(error);
+        return;
+      }
+    }
+    // Only the edited fields are acknowledged. Fields that beforeWrite adds come back from the URL.
     const committed = () => {
       for (const [param, edit] of edits) if (staged.get(param) === edit) staged.delete(param);
     };
     void binding
       .update(
-        (query) => ({ ...query, ...patch }),
+        (query) => {
+          // As in patchQuery, an undefined field keeps its value.
+          const supplied = Object.entries(patch).filter(([, value]) => value !== undefined);
+          return { ...query, ...Object.fromEntries(supplied) };
+        },
         { replaceUrl: options.replaceUrl ?? true },
         owner,
         committed,
@@ -227,7 +248,7 @@ type QueryFieldState = () => Readonly<{ valid(): boolean }>;
 export function bindQueryParamsToSignalForm<Q extends QueryState>(
   route: QueryRoute<Q>,
   form: FieldTree<Q>,
-  options: QueryParamsBindingOptions = {},
+  options: QueryParamsBindingOptions<Q> = {},
 ): void {
   const field = (param: keyof Q) =>
     (form as unknown as Record<PropertyKey, QueryFieldState>)[param]();
@@ -258,7 +279,7 @@ export function bindQueryParamsToSignalForm<Q extends QueryState>(
 
 export interface CreateQueryParamsSignalFormOptions<
   Q extends QueryState,
-> extends QueryParamsBindingOptions {
+> extends QueryParamsBindingOptions<Q> {
   /** Validators and `debounce()` rules for the form. */
   readonly schema?: SchemaOrSchemaFn<Q>;
 }
