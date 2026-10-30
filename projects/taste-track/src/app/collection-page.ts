@@ -23,13 +23,13 @@ import { MediaCard } from './media-card';
       <header class="page-header">
         <div>
           <p class="eyebrow">Personal archive</p>
-          <h1>Your collection</h1>
+          <h1>Your library</h1>
           <p>Your watchlist, ratings, and watched titles.</p>
         </div>
       </header>
-      <section class="filter-panel" aria-label="Collection filters">
+      <section class="filter-panel" aria-label="Library filters">
         <label class="search"
-          ><span>Search collection</span
+          ><span>Search library</span
           ><input type="search" [formField]="binding.form.search" placeholder="Try “algorithm”…"
         /></label>
         <label

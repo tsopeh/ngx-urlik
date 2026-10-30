@@ -37,13 +37,18 @@ export function positiveIntegerCodec(): UrlParamCodec<number> {
   };
 }
 
+/** An ID such as `tv_only-mergers`, written to the URL without its prefix: `only-mergers`. */
 export function prefixedIdCodec<const Prefix extends string>(
   prefix: Prefix,
 ): UrlParamCodec<`${Prefix}_${string}`> {
-  const pattern = new RegExp(`^${prefix}_[a-z0-9]+(?:-[a-z0-9]+)*$`);
+  const start = `${prefix}_`;
+  const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
   return {
-    serialize: (value) => (typeof value === 'string' && pattern.test(value) ? value : null),
-    deserialize: (raw) => (pattern.test(raw) ? (raw as `${Prefix}_${string}`) : null),
+    serialize: (value) =>
+      typeof value === 'string' && value.startsWith(start) && slug.test(value.slice(start.length))
+        ? value.slice(start.length)
+        : null,
+    deserialize: (raw) => (slug.test(raw) ? `${prefix}_${raw}` : null),
   };
 }
 

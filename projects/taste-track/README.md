@@ -19,28 +19,30 @@ The server builds the library first. The app imports only the public `ngx-urlik`
 ## Try a few paths
 
 1. Change the movie genres, sort order, and page size. Reload. The URL restores the filters.
-2. Open TV shows → Only Mergers in the Building → Browse seasons → Season 2 → Browse
-   episodes → The Callback. The address supplies the show, season, and episode parameters.
-   Then open `/screen/shows/show/tv_only-mergers/season`. It arrives at `…/season/2`, the
-   season you opened last in this tab. A show with no remembered season opens its seasons list.
-3. Follow a credit to a person or company, then follow a title back to the catalog.
+2. Open TV shows → Only Mergers in the Building → Season 2 → Browse episodes → The Callback.
+   The address, `/tv/only-mergers/s/2/e/1`, supplies the show, season, and episode parameters.
+   The ID codec leaves the `tv_` prefix out of the URL and adds it back when reading.
+   Then open `/tv/only-mergers/s`. It arrives at `…/s/2`, the season you opened last in this
+   tab. A show with no remembered season opens the show page, which lists its seasons.
+3. Follow a credit to a person or studio, then follow a title back to the catalog.
 4. Change a rating and log a viewing. Reload to check that both were saved.
-5. Filter Collection, then try Viewing history. Collection uses Signal Forms; history uses
+5. Filter Library, then try Viewing history. Library uses Signal Forms; history uses
    Reactive Forms with search debounce. Both hold searches shorter than three letters.
 6. Reset TasteTrack in Settings. The seed returns and your theme stays.
 
 ## What to look at in the code
 
-| Example                          | Feature                                                                       |
-| -------------------------------- | ----------------------------------------------------------------------------- |
-| Movie and TV browsing            | Inherited query fields, repeated genres, sorting, and pagination              |
-| Show → season → episode          | Accumulated path parameters and custom ID/integer codecs                      |
-| Detail section links             | URL fragments                                                                 |
-| Credits and contributor profiles | Typed navigation across branches                                              |
-| Collection                       | Signal Forms, repeated statuses, joined media list, structured viewing counts |
-| Viewing history                  | Reactive Forms with a debounced, validated search                             |
-| Landing pages                    | Empty-path children and redirects                                             |
-| Unknown URLs                     | Wildcard routes                                                               |
+| Example                          | Feature                                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Movie and TV browsing            | Query fields inherited from a parent route with no path segment, repeated genres, sorting, and pagination    |
+| Show → season → episode          | Accumulated path parameters, an ID codec that leaves its prefix out of the URL, and an integer codec         |
+| Page size and last season        | A persisted query field in `localStorage`, and a persisted path value scoped to the show in `sessionStorage` |
+| Detail section links             | URL fragments                                                                                                |
+| Credits and contributor profiles | Typed navigation across branches                                                                             |
+| Library                          | Signal Forms, repeated statuses, joined media list, structured viewing counts                                |
+| Viewing history                  | Reactive Forms with a debounced, validated search                                                            |
+| Landing pages                    | Empty-path children and redirects                                                                            |
+| Unknown URLs                     | Wildcard routes                                                                                              |
 
 Shared pages use `activeRoute()` to select their route. `paginationParams()` shares definitions
 across pages. Each page resets its own page number: the form pages in `beforeWrite`, the catalog

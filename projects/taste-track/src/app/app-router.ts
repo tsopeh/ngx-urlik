@@ -37,7 +37,7 @@ const loadCatalog = () => import('./catalog-page').then((module) => module.Catal
 const loadDetail = () => import('./detail-page').then((module) => module.DetailPage);
 
 const redirectToMovies = ({ queryParams }: { queryParams: Record<string, unknown> }) =>
-  inject(Router).createUrlTree(['/screen/movies'], { queryParams });
+  inject(Router).createUrlTree(['/movies'], { queryParams });
 
 export enum RouteNames {
   SCREEN = 'SCREEN',
@@ -45,7 +45,6 @@ export enum RouteNames {
   MOVIE_DETAIL = 'MOVIE_DETAIL',
   SHOWS = 'SHOWS',
   SHOW_DETAIL = 'SHOW_DETAIL',
-  SEASONS = 'SEASONS',
   SEASON = 'SEASON',
   SEASON_DETAIL = 'SEASON_DETAIL',
   EPISODES = 'EPISODES',
@@ -67,12 +66,12 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
       children: [
         { path: '', pathMatch: 'full', redirectTo: redirectToMovies },
         {
-          path: 'screen',
+          // Movies and TV share the catalog filters, without a segment of their own.
+          path: '',
           routeName: RouteNames.SCREEN,
           queryParams: catalogQueryParams(),
           loadComponent: loadSection,
           children: [
-            { path: '', pathMatch: 'full', redirectTo: redirectToMovies },
             {
               path: 'movies',
               children: [
@@ -83,7 +82,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                   loadComponent: loadCatalog,
                 },
                 {
-                  path: 'movie/:movieId',
+                  path: ':movieId',
                   routeName: RouteNames.MOVIE_DETAIL,
                   pathParam: { codec: prefixedIdCodec('mov') },
                   loadComponent: loadDetail,
@@ -91,7 +90,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
               ],
             },
             {
-              path: 'shows',
+              path: 'tv',
               children: [
                 {
                   path: '',
@@ -100,7 +99,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                   loadComponent: loadCatalog,
                 },
                 {
-                  path: 'show/:showId',
+                  path: ':showId',
                   pathParam: { codec: prefixedIdCodec('tv') },
                   children: [
                     {
@@ -110,51 +109,42 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                       loadComponent: loadDetail,
                     },
                     {
-                      // The season links stay above the seasons list, a season, and its episodes.
-                      path: '',
-                      loadComponent: () =>
-                        import('./seasons-page').then((module) => module.SeasonsPage),
+                      path: 's/:seasonNumber',
+                      routeName: RouteNames.SEASON,
+                      // Each show remembers its last season for this tab, so
+                      // `tv/:showId/s` opens it again.
+                      pathParam: {
+                        codec: positiveIntegerCodec(),
+                        persist: { key: 'season', storage: 'session', scope: ['showId'] },
+                      },
                       children: [
-                        { path: 'seasons', routeName: RouteNames.SEASONS, children: [] },
                         {
-                          path: 'season/:seasonNumber',
-                          routeName: RouteNames.SEASON,
-                          // Each show remembers its last season for this tab, so
-                          // `show/:showId/season` opens it again.
-                          pathParam: {
-                            codec: positiveIntegerCodec(),
-                            persist: { key: 'season', storage: 'session', scope: ['showId'] },
-                          },
+                          path: '',
+                          pathMatch: 'full',
+                          routeName: RouteNames.SEASON_DETAIL,
+                          loadComponent: loadDetail,
+                        },
+                        {
+                          path: 'e',
                           children: [
                             {
                               path: '',
                               pathMatch: 'full',
-                              routeName: RouteNames.SEASON_DETAIL,
-                              loadComponent: loadDetail,
+                              routeName: RouteNames.EPISODES,
+                              loadComponent: loadCatalog,
                             },
                             {
-                              path: 'episodes',
-                              children: [
-                                {
-                                  path: '',
-                                  pathMatch: 'full',
-                                  routeName: RouteNames.EPISODES,
-                                  loadComponent: loadCatalog,
-                                },
-                                {
-                                  path: 'episode/:episodeNumber',
-                                  routeName: RouteNames.EPISODE_DETAIL,
-                                  pathParam: { codec: positiveIntegerCodec() },
-                                  loadComponent: loadDetail,
-                                },
-                              ],
+                              path: ':episodeNumber',
+                              routeName: RouteNames.EPISODE_DETAIL,
+                              pathParam: { codec: positiveIntegerCodec() },
+                              loadComponent: loadDetail,
                             },
                           ],
                         },
-                        // Without a remembered season, `season` opens the list instead.
-                        { path: 'season', pathMatch: 'full', redirectTo: 'seasons' },
                       ],
                     },
+                    // Without a remembered season, `s` opens the show, which lists its seasons.
+                    { path: 's', pathMatch: 'full', redirectTo: '' },
                   ],
                 },
               ],
@@ -171,7 +161,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
               loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
             },
             {
-              path: 'profile/:personId',
+              path: ':personId',
               routeName: RouteNames.PERSON_DETAIL,
               pathParam: { codec: prefixedIdCodec('per') },
               loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
@@ -179,7 +169,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
           ],
         },
         {
-          path: 'companies',
+          path: 'studios',
           children: [
             {
               path: '',
@@ -188,7 +178,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
               loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
             },
             {
-              path: 'profile/:companyId',
+              path: ':companyId',
               routeName: RouteNames.COMPANY_DETAIL,
               pathParam: { codec: prefixedIdCodec('co') },
               loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
@@ -196,7 +186,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
           ],
         },
         {
-          path: 'collection',
+          path: 'library',
           routeName: RouteNames.COLLECTION,
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
@@ -213,7 +203,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
           loadComponent: () => import('./collection-page').then((module) => module.CollectionPage),
         },
         {
-          path: 'activity',
+          path: 'history',
           routeName: RouteNames.ACTIVITY,
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),

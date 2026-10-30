@@ -11,7 +11,7 @@ import { BackendApi, type Contributor } from './backend';
   template: `
     <section class="page-stack">
       <header class="page-header">
-        <h1>{{ kind() === 'person' ? 'People' : 'Companies' }}</h1>
+        <h1>{{ kind() === 'person' ? 'People' : 'Studios' }}</h1>
       </header>
       @for (contributor of contributors(); track contributor.id) {
         <article class="panel">

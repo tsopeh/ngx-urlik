@@ -1,13 +1,14 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { switchMap } from 'rxjs';
+import { of, switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import {
   BackendApi,
   type CollectionStatus,
   type ItemDetail,
   type ItemDetailRequest,
+  type Season,
 } from './backend';
 import { CatalogLinks } from './catalog-links';
 
@@ -41,17 +42,24 @@ import { CatalogLinks } from './catalog-links';
               <a [routerLink]="child.url">{{ child.label }}</a>
             </p>
           }
+          @if (seasonLinks().length) {
+            <nav class="anchor-links" aria-label="Seasons">
+              @for (link of seasonLinks(); track link.label) {
+                <a [routerLink]="link.url">{{ link.label }}</a>
+              }
+            </nav>
+          }
         </section>
         @if (!isSeason()) {
           <section class="panel">
-            <h2>Your collection</h2>
+            <h2>Your library</h2>
             <div class="filter-panel">
               <label
                 >Status<select
                   [value]="state()?.status ?? ''"
                   (change)="setStatus($any($event.target).value)"
                 >
-                  <option value="" disabled>Not in collection</option>
+                  <option value="" disabled>Not in library</option>
                   <option value="saved">Watchlist</option>
                   <option value="in-progress">Watching</option>
                   <option value="completed">Watched</option>
@@ -184,14 +192,6 @@ export class DetailPage {
   });
   protected readonly childrenLink = computed(() => {
     const active = this.context();
-    if (active.route === 'show')
-      return {
-        label: 'Browse seasons',
-        url: this.routes.routes.SEASONS.createUrlTree({
-          path: active.params.path,
-          query: active.params.query,
-        }),
-      };
     if (active.route === 'season')
       return {
         label: 'Browse episodes',
@@ -201,6 +201,28 @@ export class DetailPage {
         }),
       };
     return null;
+  });
+  private readonly showId = computed(() => {
+    const active = this.context();
+    return active.route === 'show' ? active.params.path.showId : null;
+  });
+  private readonly seasons = toSignal(
+    toObservable(this.showId).pipe(
+      switchMap((showId) => (showId ? this.backendApi.getSeasons(showId) : of([]))),
+    ),
+    { initialValue: [] as readonly Season[] },
+  );
+  // A show lists its seasons; each link keeps the catalog filters.
+  protected readonly seasonLinks = computed(() => {
+    const active = this.context();
+    if (active.route !== 'show') return [];
+    return this.seasons().map((season) => ({
+      label: season.title,
+      url: this.routes.routes.SEASON_DETAIL.createUrlTree({
+        path: { showId: season.showId, seasonNumber: season.number },
+        query: active.params.query,
+      }),
+    }));
   });
   protected sectionUrl(fragment: string) {
     return this.context().createUrlTree({ fragment });

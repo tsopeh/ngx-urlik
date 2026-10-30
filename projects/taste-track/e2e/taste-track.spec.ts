@@ -1,22 +1,22 @@
 import { expect, test } from '@playwright/test';
 
-const movieUrl = '/screen/movies/movie/mov_the-last-algorithm';
-const showUrl = '/screen/shows/show/tv_only-mergers';
+const movieUrl = '/movies/the-last-algorithm';
+const showUrl = '/tv/only-mergers';
 
 test('lands on movies and follows a typed catalog link', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveURL(/\/screen\/movies/);
+  await expect(page).toHaveURL(/\/movies/);
   await expect(page.getByRole('heading', { name: 'Movies', exact: true })).toBeVisible();
   await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('Fellowship');
   await page.getByRole('link', { name: 'The Fellowship of the Spreadsheet', exact: true }).click();
-  await expect(page).toHaveURL(/\/movie\/mov_fellowship-of-the-spreadsheet/);
+  await expect(page).toHaveURL(/\/movies\/fellowship-of-the-spreadsheet/);
   await expect(
     page.getByRole('heading', { name: 'The Fellowship of the Spreadsheet' }),
   ).toBeVisible();
 });
 
 test('restores catalog chips, sorting, and pagination from the URL', async ({ page }) => {
-  await page.goto('/screen/movies?pageSize=12&sort=year%3Adesc');
+  await page.goto('/movies?pageSize=12&sort=year%3Adesc');
   await expect(page.locator('app-media-card')).toHaveCount(12);
   await expect(page.locator('app-media-card').first()).toContainText('Picture 26');
   await page.getByRole('button', { name: 'Next', exact: true }).click();
@@ -33,15 +33,17 @@ test('restores catalog chips, sorting, and pagination from the URL', async ({ pa
 
 test('navigates show → season → episode and reloads the exact episode', async ({ page }) => {
   await page.goto(showUrl);
-  await page.getByRole('link', { name: 'Browse seasons', exact: true }).click();
-  await page.getByRole('link', { name: 'Season 2', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Seasons' })
+    .getByRole('link', { name: 'Season 2', exact: true })
+    .click();
   await expect(
     page.getByRole('heading', { name: 'Only Mergers in the Building · Season 2' }),
   ).toBeVisible();
   await page.getByRole('link', { name: 'Browse episodes' }).click();
   await expect(page.locator('app-media-card')).toHaveCount(4);
   await page.getByRole('link', { name: 'The Callback', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${showUrl}/season/2/episodes/episode/1`));
+  await expect(page).toHaveURL(new RegExp(`${showUrl}/s/2/e/1`));
   await page.reload();
   await expect(page.getByRole('heading', { name: 'The Callback', exact: true })).toBeVisible();
   await expect(
@@ -64,8 +66,8 @@ test('people profiles show actual credits and link to movies', async ({ page }) 
 });
 
 test('restores Signal Forms and writes array and structured query values', async ({ page }) => {
-  await page.goto('/collection?search=algorithm&pageSize=12&sort=rating%3Adesc');
-  await expect(page.getByRole('searchbox', { name: 'Search collection' })).toHaveValue('algorithm');
+  await page.goto('/library?search=algorithm&pageSize=12&sort=rating%3Adesc');
+  await expect(page.getByRole('searchbox', { name: 'Search library' })).toHaveValue('algorithm');
   await expect(page.getByText('The Last Algorithm', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'movie', exact: true }).click();
   await page.getByRole('button', { name: 'show', exact: true }).click();
@@ -106,7 +108,7 @@ test('persists ratings and viewings, filters history, and resets the database', 
   await page.goto('/settings');
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Reset TasteTrack' }).click();
-  await expect(page).toHaveURL(/\/screen\/movies/);
+  await expect(page).toHaveURL(/\/movies/);
   await page.goto(movieUrl);
   await expect(page.getByRole('combobox', { name: 'Rating', exact: true })).toHaveValue('6');
   await expect(page.getByRole('heading', { name: '2 recorded viewings' })).toBeVisible();
@@ -118,12 +120,12 @@ test('unknown paths and missing entities have useful empty states', async ({ pag
   await expect(
     page.getByRole('heading', { name: 'This page isn’t in the catalog.' }),
   ).toBeVisible();
-  await page.goto(`${showUrl}/season/99`);
+  await page.goto(`${showUrl}/s/99`);
   await expect(page.getByRole('heading', { name: 'Title not found' })).toBeVisible();
 });
 
 test('restores collection select values and browser back/forward state', async ({ page }) => {
-  await page.goto('/collection?minRating=9&pageSize=48&sort=rating%3Adesc');
+  await page.goto('/library?minRating=9&pageSize=48&sort=rating%3Adesc');
   await expect(page.getByRole('combobox', { name: 'Minimum rating', exact: true })).toHaveValue(
     '9',
   );
@@ -150,7 +152,7 @@ test('browser back cancels a staged search instead of replaying it on forward', 
   page,
 }) => {
   await page.clock.install();
-  await page.goto('/collection');
+  await page.goto('/library');
   await page
     .getByRole('navigation', { name: 'Primary navigation' })
     .getByRole('link', { name: /History/ })
@@ -162,8 +164,8 @@ test('browser back cancels a staged search instead of replaying it on forward', 
     element.dispatchEvent(new Event('input', { bubbles: true }));
     history.back();
   });
-  await expect(page).toHaveURL(/\/collection\?pageSize=24$/);
-  await expect(page.getByRole('searchbox', { name: 'Search collection' })).toBeVisible();
+  await expect(page).toHaveURL(/\/library\?pageSize=24$/);
+  await expect(page.getByRole('searchbox', { name: 'Search library' })).toBeVisible();
   await page.goForward();
   await expect(search).toHaveValue('');
   await page.clock.runFor(300);
@@ -171,9 +173,9 @@ test('browser back cancels a staged search instead of replaying it on forward', 
   await expect(search).toHaveValue('');
 });
 
-test('uses the screen landing redirect without losing query filters', async ({ page }) => {
-  await page.goto('/screen?search=algorithm&pageSize=12');
-  await expect(page).toHaveURL(/screen\/movies\?search=algorithm&pageSize=12$/);
+test('uses the landing redirect without losing query filters', async ({ page }) => {
+  await page.goto('/?search=algorithm&pageSize=12');
+  await expect(page).toHaveURL(/\/movies\?search=algorithm&pageSize=12$/);
   await expect(page.getByRole('searchbox', { name: 'Search', exact: true })).toHaveValue(
     'algorithm',
   );
@@ -183,66 +185,65 @@ test('uses the screen landing redirect without losing query filters', async ({ p
 test('holds short collection searches and resets the page when the search writes', async ({
   page,
 }) => {
-  await page.goto('/collection?pageSize=12&page=2');
-  const search = page.getByRole('searchbox', { name: 'Search collection' });
+  await page.goto('/library?pageSize=12&page=2');
+  const search = page.getByRole('searchbox', { name: 'Search library' });
 
   await search.pressSequentially('al');
   await page.waitForTimeout(500);
-  await expect(page).toHaveURL(/\/collection\?pageSize=12&page=2$/);
+  await expect(page).toHaveURL(/\/library\?pageSize=12&page=2$/);
 
   await search.pressSequentially('g');
-  await expect(page).toHaveURL(/\/collection\?pageSize=12&search=alg$/);
+  await expect(page).toHaveURL(/\/library\?pageSize=12&search=alg$/);
   await expect(page.getByText('Page 1', { exact: true })).toBeVisible();
 
   await search.fill('');
-  await expect(page).toHaveURL(/\/collection\?pageSize=12$/);
+  await expect(page).toHaveURL(/\/library\?pageSize=12$/);
 });
 
 test('remembers the page size across lists and reloads', async ({ page }) => {
   const nav = page.getByRole('navigation', { name: 'Primary navigation' });
   await page.goto('/settings');
   await nav.getByRole('link', { name: /Browse/ }).click();
-  await expect(page).toHaveURL(/\/screen\/movies\?pageSize=24$/);
+  await expect(page).toHaveURL(/\/movies\?pageSize=24$/);
   await page.getByRole('combobox', { name: 'Page size', exact: true }).selectOption('12');
   await expect(page).toHaveURL(/pageSize=12/);
-  await nav.getByRole('link', { name: /Collection/ }).click();
-  await expect(page).toHaveURL(/\/collection\?pageSize=12$/);
+  await nav.getByRole('link', { name: /Library/ }).click();
+  await expect(page).toHaveURL(/\/library\?pageSize=12$/);
   await nav.getByRole('link', { name: /Browse/ }).click();
-  await expect(page).toHaveURL(/\/screen\/movies\?pageSize=12$/);
+  await expect(page).toHaveURL(/\/movies\?pageSize=12$/);
   // The restoring redirect adds no history entry of its own.
   await page.goBack();
-  await expect(page).toHaveURL(/\/collection\?pageSize=12$/);
-  await page.goto('/screen/movies');
-  await expect(page).toHaveURL(/\/screen\/movies\?pageSize=12$/);
+  await expect(page).toHaveURL(/\/library\?pageSize=12$/);
+  await page.goto('/movies');
+  await expect(page).toHaveURL(/\/movies\?pageSize=12$/);
   await expect(page.locator('app-media-card')).toHaveCount(12);
 });
 
 test('opens the last season of a show from a URL without the season', async ({ page }) => {
   const seasons = page.getByRole('navigation', { name: 'Seasons' });
-  // With no season stored for this show, the URL falls back to the seasons list.
-  await page.goto(`${showUrl}/season`);
-  await expect(page).toHaveURL(new RegExp(`${showUrl}/seasons\\?pageSize=24$`));
+  // With no season stored for this show, the URL falls back to the show page.
+  await page.goto(`${showUrl}/s`);
+  await expect(page).toHaveURL(new RegExp(`${showUrl}\\?pageSize=24$`));
   await seasons.getByRole('link', { name: 'Season 2', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${showUrl}/season/2\\?pageSize=24$`));
-  await expect(seasons).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`${showUrl}/s/2\\?pageSize=24$`));
   await expect(
     page.getByRole('heading', { name: 'Only Mergers in the Building · Season 2' }),
   ).toBeVisible();
-  await page.goto(`${showUrl}/season?pageSize=12#episodes`);
-  await expect(page).toHaveURL(new RegExp(`${showUrl}/season/2\\?pageSize=12#episodes$`));
+  await page.goto(`${showUrl}/s?pageSize=12#episodes`);
+  await expect(page).toHaveURL(new RegExp(`${showUrl}/s/2\\?pageSize=12#episodes$`));
   await expect(
     page.getByRole('heading', { name: 'Only Mergers in the Building · Season 2' }),
   ).toBeVisible();
   // Each show remembers its own season.
-  await page.goto('/screen/shows/show/tv_stranger-strings/season');
-  await expect(page).toHaveURL(/\/show\/tv_stranger-strings\/seasons\?pageSize=12$/);
+  await page.goto('/tv/stranger-strings/s');
+  await expect(page).toHaveURL(/\/tv\/stranger-strings\?pageSize=12$/);
 });
 
 test('resetting TasteTrack forgets the remembered page size', async ({ page }) => {
-  await page.goto('/screen/movies?pageSize=12');
+  await page.goto('/movies?pageSize=12');
   await expect(page.locator('app-media-card')).toHaveCount(12);
   await page.goto('/settings');
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Reset TasteTrack' }).click();
-  await expect(page).toHaveURL(/\/screen\/movies\?pageSize=24$/);
+  await expect(page).toHaveURL(/\/movies\?pageSize=24$/);
 });

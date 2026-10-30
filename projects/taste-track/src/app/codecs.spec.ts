@@ -1,4 +1,4 @@
-import { experienceCountCodec, paginationParams, sortCodec } from './codecs';
+import { experienceCountCodec, paginationParams, prefixedIdCodec, sortCodec } from './codecs';
 
 describe('TasteTrack route helpers', () => {
   it('round-trips exact and countless experience counts', () => {
@@ -14,6 +14,14 @@ describe('TasteTrack route helpers', () => {
     expect(codec.deserialize('rating:desc')).toEqual({ field: 'rating', direction: 'desc' });
     expect(codec.deserialize('date:desc')).toBeNull();
     expect(codec.deserialize('title:sideways')).toBeNull();
+  });
+
+  it('writes IDs to the URL without their prefix', () => {
+    const codec = prefixedIdCodec('tv');
+    expect(codec.serialize('tv_only-mergers')).toBe('only-mergers');
+    expect(codec.deserialize('only-mergers')).toBe('tv_only-mergers');
+    expect(codec.serialize('mov_only-mergers' as never)).toBeNull();
+    expect(codec.deserialize('Only Mergers')).toBeNull();
   });
 
   it('composes exact page and page-size definitions', () => {
