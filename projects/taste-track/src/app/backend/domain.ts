@@ -1,14 +1,14 @@
 export type MediaKind = 'movie' | 'show' | 'episode';
 export type CatalogId = `mov_${string}` | `tv_${string}` | `ep_${string}`;
 export type PersonId = `per_${string}`;
-export type CompanyId = `co_${string}`;
+export type StudioId = `st_${string}`;
 
 export type ExperienceCount =
   Readonly<{ kind: 'exact'; value: number }> | Readonly<{ kind: 'countless' }>;
-export type CollectionStatus = 'saved' | 'in-progress' | 'completed';
+export type LibraryStatus = 'saved' | 'in-progress' | 'completed';
 
 export interface Credit {
-  readonly contributorId: PersonId | CompanyId;
+  readonly contributorId: PersonId | StudioId;
   readonly role: 'Actor' | 'Director' | 'Writer' | 'Production';
 }
 
@@ -46,12 +46,12 @@ export type Contributor = {
   readonly description: string;
 } & (
   | { readonly kind: 'person'; readonly id: PersonId }
-  | { readonly kind: 'company'; readonly id: CompanyId }
+  | { readonly kind: 'studio'; readonly id: StudioId }
 );
 
 export interface PersonalState {
   readonly itemId: CatalogId;
-  readonly status: CollectionStatus;
+  readonly status: LibraryStatus;
   readonly favorite: boolean;
   readonly rating: number | null;
   readonly count: ExperienceCount;

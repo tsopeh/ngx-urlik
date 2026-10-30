@@ -5,7 +5,7 @@ import { of, switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import {
   BackendApi,
-  type CollectionStatus,
+  type LibraryStatus,
   type ItemDetail,
   type ItemDetailRequest,
   type Season,
@@ -228,11 +228,11 @@ export class DetailPage {
     return this.context().createUrlTree({ fragment });
   }
   protected historyUrl() {
-    return this.routes.routes.ACTIVITY.createUrlTree({
+    return this.routes.routes.HISTORY.createUrlTree({
       query: { search: this.item()?.title ?? '' },
     });
   }
-  protected async setStatus(status: CollectionStatus) {
+  protected async setStatus(status: LibraryStatus) {
     const item = this.item();
     if (item) await this.persist(() => this.backendApi.updatePersonal(item.id, { status }));
   }

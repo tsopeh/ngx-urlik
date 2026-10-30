@@ -18,9 +18,9 @@ import { AppRouter } from './app-router';
     <router-outlet />
   `,
 })
-export class SectionPage {
+export class BrowsePage {
   private readonly routes = inject(AppRouter);
-  private readonly route = this.routes.routes.SCREEN;
+  private readonly route = this.routes.routes.BROWSE;
   protected readonly moviesUrl = computed(() =>
     this.routes.routes.MOVIES.createUrlTree({
       query: { ...this.route.params().query, page: 1 },

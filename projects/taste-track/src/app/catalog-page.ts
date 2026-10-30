@@ -100,7 +100,7 @@ export class CatalogPage {
   private readonly routes = inject(AppRouter);
   private readonly backendApi = inject(BackendApi);
   protected readonly links = inject(CatalogLinks);
-  private readonly route = this.routes.routes.SCREEN;
+  private readonly route = this.routes.routes.BROWSE;
   private readonly active = this.routes.activeRoute({
     episodes: this.routes.routes.EPISODES,
     movies: this.routes.routes.MOVIES,

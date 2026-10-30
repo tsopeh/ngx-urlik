@@ -30,10 +30,10 @@ export class ContributorsPage {
   protected readonly links = inject(CatalogLinks);
   private readonly active = this.routes.activeRoute({
     people: this.routes.routes.PEOPLE,
-    companies: this.routes.routes.COMPANIES,
+    studios: this.routes.routes.STUDIOS,
   });
   protected readonly kind = computed(() =>
-    this.active().route === 'people' ? 'person' : 'company',
+    this.active().route === 'people' ? 'person' : 'studio',
   );
   protected readonly contributors = toSignal(
     toObservable(this.kind).pipe(switchMap((kind) => this.backendApi.getContributors(kind))),

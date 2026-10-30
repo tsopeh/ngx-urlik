@@ -99,12 +99,12 @@ test('persists ratings and viewings, filters history, and resets the database', 
   await expect(page.getByRole('searchbox', { name: 'Search history' })).toHaveValue(
     'The Last Algorithm',
   );
-  await expect(page.locator('.activity-list article')).toHaveCount(3);
+  await expect(page.locator('.history-list article')).toHaveCount(3);
   await page.getByLabel('From', { exact: true }).fill('2026-09-01');
-  await expect(page.locator('.activity-list article')).toHaveCount(1);
+  await expect(page.locator('.history-list article')).toHaveCount(1);
   await page.getByRole('searchbox', { name: 'Search history' }).fill('no such title');
   await expect(page).toHaveURL(/search=no%20such%20title/);
-  await expect(page.locator('.activity-list article')).toHaveCount(0);
+  await expect(page.locator('.history-list article')).toHaveCount(0);
   await page.goto('/settings');
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Reset TasteTrack' }).click();
@@ -124,7 +124,7 @@ test('unknown paths and missing entities have useful empty states', async ({ pag
   await expect(page.getByRole('heading', { name: 'Title not found' })).toBeVisible();
 });
 
-test('restores collection select values and browser back/forward state', async ({ page }) => {
+test('restores library select values and browser back/forward state', async ({ page }) => {
   await page.goto('/library?minRating=9&pageSize=48&sort=rating%3Adesc');
   await expect(page.getByRole('combobox', { name: 'Minimum rating', exact: true })).toHaveValue(
     '9',
@@ -182,7 +182,7 @@ test('uses the landing redirect without losing query filters', async ({ page }) 
   await expect(page.locator('app-media-card')).toHaveCount(1);
 });
 
-test('holds short collection searches and resets the page when the search writes', async ({
+test('holds short library searches and resets the page when the search writes', async ({
   page,
 }) => {
   await page.goto('/library?pageSize=12&page=2');

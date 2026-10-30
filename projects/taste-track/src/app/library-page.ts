@@ -9,9 +9,9 @@ import { experienceCountCodec } from './codecs';
 import {
   BackendApi,
   type CatalogItem,
-  type CollectionItemCard,
-  type CollectionQuery,
-  type CollectionStatus,
+  type LibraryItemCard,
+  type LibraryQuery,
+  type LibraryStatus,
   type MediaKind,
 } from './backend';
 import { MediaCard } from './media-card';
@@ -128,7 +128,7 @@ import { MediaCard } from './media-card';
             (favorite)="toggleFavorite(card.item.id)"
           />
         } @empty {
-          <p class="empty">No collection items match these filters.</p>
+          <p class="empty">No library items match these filters.</p>
         }
       </div>
       <nav class="anchor-links" aria-label="Pagination">
@@ -150,13 +150,13 @@ import { MediaCard } from './media-card';
     </section>
   `,
 })
-export class CollectionPage {
+export class LibraryPage {
   protected readonly links = inject(CatalogLinks);
   protected readonly kinds: readonly MediaKind[] = ['movie', 'show', 'episode'];
-  protected readonly statuses: readonly CollectionStatus[] = ['saved', 'in-progress', 'completed'];
+  protected readonly statuses: readonly LibraryStatus[] = ['saved', 'in-progress', 'completed'];
   protected readonly routes = inject(AppRouter);
   private readonly backendApi = inject(BackendApi);
-  protected readonly binding = createQueryParamsSignalForm(this.routes.routes.COLLECTION, {
+  protected readonly binding = createQueryParamsSignalForm(this.routes.routes.LIBRARY, {
     schema: (fields) => {
       debounce(fields.search, 300);
       minLength(fields.search, 3);
@@ -169,13 +169,13 @@ export class CollectionPage {
   protected readonly ratings = [6, 7, 8, 9, 10];
   protected readonly pageSizes = [12, 24, 48] as const;
 
-  private readonly request = computed<CollectionQuery>(() => this.binding.model());
+  private readonly request = computed<LibraryQuery>(() => this.binding.model());
 
   protected readonly response = toSignal(
-    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getCollection(req))),
+    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getLibrary(req))),
     {
       initialValue: {
-        items: [] as readonly CollectionItemCard[],
+        items: [] as readonly LibraryItemCard[],
         total: 0,
       },
     },
@@ -211,7 +211,7 @@ export class CollectionPage {
         : [...query.media, kind],
     }));
   }
-  protected toggleStatus(status: CollectionStatus) {
+  protected toggleStatus(status: LibraryStatus) {
     this.binding.model.update((query) => ({
       ...query,
       statuses: query.statuses.includes(status)

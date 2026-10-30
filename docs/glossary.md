@@ -74,11 +74,15 @@ These names are used in the code and the reference.
 
 **Season**: A numbered set of episodes in a show. Episode addresses include the show ID, season number, and episode number.
 
-**Contributor**: A person or production company credited on a title.
+**Contributor**: A person or studio credited on a title.
 
 **Credit**: A contributor's role on a title: actor, director, writer, or production.
 
-**Personal state**: An item's collection status, favorite marker, rating, and experience count.
+**Library**: The titles you saved, are watching, or watched, each with its personal state.
+
+**Viewing history**: Journal events listed by date, at `/history`.
+
+**Personal state**: An item's library status, favorite marker, rating, and experience count.
 
 **Journal event**: A dated viewing with an optional rating, separate from the item's overall rating.
 

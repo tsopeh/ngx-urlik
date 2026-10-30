@@ -34,14 +34,14 @@ const contributors: Contributor[] = [
     description: 'Actor and director working across film and television.',
   },
   {
-    id: 'co_frame',
-    kind: 'company',
+    id: 'st_frame',
+    kind: 'studio',
     name: 'Frame One Pictures',
-    description: 'An independent film production company.',
+    description: 'An independent film studio.',
   },
   {
-    id: 'co_signal',
-    kind: 'company',
+    id: 'st_signal',
+    kind: 'studio',
     name: 'Signal House Studios',
     description: 'A television studio telling stories one season at a time.',
   },
@@ -50,7 +50,7 @@ const credits = (index: number, tv: boolean): readonly Credit[] => [
   { contributorId: index % 2 ? 'per_ava' : 'per_wes', role: 'Director' },
   { contributorId: 'per_tilda', role: 'Actor' },
   { contributorId: 'per_hans', role: 'Writer' },
-  { contributorId: tv ? 'co_signal' : 'co_frame', role: 'Production' },
+  { contributorId: tv ? 'st_signal' : 'st_frame', role: 'Production' },
 ];
 const palettes = ['plum', 'coral', 'amber', 'teal', 'blue', 'rose'];
 const genres = ['Drama', 'Comedy', 'Science fiction', 'Mystery'];

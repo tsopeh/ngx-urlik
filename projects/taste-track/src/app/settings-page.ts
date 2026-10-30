@@ -30,9 +30,8 @@ import { ThemeService, type ThemePreference } from './theme';
       <section class="panel danger">
         <h2>Reset demo data</h2>
         <p>
-          Restore the original fictional catalog, personal collection, ratings, counts, and
-          activity, and forget the remembered page size and seasons. Your theme will remain
-          unchanged.
+          Restore the original fictional catalog, library, ratings, counts, and history, and forget
+          the remembered page size and seasons. Your theme will remain unchanged.
         </p>
         <button
           class="button danger-button"

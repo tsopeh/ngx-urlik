@@ -60,7 +60,7 @@ All backend files and concepts live in `projects/taste-track/src/app/backend/` a
 
 ### Querying and asynchronous timing
 
-Every query method (`getCatalog`, `getItemDetail`, `getSeasons`, `getCollection`, `getActivity`,
+Every query method (`getCatalog`, `getItemDetail`, `getSeasons`, `getLibrary`, `getHistory`,
 `getContributors`, `getContributorProfile`) returns an `Observable<T>`.
 
 Even though filtering evaluates against in-memory repository arrays, queries enforce an
@@ -81,7 +81,7 @@ Active query subscriptions observe `dataVersion` and re-emit automatically with 
 ## Data and reset
 
 Dexie stores the data in `taste-track`. The deterministic seed contains 30 movies,
-4 shows, 8 seasons, 32 episodes, 4 people, and 2 production companies. Catalog data is readonly.
+4 shows, 8 seasons, 32 episodes, 4 people, and 2 studios. Catalog data is readonly.
 Ratings, statuses, favorites, counts, and viewing events survive reloads.
 
 Initialization and reset use the same seed. Reset runs in a transaction and affects only the

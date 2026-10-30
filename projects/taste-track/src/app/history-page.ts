@@ -5,7 +5,7 @@ import { ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
 import { switchMap } from 'rxjs';
-import { BackendApi, type ActivityEntry, type ActivityQuery } from './backend';
+import { BackendApi, type HistoryEntry, type HistoryQuery } from './backend';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
 
@@ -47,13 +47,13 @@ import { CatalogLinks } from './catalog-links';
           </select></label
         >
       </form>
-      <section class="activity-list" aria-label="Journal entries">
+      <section class="history-list" aria-label="Journal entries">
         @for (entry of response().entries; track entry.event.id) {
           <article>
             <time [attr.datetime]="entry.event.occurredAt">{{
               entry.event.occurredAt | date: 'mediumDate'
             }}</time
-            ><span class="activity-icon">▶</span>
+            ><span class="history-icon">▶</span>
             <div>
               <p class="eyebrow">{{ entry.event.kind }}</p>
               <h3>
@@ -86,11 +86,11 @@ import { CatalogLinks } from './catalog-links';
     </section>
   `,
 })
-export class ActivityPage {
+export class HistoryPage {
   protected readonly links = inject(CatalogLinks);
   private readonly routes = inject(AppRouter);
   private readonly backendApi = inject(BackendApi);
-  protected readonly form = createQueryParamsFormGroup(this.routes.routes.ACTIVITY, {
+  protected readonly form = createQueryParamsFormGroup(this.routes.routes.HISTORY, {
     debounce: { search: 250 },
     writeWhen: 'valid',
     // A new filter or order starts from the first page, in the same navigation.
@@ -99,15 +99,15 @@ export class ActivityPage {
         ? { page: 1, ...patch }
         : patch,
   });
-  protected readonly query = computed(() => this.routes.routes.ACTIVITY.params().query);
+  protected readonly query = computed(() => this.routes.routes.HISTORY.params().query);
 
-  private readonly request = computed<ActivityQuery>(() => this.query());
+  private readonly request = computed<HistoryQuery>(() => this.query());
 
   protected readonly response = toSignal(
-    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getActivity(req))),
+    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getHistory(req))),
     {
       initialValue: {
-        entries: [] as readonly ActivityEntry[],
+        entries: [] as readonly HistoryEntry[],
         total: 0,
       },
     },

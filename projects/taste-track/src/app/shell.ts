@@ -177,10 +177,10 @@ export class Shell {
   protected readonly themes: readonly ThemePreference[] = ['system', 'light', 'dark'];
   protected readonly navigation = [
     { label: 'Browse', icon: '◉', url: this.routes.routes.MOVIES.createUrlTree() },
-    { label: 'Library', icon: '♥', url: this.routes.routes.COLLECTION.createUrlTree() },
-    { label: 'History', icon: '↻', url: this.routes.routes.ACTIVITY.createUrlTree() },
+    { label: 'Library', icon: '♥', url: this.routes.routes.LIBRARY.createUrlTree() },
+    { label: 'History', icon: '↻', url: this.routes.routes.HISTORY.createUrlTree() },
     { label: 'People', icon: '◎', url: this.routes.routes.PEOPLE.createUrlTree() },
-    { label: 'Studios', icon: '▣', url: this.routes.routes.COMPANIES.createUrlTree() },
+    { label: 'Studios', icon: '▣', url: this.routes.routes.STUDIOS.createUrlTree() },
     { label: 'Settings', icon: '⚙', url: this.routes.routes.SETTINGS.createUrlTree() },
   ];
 }

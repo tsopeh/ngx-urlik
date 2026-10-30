@@ -39,11 +39,11 @@ export class ContributorPage {
   protected readonly links = inject(CatalogLinks);
   private readonly active = this.routes.activeRoute({
     person: this.routes.routes.PERSON_DETAIL,
-    company: this.routes.routes.COMPANY_DETAIL,
+    studio: this.routes.routes.STUDIO_DETAIL,
   });
   private readonly contributorId = computed(() => {
     const active = this.active();
-    return active.route === 'person' ? active.params.path.personId : active.params.path.companyId;
+    return active.route === 'person' ? active.params.path.personId : active.params.path.studioId;
   });
   protected readonly profile = toSignal(
     toObservable(this.contributorId).pipe(

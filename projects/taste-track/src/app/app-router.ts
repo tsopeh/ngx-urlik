@@ -32,7 +32,7 @@ const catalogQueryParams = () => ({
 });
 
 const loadShell = () => import('./shell').then((module) => module.Shell);
-const loadSection = () => import('./section-page').then((module) => module.SectionPage);
+const loadBrowse = () => import('./browse-page').then((module) => module.BrowsePage);
 const loadCatalog = () => import('./catalog-page').then((module) => module.CatalogPage);
 const loadDetail = () => import('./detail-page').then((module) => module.DetailPage);
 
@@ -40,7 +40,7 @@ const redirectToMovies = ({ queryParams }: { queryParams: Record<string, unknown
   inject(Router).createUrlTree(['/movies'], { queryParams });
 
 export enum RouteNames {
-  SCREEN = 'SCREEN',
+  BROWSE = 'BROWSE',
   MOVIES = 'MOVIES',
   MOVIE_DETAIL = 'MOVIE_DETAIL',
   SHOWS = 'SHOWS',
@@ -51,10 +51,10 @@ export enum RouteNames {
   EPISODE_DETAIL = 'EPISODE_DETAIL',
   PEOPLE = 'PEOPLE',
   PERSON_DETAIL = 'PERSON_DETAIL',
-  COMPANIES = 'COMPANIES',
-  COMPANY_DETAIL = 'COMPANY_DETAIL',
-  COLLECTION = 'COLLECTION',
-  ACTIVITY = 'ACTIVITY',
+  STUDIOS = 'STUDIOS',
+  STUDIO_DETAIL = 'STUDIO_DETAIL',
+  LIBRARY = 'LIBRARY',
+  HISTORY = 'HISTORY',
   SETTINGS = 'SETTINGS',
 }
 
@@ -68,9 +68,9 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
         {
           // Movies and TV share the catalog filters, without a segment of their own.
           path: '',
-          routeName: RouteNames.SCREEN,
+          routeName: RouteNames.BROWSE,
           queryParams: catalogQueryParams(),
-          loadComponent: loadSection,
+          loadComponent: loadBrowse,
           children: [
             {
               path: 'movies',
@@ -174,20 +174,20 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
             {
               path: '',
               pathMatch: 'full',
-              routeName: RouteNames.COMPANIES,
+              routeName: RouteNames.STUDIOS,
               loadComponent: () => import('./contributors-page').then((m) => m.ContributorsPage),
             },
             {
-              path: ':companyId',
-              routeName: RouteNames.COMPANY_DETAIL,
-              pathParam: { codec: prefixedIdCodec('co') },
+              path: ':studioId',
+              routeName: RouteNames.STUDIO_DETAIL,
+              pathParam: { codec: prefixedIdCodec('st') },
               loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
             },
           ],
         },
         {
           path: 'library',
-          routeName: RouteNames.COLLECTION,
+          routeName: RouteNames.LIBRARY,
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
             media: queryParam({ codec: listCodec(mediaKindCodec, ','), defaultValue: [] }),
@@ -200,11 +200,11 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
               defaultValue: { field: 'title', direction: 'asc' },
             }),
           },
-          loadComponent: () => import('./collection-page').then((module) => module.CollectionPage),
+          loadComponent: () => import('./library-page').then((module) => module.LibraryPage),
         },
         {
           path: 'history',
-          routeName: RouteNames.ACTIVITY,
+          routeName: RouteNames.HISTORY,
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
             from: queryParam({ codec: stringCodec() }),
@@ -215,7 +215,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
               defaultValue: { field: 'date', direction: 'desc' },
             }),
           },
-          loadComponent: () => import('./activity-page').then((module) => module.ActivityPage),
+          loadComponent: () => import('./history-page').then((module) => module.HistoryPage),
         },
         {
           path: 'settings',

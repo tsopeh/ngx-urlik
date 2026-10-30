@@ -24,7 +24,7 @@ describe('movie and TV seed integrity', () => {
       for (const credit of item.credits) {
         expect(contributors.has(credit.contributorId)).toBe(true);
         expect(contributors.get(credit.contributorId)?.kind).toBe(
-          credit.role === 'Production' ? 'company' : 'person',
+          credit.role === 'Production' ? 'studio' : 'person',
         );
       }
       if (item.kind === 'episode') {

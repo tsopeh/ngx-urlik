@@ -24,6 +24,6 @@ export class CatalogLinks {
   contributor(contributor: Contributor) {
     return contributor.kind === 'person'
       ? this.routes.routes.PERSON_DETAIL.createUrlTree({ path: { personId: contributor.id } })
-      : this.routes.routes.COMPANY_DETAIL.createUrlTree({ path: { companyId: contributor.id } });
+      : this.routes.routes.STUDIO_DETAIL.createUrlTree({ path: { studioId: contributor.id } });
   }
 }

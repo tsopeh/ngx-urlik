@@ -4,7 +4,7 @@ import { delay, filter, map, type Observable } from 'rxjs';
 import { TasteTrackRepository } from './database';
 import type {
   CatalogItem,
-  CollectionStatus,
+  LibraryStatus,
   Contributor,
   ExperienceCount,
   JournalEvent,
@@ -28,7 +28,7 @@ export interface CatalogQuery {
 }
 
 /**
- * A catalog item paired with the user's personal collection state.
+ * A catalog item paired with the user's library state.
  */
 export interface CatalogItemCard {
   readonly item: CatalogItem;
@@ -75,12 +75,12 @@ export interface ItemDetail {
 }
 
 /**
- * Query parameters for filtering the user's personal collection.
+ * Query parameters for filtering the user's library.
  */
-export interface CollectionQuery {
+export interface LibraryQuery {
   readonly search: string;
   readonly media: readonly MediaKind[];
-  readonly statuses: readonly CollectionStatus[];
+  readonly statuses: readonly LibraryStatus[];
   readonly replayCount: ExperienceCount | null;
   readonly minRating: number | null;
   readonly page: number;
@@ -89,25 +89,25 @@ export interface CollectionQuery {
 }
 
 /**
- * A collection item paired with its guaranteed personal state.
+ * A library item paired with its guaranteed personal state.
  */
-export interface CollectionItemCard {
+export interface LibraryItemCard {
   readonly item: CatalogItem;
   readonly state: PersonalState;
 }
 
 /**
- * Paginated collection result containing collected items and the total matching count.
+ * Paginated library result containing library items and the total matching count.
  */
-export interface CollectionResponse {
-  readonly items: readonly CollectionItemCard[];
+export interface LibraryResponse {
+  readonly items: readonly LibraryItemCard[];
   readonly total: number;
 }
 
 /**
  * Filter parameters for searching personal viewing history.
  */
-export interface ActivityQuery {
+export interface HistoryQuery {
   readonly search: string;
   readonly from?: string | null;
   readonly to?: string | null;
@@ -119,7 +119,7 @@ export interface ActivityQuery {
 /**
  * A journal viewing event joined with its referenced catalog title.
  */
-export interface ActivityEntry {
+export interface HistoryEntry {
   readonly event: JournalEvent;
   readonly item?: CatalogItem;
 }
@@ -127,8 +127,8 @@ export interface ActivityEntry {
 /**
  * Paginated viewing history containing journal entries and the total matching count.
  */
-export interface ActivityResponse {
-  readonly entries: readonly ActivityEntry[];
+export interface HistoryResponse {
+  readonly entries: readonly HistoryEntry[];
   readonly total: number;
 }
 
@@ -284,10 +284,10 @@ export class BackendApi {
   }
 
   /**
-   * Queries personal collection items filtered by search, media kind, status, replay count,
+   * Queries library items filtered by search, media kind, status, replay count,
    * and minimum rating.
    */
-  getCollection(query: CollectionQuery): Observable<CollectionResponse> {
+  getLibrary(query: LibraryQuery): Observable<LibraryResponse> {
     return this.dataVersion$.pipe(
       delay(0),
       map(() => {
@@ -342,7 +342,7 @@ export class BackendApi {
    * Queries viewing events filtered by title search and date boundaries.
    * Joins each journal event with its matching catalog item title.
    */
-  getActivity(query: ActivityQuery): Observable<ActivityResponse> {
+  getHistory(query: HistoryQuery): Observable<HistoryResponse> {
     return this.dataVersion$.pipe(
       delay(0),
       map(() => {
@@ -377,9 +377,9 @@ export class BackendApi {
   }
 
   /**
-   * Lists all contributors matching the given kind ('person' or 'company').
+   * Lists all contributors matching the given kind ('person' or 'studio').
    */
-  getContributors(kind: 'person' | 'company'): Observable<readonly Contributor[]> {
+  getContributors(kind: 'person' | 'studio'): Observable<readonly Contributor[]> {
     return this.dataVersion$.pipe(
       delay(0),
       map(() => this.repository.contributors().filter((c) => c.kind === kind)),
@@ -416,14 +416,14 @@ export class BackendApi {
   }
 
   /**
-   * Toggles the favorite flag on an item in the user's personal collection.
+   * Toggles the favorite flag on an item in the user's library.
    */
   async toggleFavorite(itemId: CatalogItem['id']): Promise<void> {
     await this.repository.toggleFavorite(itemId);
   }
 
   /**
-   * Updates personal collection properties (status, rating, favorite) on a title.
+   * Updates library properties (status, rating, favorite) on a title.
    */
   async updatePersonal(
     itemId: CatalogItem['id'],

@@ -170,12 +170,12 @@ describe('BackendApi', () => {
     });
   });
 
-  describe('collection queries', () => {
-    it('returns an observable that resolves asynchronously and filters collection items', async () => {
+  describe('library queries', () => {
+    it('returns an observable that resolves asynchronously and filters library items', async () => {
       const { api } = setup();
       let resolvedSynchronously = false;
 
-      const obs$ = api.getCollection({
+      const obs$ = api.getLibrary({
         search: '',
         media: [],
         statuses: [],
@@ -201,7 +201,7 @@ describe('BackendApi', () => {
       const { api } = setup();
 
       const response = await firstValueFrom(
-        api.getCollection({
+        api.getLibrary({
           search: '',
           media: [],
           statuses: ['completed'],
@@ -218,12 +218,12 @@ describe('BackendApi', () => {
     });
   });
 
-  describe('activity queries', () => {
+  describe('history queries', () => {
     it('returns an observable that resolves asynchronously and joins catalog items', async () => {
       const { api } = setup();
       let resolvedSynchronously = false;
 
-      const obs$ = api.getActivity({
+      const obs$ = api.getHistory({
         search: '',
         from: null,
         to: null,
@@ -247,7 +247,7 @@ describe('BackendApi', () => {
       const { api } = setup();
 
       const response = await firstValueFrom(
-        api.getActivity({
+        api.getHistory({
           search: 'The Last Algorithm',
           from: null,
           to: null,
