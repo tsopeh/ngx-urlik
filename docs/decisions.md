@@ -214,6 +214,19 @@ first navigation to a page without a query value is cancelled and replaced by on
 filled in. A path value is restored inside the same navigation. The server cannot see browser storage, so a server-rendered page shows the
 default and changes after hydration.
 
+### Which stored values the library forgets
+
+A stored value that fails to decode, such as `"many"` for a page size, can never be used, so
+ngx-urlik removes it when it reads it and reports it once. A value that decodes can still be wrong
+for the app: season 9 of a show with three seasons decodes as a number, and only the backend knows
+it does not exist. ngx-urlik does not try to detect that and offers no special API for it. The app
+already decides what a missing title looks like, and it can call `clearPersisted()` and navigate
+elsewhere.
+
+**Cost:** until the app handles it, a remembered value that the backend rejects keeps opening the
+same not-found page. `clearPersisted()` forgets a key for every scope, such as every show's
+season, not one show's.
+
 ### Where a missing query value is restored
 
 The restore has to happen before user code reads the URL, or that code sees a page without its

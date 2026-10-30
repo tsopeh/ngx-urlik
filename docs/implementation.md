@@ -45,7 +45,7 @@ matched path, reads scope values from it by position, collects the persisted fie
 value is missing or fails to decode, and returns a `RedirectCommand` with those fields filled in.
 The path-codec check comes first in `canMatch` and the restore check last, so a route that fails
 its codecs or its own `canMatch` guards never redirects. The reader asks the same module for a
-stored value before it falls back to a default. `route-node.ts` saves the active
+stored value before it falls back to a default; stored text that fails to decode is removed there. `route-node.ts` saves the active
 chain's persisted values on each `NavigationEnd`.
 
 For a named route with persisted trailing placeholders, `compileRoutes` inserts unnamed routes

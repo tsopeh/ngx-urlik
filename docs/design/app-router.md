@@ -532,7 +532,8 @@ defineAppRouter(RouteNames, { routes, persistence: { prefix: 'shop:' } });
 ### Read
 
 A valid URL value wins. Otherwise the stored value is used if it decodes with the field's codec,
-and otherwise the default. A URL value that fails to decode falls back the same way. `params()`,
+and otherwise the default. A stored value that fails to decode is removed from storage, so it is
+reported once. A URL value that fails to decode falls back the same way. `params()`,
 `paramsFrom()`, `activeRoute()`, and form bindings all follow this order. `globalQueryParams()`
 ignores `persist`.
 
@@ -600,6 +601,16 @@ After a visit to `/shows/tv_1/seasons/2`, a navigation to `/shows/tv_1/seasons` 
 `/shows/tv_1/seasons/2`. The query and fragment stay. Without a stored season for that show, the
 shorter URL matches what it matched before: an app route declared earlier at that path, the next
 matching route, or the not-found page.
+
+The shorter URL is always the route's own path without the persisted placeholders, so choose the
+path with that URL in mind. Here `/shows/tv_1/seasons` means "the season I opened last", and the
+show page lists the seasons. To open the show page when nothing is stored, declare an ordinary
+redirect after the named route: `{ path: 'seasons', pathMatch: 'full', redirectTo: '' }`.
+
+ngx-urlik saves any value that decodes. It cannot know whether season 9 exists. When the app finds
+that a restored value is wrong, for example because the backend has no such season, the app
+decides what to do, such as calling [`clearPersisted()`](#forget-stored-values) and navigating to
+the show page.
 
 Only a named route can persist a placeholder, and the persisted placeholders must end the route's
 own `path`: no static segment or unpersisted placeholder may follow them. In
@@ -671,7 +682,7 @@ parameter and contains only `code`, `message`, and `key`.
 | --------------------------------- | --------------------------------------------------------------------------------- |
 | `PARAM_DESERIALIZE_FAILED`        | A codec returned `null` or threw                                                  |
 | `PARAM_SERIALIZE_FAILED`          | A query codec returned a non-string or threw, or a repeated field got a non-array |
-| `STORED_VALUE_DESERIALIZE_FAILED` | A stored value failed to decode; it is ignored and the default applies            |
+| `STORED_VALUE_DESERIALIZE_FAILED` | A stored value failed to decode; it is removed and the default applies            |
 | `UNKNOWN_PERSIST_KEY`             | `clearPersisted()` received a key that no route declares                          |
 
 When a codec throws, the error is in `cause`. For a repeated field, `index` names the failed item.

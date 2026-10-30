@@ -86,6 +86,13 @@ function createStorageAccess(browser: () => boolean) {
         // Clearing is best effort, like saving.
       }
     },
+    remove(kind: PersistOptions['storage'], key: string): void {
+      try {
+        get(kind)?.removeItem(key);
+      } catch {
+        // Removing is best effort, like saving.
+      }
+    },
     write(kind: PersistOptions['storage'], key: string, value: string): void {
       try {
         get(kind)?.setItem(key, value);
@@ -113,7 +120,8 @@ function createStoredValues(
 
   /**
    * Returns the stored URL text if it decodes, `null` when nothing usable is stored, and
-   * `undefined` when the storage is unavailable.
+   * `undefined` when the storage is unavailable. Text that fails to decode is removed, so it is
+   * reported once.
    */
   const readStored = (param: RuntimeParam, path: ParamMap): string | null | undefined => {
     const persist = persistOf(param)!;
@@ -121,10 +129,11 @@ function createStoredValues(
     if (key === undefined) return null;
     const raw = storage.read(persist.storage, key);
     if (raw === null || raw === undefined || decodes(param, raw)) return raw;
+    storage.remove(persist.storage, key);
     report(
       param,
       { code: 'STORED_VALUE_DESERIALIZE_FAILED', operation: 'deserialize', key },
-      `stored under '${key}' was invalid`,
+      `stored under '${key}' was invalid and was removed`,
     );
     return null;
   };

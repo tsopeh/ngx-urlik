@@ -58,7 +58,7 @@ Codecs strictly translate between strings and types.
 
 **Persistence**
 
-- `queryParam({ codec, defaultValue, persist: { key, storage: 'local' | 'session', scope? } })` saves the committed value and writes it back into a URL that lacks it. Keys cannot contain `:`. Persisted fields always appear in the URL; repeated fields and fields without a default cannot persist. A named route's trailing placeholders can persist too (`pathParam: { codec, persist }`): the URL without them redirects to the stored values. `router.clearPersisted()` forgets stored values, for example on a reset button.
+- `queryParam({ codec, defaultValue, persist: { key, storage: 'local' | 'session', scope? } })` saves the committed value and writes it back into a URL that lacks it. Keys cannot contain `:`. Persisted fields always appear in the URL; repeated fields and fields without a default cannot persist. A named route's trailing placeholders can persist too (`pathParam: { codec, persist }`): the URL without them redirects to the stored values. That shorter URL is always the route's own path minus those placeholders, so choose the path with it in mind (`tv/:showId/s/:seasonNumber` restores at `tv/:showId/s`), and add an ordinary redirect after the route for when nothing is stored. A stored value that fails to decode is removed. A value that decodes but the backend rejects is the app's to handle. `router.clearPersisted()` forgets stored values, for example on a reset button or after such a rejection.
 
 **Comparators (`isEqual`)**
 You can provide a custom `isEqual` function in the node configuration to override how the `params` signal evaluates equality for complex objects.

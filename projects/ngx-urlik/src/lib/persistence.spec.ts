@@ -252,7 +252,7 @@ describe('query persistence', () => {
     expect(router.serializeUrl(app.routes.ITEMS.createUrlTree())).toBe('/items');
   });
 
-  it('ignores a stored value that fails to decode and reports it', async () => {
+  it('removes a stored value that fails to decode and reports it', async () => {
     localStorage.setItem('ngx-urlik:pageSize', 'many');
     const { router, diagnostics } = setup();
 
@@ -501,6 +501,8 @@ describe('path persistence', () => {
         key: 'ngx-urlik:season:y',
       }),
     );
+    expect(sessionStorage.getItem('ngx-urlik:season:y')).toBeNull();
+    expect(sessionStorage.getItem('ngx-urlik:season:x')).toBe('3');
   });
 
   it('keeps matching when storage throws', async () => {
