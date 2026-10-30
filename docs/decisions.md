@@ -1,7 +1,7 @@
 # Design decisions
 
 Each entry states a problem, the choice that answers it, and what the choice costs. The
-[API reference](design/app-router.md) holds the exact rules. [History](history.md) covers choices
+[README](../README.md) holds the exact rules. [History](history.md) covers choices
 that applied only to the first design. Before reopening a decision, read its rejected alternatives.
 
 ## Accept Angular's route array and name routes one at a time
@@ -109,7 +109,7 @@ together.
 
 **Cost:** Angular's `Router` stays injectable, and calls through it bypass both the types and the
 write queue. The library discourages that path instead of blocking it: the docs give an ESLint
-[configuration](angular-restrictions.md#flag-native-router-use) that warns on `Router` and
+[configuration](../README.md#flag-direct-router-use) that warns on `Router` and
 `ActivatedRoute` imports. Nothing enforces the boundary at runtime.
 
 ## Check route relationships at definition time, not in the types
@@ -285,7 +285,7 @@ Each observer applies its own definitions, which avoids registration order and c
 on the router rather than on `escapeHatch`, because it is a typed library feature, not a native one.
 
 **Cost:** two observers with different definitions can read different values from the same URL.
-There is no write method; writing global fields is an [open question](deferred-discussions.md).
+There is no write method; the README lists writing global fields under [Not supported](../README.md#not-supported).
 
 ## Organize internals as an acyclic module graph
 

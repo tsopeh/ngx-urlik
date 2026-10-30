@@ -18,5 +18,5 @@ decode is removed when it is read.
 
 Several 0.1.0 ideas carried over: codecs separate from placement, deterministic construction, the
 shared write queue, form drafts, `activeRoute()`, and read-only global observation.
-[Design decisions](decisions.md) records why. The [API reference](design/app-router.md) describes
+[Design decisions](decisions.md) records why. The [README](../README.md) describes
 current behavior. There is no migration path because the library has not been published.
