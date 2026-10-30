@@ -30,7 +30,7 @@ import { MediaCard } from './media-card';
       <section class="filter-panel" aria-label="Library filters">
         <label class="search"
           ><span>Search library</span
-          ><input type="search" [formField]="binding.form.search" placeholder="Try “algorithm”…"
+          ><input type="search" [formField]="binding.form.search" placeholder="Try “inference”…"
         /></label>
         <label
           ><span>Minimum rating</span

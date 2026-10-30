@@ -37,7 +37,7 @@ export function positiveIntegerCodec(): UrlParamCodec<number> {
   };
 }
 
-/** An ID such as `tv_only-mergers`, written to the URL without its prefix: `only-mergers`. */
+/** An ID such as `tv_wirefern`, written to the URL without its prefix: `wirefern`. */
 export function prefixedIdCodec<const Prefix extends string>(
   prefix: Prefix,
 ): UrlParamCodec<`${Prefix}_${string}`> {

@@ -18,10 +18,10 @@ describe('TasteTrack route helpers', () => {
 
   it('writes IDs to the URL without their prefix', () => {
     const codec = prefixedIdCodec('tv');
-    expect(codec.serialize('tv_only-mergers')).toBe('only-mergers');
-    expect(codec.deserialize('only-mergers')).toBe('tv_only-mergers');
-    expect(codec.serialize('mov_only-mergers' as never)).toBeNull();
-    expect(codec.deserialize('Only Mergers')).toBeNull();
+    expect(codec.serialize('tv_wirefern')).toBe('wirefern');
+    expect(codec.deserialize('wirefern')).toBe('tv_wirefern');
+    expect(codec.serialize('mov_wirefern' as never)).toBeNull();
+    expect(codec.deserialize('Brambleworth Manor')).toBeNull();
   });
 
   it('composes exact page and page-size definitions', () => {

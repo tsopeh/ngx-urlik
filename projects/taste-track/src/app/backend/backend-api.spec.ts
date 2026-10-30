@@ -120,7 +120,7 @@ describe('BackendApi', () => {
       const response = await firstValueFrom(
         api.getCatalog({
           route: 'movies',
-          search: 'Algorithm',
+          search: 'Inference',
           genres: [],
           sort: { field: 'title', direction: 'asc' },
           page: 1,
@@ -129,7 +129,7 @@ describe('BackendApi', () => {
       );
 
       expect(response.total).toBe(1);
-      expect(response.items[0].item.title).toBe('The Last Algorithm');
+      expect(response.items[0].item.title).toBe("Quillon's Last Inference");
       expect(response.items[0].state).toBeDefined();
     });
 
@@ -139,34 +139,34 @@ describe('BackendApi', () => {
       const movieDetail = await firstValueFrom(
         api.getItemDetail({
           route: 'movie',
-          movieId: 'mov_the-last-algorithm',
+          movieId: 'mov_quillons-last-inference',
         }),
       );
 
       expect(movieDetail).not.toBeNull();
-      expect(movieDetail?.heading).toBe('The Last Algorithm');
+      expect(movieDetail?.heading).toBe("Quillon's Last Inference");
       expect(movieDetail?.credits.length).toBeGreaterThan(0);
       expect(movieDetail?.credits[0].person.name).toBeDefined();
 
       const showDetail = await firstValueFrom(
         api.getItemDetail({
           route: 'season',
-          showId: 'tv_only-mergers',
+          showId: 'tv_brambleworth-manor',
           seasonNumber: 2,
         }),
       );
 
       expect(showDetail).not.toBeNull();
-      expect(showDetail?.heading).toBe('Only Mergers in the Building · Season 2');
+      expect(showDetail?.heading).toBe('Brambleworth Manor · Season 2');
       expect(showDetail?.isSeason).toBe(true);
     });
 
     it('retrieves seasons for a show', async () => {
       const { api } = setup();
 
-      const seasons = await firstValueFrom(api.getSeasons('tv_only-mergers'));
+      const seasons = await firstValueFrom(api.getSeasons('tv_brambleworth-manor'));
       expect(seasons.length).toBeGreaterThanOrEqual(2);
-      expect(seasons[0].showId).toBe('tv_only-mergers');
+      expect(seasons[0].showId).toBe('tv_brambleworth-manor');
     });
   });
 
@@ -248,7 +248,7 @@ describe('BackendApi', () => {
 
       const response = await firstValueFrom(
         api.getHistory({
-          search: 'The Last Algorithm',
+          search: "Quillon's Last Inference",
           from: null,
           to: null,
           page: 1,
@@ -259,7 +259,7 @@ describe('BackendApi', () => {
 
       expect(response.total).toBeGreaterThan(0);
       expect(
-        response.entries.every((entry) => entry.item?.title.includes('The Last Algorithm')),
+        response.entries.every((entry) => entry.item?.title.includes("Quillon's Last Inference")),
       ).toBe(true);
     });
   });
@@ -284,10 +284,10 @@ describe('BackendApi', () => {
     it('resolves contributor profile and filmography', async () => {
       const { api } = setup();
 
-      const profile = await firstValueFrom(api.getContributorProfile('per_wes'));
+      const profile = await firstValueFrom(api.getContributorProfile('per_wendell'));
 
       expect(profile).not.toBeNull();
-      expect(profile?.contributor.name).toBe('Wes Andersonville');
+      expect(profile?.contributor.name).toBe('Wendell Marchbank');
       expect(profile?.credits.length).toBeGreaterThan(0);
       expect(profile?.credits[0].item.title).toBeDefined();
     });

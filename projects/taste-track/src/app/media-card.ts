@@ -13,8 +13,8 @@ import type { CatalogItem, PersonalState } from './backend';
         [routerLink]="url()"
         [attr.aria-label]="'Open ' + item().title"
       >
-        @if (item().id === 'mov_the-last-algorithm') {
-          <img src="artwork/the-last-algorithm.png" alt="" />
+        @if (item().id === 'mov_quillons-last-inference') {
+          <img src="artwork/quillons-last-inference.png" alt="" />
         }
         <span>{{ item().kind }}</span
         ><strong>{{ initials() }}</strong

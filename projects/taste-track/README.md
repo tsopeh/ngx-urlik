@@ -19,10 +19,10 @@ The server builds the library first. The app imports only the public `ngx-urlik`
 ## Try a few paths
 
 1. Change the movie genres, sort order, and page size. Reload. The URL restores the filters.
-2. Open TV shows → Only Mergers in the Building → Season 2 → Browse episodes → The Callback.
-   The address, `/tv/only-mergers/s/2/e/1`, supplies the show, season, and episode parameters.
+2. Open TV shows → Brambleworth Manor → Season 2 → Browse episodes → The Callback Nobody Returned.
+   The address, `/tv/brambleworth-manor/s/2/e/1`, supplies the show, season, and episode parameters.
    The ID codec leaves the `tv_` prefix out of the URL and adds it back when reading.
-   Then open `/tv/only-mergers/s`. It arrives at `…/s/2`, the season you opened last in this
+   Then open `/tv/brambleworth-manor/s`. It arrives at `…/s/2`, the season you opened last in this
    tab. A show with no remembered season opens the show page, which lists its seasons.
 3. Follow a credit to a person or studio, then follow a title back to the catalog.
 4. Change a rating and log a viewing. Reload to check that both were saved.
@@ -81,7 +81,7 @@ Active query subscriptions observe `dataVersion` and re-emit automatically with 
 ## Data and reset
 
 Dexie stores the data in `taste-track`. The deterministic seed contains 30 movies,
-4 shows, 8 seasons, 32 episodes, 4 people, and 2 studios. Catalog data is readonly.
+30 shows, 66 seasons, 394 episodes, 8 people, and 4 studios. Catalog data is readonly.
 Ratings, statuses, favorites, counts, and viewing events survive reloads.
 
 Initialization and reset use the same seed. Reset runs in a transaction and affects only the
