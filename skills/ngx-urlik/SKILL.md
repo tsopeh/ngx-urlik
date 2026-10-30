@@ -17,6 +17,13 @@ When moving a component from the native `ActivatedRoute` to `ngx-urlik`, the goa
 
 **Completion criterion**: Every parameter the component touches is defined in the schema with a codec. Zero `ActivatedRoute` or `Router` tokens remain in the file.
 
+**Where routes go**
+
+- Declare every route in the single `defineAppRouter()` call, as a literal array. Do not split it into `Routes`-typed arrays in other files; a widened array produces no typed routes.
+- Load pages lazily with `loadComponent`. A named route, and every route above it, cannot use `loadChildren`. `loadComponent` needs a standalone component.
+- Converting a lazy feature module: move its routes into the router file, replace its `component` entries with `loadComponent`, and move the module's `providers` to the route above its pages. Leave unconverted features on `loadChildren`; they keep working, untyped.
+- Convert one feature or page at a time. Code that still uses `ActivatedRoute` reads the same URL. Calls through Angular's `Router` skip the write queue and cancel pending `patchQuery` and form writes, so convert a page's writes together.
+
 ## 2. State & Writes
 
 Interact with the URL exclusively through the typed `RouteNode`.

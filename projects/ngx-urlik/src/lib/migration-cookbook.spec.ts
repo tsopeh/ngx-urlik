@@ -1,6 +1,6 @@
-import { Component, EnvironmentProviders, InjectionToken } from '@angular/core';
+import { Component, EnvironmentProviders, inject, InjectionToken, NgModule } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Router, RouterOutlet, Routes } from '@angular/router';
+import { Router, RouterModule, RouterOutlet, Routes } from '@angular/router';
 import {
   defineAppRouter,
   numberCodec,
@@ -205,5 +205,61 @@ describe('migration cookbook', () => {
     ).toThrow(
       "MEMBER: path parameter 'id' appears in both 'teams/:id' and 'members/:id'. Rename one so params().path can hold both values.",
     );
+  });
+
+  it('7. runs from an NgModule next to a lazy feature that is not converted yet', async () => {
+    @Component({ standalone: false, template: '<a [routerLink]="link">Results</a>' })
+    class Nav {
+      readonly link = inject(definition.AppRouter).routes.RESULTS.createUrlTree({
+        query: { page: 2 },
+      });
+    }
+
+    const definition = defineAppRouter(RouteNames, {
+      routes: [
+        {
+          path: 'results',
+          routeName: RouteNames.RESULTS,
+          queryParams: { page: queryParam({ codec: numberCodec(), defaultValue: 1 }) },
+          component: Page,
+        },
+        { path: 'settings', loadChildren: async () => [{ path: '', component: Page }] },
+      ],
+    });
+
+    @NgModule({
+      declarations: [Nav],
+      imports: [RouterModule],
+      providers: [definition.provideAppRouter()],
+    })
+    class AppModule {}
+
+    TestBed.configureTestingModule({ imports: [AppModule] });
+    const router = TestBed.inject(Router);
+    const fixture = TestBed.createComponent(Nav);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('a').getAttribute('href')).toBe('/results?page=2');
+    await router.navigateByUrl('/settings');
+    expect(router.url).toBe('/settings');
+  });
+
+  it('8. names routes in front of an existing Routes array', async () => {
+    const existingRoutes: Routes = [
+      { path: 'catalog', component: Page },
+      { path: '**', component: Page },
+    ];
+    const definition = defineAppRouter(RouteNames, {
+      routes: [
+        { path: 'results', routeName: RouteNames.RESULTS, component: Page },
+        ...existingRoutes,
+      ],
+    });
+    const { appRouter, router } = setup(definition);
+
+    expect(await appRouter.routes.RESULTS.navigate()).toBe(true);
+    expect(router.url).toBe('/results');
+    await router.navigateByUrl('/catalog');
+    expect(router.url).toBe('/catalog');
   });
 });

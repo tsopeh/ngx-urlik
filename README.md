@@ -90,6 +90,34 @@ URL because 1 is the default.
 `createUrlTree` builds a fresh URL from only what you pass. The link has no `search=elm`. It never
 copies the current filters.
 
+Have an existing app? [Adopt it one feature at a time](#adopt-it-one-feature-at-a-time).
+
+### Coding agents
+
+The package ships an agent skill at `node_modules/ngx-urlik/skills/ngx-urlik/SKILL.md`. It tells a
+coding agent how to read, write, and link with ngx-urlik, and how to move a page off
+`ActivatedRoute`.
+
+An agent only uses the skill if it knows about it. Paste this into your agent's project
+instructions, such as `AGENTS.md` or `CLAUDE.md`:
+
+```md
+This app uses ngx-urlik for routing and URL state. Before you change routes, links, guards,
+resolvers, or code that reads or writes the URL, read
+node_modules/ngx-urlik/skills/ngx-urlik/SKILL.md and follow it. Read and write the URL through
+AppRouter, not ActivatedRoute or Router. Declare new routes in the defineAppRouter() file.
+```
+
+Agents that load skills from a folder can use it directly. For Claude Code, link it into the
+project:
+
+```sh
+mkdir -p .claude/skills
+ln -s ../../node_modules/ngx-urlik/skills/ngx-urlik .claude/skills/ngx-urlik
+```
+
+The link follows the installed version, so the skill always matches the library you run.
+
 ## Routes
 
 `AppRouter.routes` is flat, even when your routes are nested. A named child gets the path and query
@@ -123,6 +151,181 @@ still load lazily with `loadComponent`. A named route does not need a component.
 The route list is fixed once you call `defineAppRouter()`. Don't swap routes with
 `Router.resetConfig()`. Nothing catches it. The old typed routes would keep building URLs for routes
 Angular no longer has.
+
+### One file for the whole app
+
+We recommend declaring every route in one `defineAppRouter()` call, in one file. That file becomes
+the map of your app: each URL, its parameters, its guards, and the page it loads. TypeScript checks
+each named route against the routes above it. A child that declares a query key its parent already
+owns is a type error right there.
+
+The file stays small, because it doesn't hold your pages. Each page loads lazily with
+`loadComponent`, so its code stays in its own chunk.
+
+Moving a large app into one file at once is a lot of work. You don't have to.
+[Adopt it one feature at a time](#adopt-it-one-feature-at-a-time) shows how to get there in steps.
+
+### Lazy loading
+
+| What you use                                      | With ngx-urlik                                                                            |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `loadComponent`                                   | Works on any route. This is how a typed page loads lazily                                 |
+| `loadChildren` on an unnamed route                | Works as in Angular. The routes it loads are plain Angular routes, with no typed entries  |
+| `loadChildren` on a named route, or above one     | `defineAppRouter()` throws                                                                |
+| `providers` of a lazy feature module              | Move them to the route above the feature's pages. Angular creates them on first visit too |
+| `loadComponent` with a component from an NgModule | Angular rejects it: the component must be standalone                                      |
+
+A component declared in an NgModule can still go in `component`. It then loads with the app. To keep
+it lazy, make it standalone first. Angular's `ng generate @angular/core:standalone` schematic does
+that.
+
+Why can't route definitions load lazily? The types could follow a lazy import: TypeScript reads the
+imported file either way. The runtime can't. A link to `/orders/4` has to be built before anyone has
+opened the orders feature, so the path and the codec for `4` must already be loaded. `routerLink`
+takes the `UrlTree` right away; it can't wait for a chunk. Startup checks, the
+[restore routes for remembered path values](#remember-a-path-value), and `clearPersisted()` also need
+every route up front. So the definitions load with the app, and the pages load lazily.
+
+### Adopt it one feature at a time
+
+Say you have this app. Each feature is a lazy NgModule with its own routing module:
+
+```ts
+// app-routing.module.ts
+const routes: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'orders' },
+  {
+    path: 'orders',
+    loadChildren: () => import('./orders/orders.module').then((m) => m.OrdersModule),
+  },
+  {
+    path: 'settings',
+    loadChildren: () => import('./settings/settings.module').then((m) => m.SettingsModule),
+  },
+  { path: '**', component: NotFoundPage },
+];
+
+@NgModule({ imports: [RouterModule.forRoot(routes)], exports: [RouterModule] })
+export class AppRoutingModule {}
+
+// orders/orders-routing.module.ts
+const routes: Routes = [
+  { path: '', component: OrderListPage },
+  { path: ':orderId', canActivate: [orderExists], component: OrderDetailPage },
+];
+
+@NgModule({ imports: [RouterModule.forChild(routes)], exports: [RouterModule] })
+export class OrdersRoutingModule {}
+
+// orders/orders.module.ts
+@NgModule({
+  declarations: [OrderListPage, OrderDetailPage],
+  imports: [CommonModule, OrdersRoutingModule],
+  providers: [OrdersApi],
+})
+export class OrdersModule {}
+```
+
+**1. Hand the routes to `defineAppRouter()`, naming nothing.**
+
+```ts
+// app-routing.module.ts
+export enum RouteNames {}
+
+export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, { routes });
+
+@NgModule({ imports: [RouterModule], exports: [RouterModule], providers: [provideAppRouter()] })
+export class AppRoutingModule {}
+```
+
+`provideAppRouter()` replaces `RouterModule.forRoot()`. It sets up Angular's router, so don't keep
+both. Importing `RouterModule` without `forRoot()` still gives declared components `routerLink` and
+`<router-outlet>`. In a standalone app, swap `provideRouter(routes)` for `provideAppRouter()` the
+same way.
+
+No route uses an ngx-urlik field yet, so Angular gets your array untouched. The app works as before.
+
+**2. Convert one feature.** Move its routes into the router file. Name the routes you want to use
+from code. Load each page with `loadComponent`. Move the feature module's providers to the route
+above its pages:
+
+```ts
+export enum RouteNames {
+  ORDERS = 'ORDERS',
+  ORDER = 'ORDER',
+}
+
+export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
+  routes: [
+    { path: '', pathMatch: 'full', redirectTo: 'orders' },
+    {
+      path: 'orders',
+      providers: [OrdersApi],
+      children: [
+        {
+          path: '',
+          routeName: RouteNames.ORDERS,
+          queryParams: { page: queryParam({ codec: numberCodec(), defaultValue: 1 }) },
+          loadComponent: () => import('./orders/order-list.page').then((m) => m.OrderListPage),
+        },
+        {
+          path: ':orderId',
+          routeName: RouteNames.ORDER,
+          pathParam: { codec: numberCodec() },
+          canActivate: [orderExists],
+          loadComponent: () => import('./orders/order-detail.page').then((m) => m.OrderDetailPage),
+        },
+      ],
+    },
+    // Not converted yet. It stays lazy and untyped.
+    {
+      path: 'settings',
+      loadChildren: () => import('./settings/settings.module').then((m) => m.SettingsModule),
+    },
+    { path: '**', component: NotFoundPage },
+  ],
+});
+```
+
+`orders.module.ts` and `orders-routing.module.ts` go away. `OrderListPage` and `OrderDetailPage`
+became standalone, so they can load lazily.
+
+**3. Move the pages over.** A page that still reads `ActivatedRoute` keeps working. It reads the same
+URL as the typed routes. Change pages one at a time:
+
+```ts
+// Before
+const orderId = toSignal(
+  inject(ActivatedRoute).paramMap.pipe(map((params) => Number(params.get('orderId')))),
+);
+
+// After
+const order = inject(AppRouter).routes.ORDER;
+const orderId = computed(() => order.params().path.orderId); // number
+```
+
+One thing to watch while both styles live side by side: a call through Angular's `Router` skips the
+write queue. It also cancels writes still waiting in it, as any outside navigation does. See
+[One write at a time](#one-write-at-a-time). The [ESLint rule](#flag-direct-router-use) lists the
+places still left to change.
+
+**4. Repeat for each feature.** When the last one is in, the router file is the whole map.
+
+#### Routes that already live in a `Routes` array
+
+If your routes sit in one array typed as Angular's `Routes`, you can name routes in front of it
+before you move anything:
+
+```ts
+defineAppRouter(RouteNames, {
+  routes: [{ path: 'results', routeName: RouteNames.RESULTS, component: ResultsPage }, ...routes],
+});
+```
+
+`routes.RESULTS` is typed. Named routes have to come before the spread. After it, TypeScript can't
+see them. The spread also costs you the compile-time checks on the named routes. A mistake such as a
+`pathParam` key that isn't in the path is caught when `defineAppRouter()` runs instead. Treat this as
+a stopgap and move routes into the literal array as you convert them.
 
 ### Paths and placeholders
 
@@ -899,22 +1102,23 @@ imports stay allowed. Templates and guards still need them.
 
 ## Not supported
 
-| Not supported                                        | What happens today                                                       |
-| ---------------------------------------------------- | ------------------------------------------------------------------------ |
-| Angular versions other than 22                       | The library targets Angular 22                                           |
-| Typed redirects, wildcards, matchers, named outlets  | Declare them as unnamed Angular routes                                   |
-| Route arrays split across files                      | Pass the literal routes straight to `defineAppRouter()`                  |
-| Swapping routes with `Router.resetConfig()`          | Declare every named route up front. Load components with `loadComponent` |
-| Query property names that differ from URL keys       | The property name is the URL key                                         |
-| One array field as both repeated keys and a list     | Each field uses one form                                                 |
-| Built-in date or object codecs                       | Write your own codec                                                     |
-| Writing global query fields                          | Global observers only read. Routes own writes                            |
-| Reading the fragment                                 | You can only pass a fragment when building a link                        |
-| Typed relative navigation                            | Use the escape hatch                                                     |
-| Write options besides `replaceUrl`                   | Patches take only `replaceUrl`                                           |
-| Typed state in a route's `isEqual`                   | The callback gets `unknown`                                              |
-| Noticing storage changes from another tab            | The change applies at the next restore                                   |
-| Forgetting one scope's value, like one show's season | `clearPersisted()` forgets a key for every scope                         |
+| Not supported                                        | What happens today                                                         |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| Angular versions other than 22                       | The library targets Angular 22                                             |
+| Typed redirects, wildcards, matchers, named outlets  | Declare them as unnamed Angular routes                                     |
+| Route arrays split across files                      | Pass the literal routes straight to `defineAppRouter()`                    |
+| Named routes inside `loadChildren`                   | Keep route definitions in the router file. Load pages with `loadComponent` |
+| Swapping routes with `Router.resetConfig()`          | Declare every named route up front. Load components with `loadComponent`   |
+| Query property names that differ from URL keys       | The property name is the URL key                                           |
+| One array field as both repeated keys and a list     | Each field uses one form                                                   |
+| Built-in date or object codecs                       | Write your own codec                                                       |
+| Writing global query fields                          | Global observers only read. Routes own writes                              |
+| Reading the fragment                                 | You can only pass a fragment when building a link                          |
+| Typed relative navigation                            | Use the escape hatch                                                       |
+| Write options besides `replaceUrl`                   | Patches take only `replaceUrl`                                             |
+| Typed state in a route's `isEqual`                   | The callback gets `unknown`                                                |
+| Noticing storage changes from another tab            | The change applies at the next restore                                     |
+| Forgetting one scope's value, like one show's season | `clearPersisted()` forgets a key for every scope                           |
 
 ## TasteTrack demo
 

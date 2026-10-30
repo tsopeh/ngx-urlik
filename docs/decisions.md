@@ -31,16 +31,27 @@ and once on the route.
 ## Declare named route chains statically
 
 TypeScript can infer a route's accumulated parameters only from literal paths, names, and
-`children` arrays that reach `defineAppRouter()` directly. Named routes and their ancestors
-therefore cannot use `loadChildren`, and a route array widened to Angular's `Routes` type produces
-no typed nodes. Components can still load lazily. The catalog is fixed at definition time, so
-`Router.resetConfig()` is outside the contract. The library does not check for it: the check walked
-the route configuration on every construction and state read to catch a call almost no application
-makes.
+`children` arrays that reach `defineAppRouter()` directly. A route array widened to Angular's
+`Routes` type produces no typed nodes. Components can still load lazily. The catalog is fixed at
+definition time, so `Router.resetConfig()` is outside the contract. The library does not check for
+it: the check walked the route configuration on every construction and state read to catch a call
+almost no application makes.
+
+Named routes and their ancestors cannot use `loadChildren`. Types are not the reason:
+`typeof import('./feature')` would carry a lazy file's literal routes. The runtime is. A typed node
+must build its URL synchronously, because `routerLink` takes a `UrlTree` at once, and building
+`/orders/4` needs that route's path and codec before the orders feature has loaded. Startup
+validation, the generated restore routes for persisted placeholders, and the known keys for
+`clearPersisted()` also need the whole tree. Lazy definitions would need asynchronous link building
+or links that fail until a chunk loads. Definitions hold paths, codecs, and guard references, so
+loading them eagerly costs little; pages stay lazy through `loadComponent`.
 
 **Cost:** a large route tree must be assembled in one expression. A `defineRoutes()` helper for
-arrays split across files was considered and not added, because once a value is widened its literal
-types are gone.
+arrays split across files was prototyped on 2026-10-30. A `const` type parameter with the same
+contextual checks as `defineAppRouter()` keeps the literal types, guards and providers included,
+and `defineAppRouter()` checks the array again in place. It was not added. One route file gives
+the whole app's URLs in one place, and that overview is the recommended layout. Apps adopt the
+library one feature at a time instead, moving each feature's routes into that file.
 
 ## Let the Angular path name its placeholders
 

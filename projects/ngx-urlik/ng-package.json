@@ -3,5 +3,6 @@
   "dest": "../../dist/ngx-urlik",
   "lib": {
     "entryFile": "src/public-api.ts"
-  }
+  },
+  "assets": ["skills"]
 }
