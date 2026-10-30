@@ -1,23 +1,15 @@
 # ngx-urlik
 
-ngx-urlik gives Angular routes names and typed parameters. Read the current URL through a
-signal, change a filter with a patch, and build links from the same route object. Angular Router
-still handles matching and navigation.
+ngx-urlik gives your Angular routes names and typed parameters. You read the URL through a signal.
+You change it with a patch. You build links from the same object. Angular Router still does the
+matching and the navigating.
 
-```ts
-const results = inject(AppRouter).routes.RESULTS;
-
-results.params().query.search;
-await results.patchQuery({ search: 'elm', page: 1 });
-```
-
-The patch changes the search and resets the page in one navigation. Other query fields stay as
-they are.
+This README follows one page the whole way through: a search results page at `/results`.
 
 - [Get started](#get-started)
 - [Routes](#routes)
 - [Codecs and query fields](#codecs-and-query-fields)
-- [Build destinations](#build-destinations)
+- [Build links](#build-links)
 - [Read state](#read-state)
 - [Write the query](#write-the-query)
 - [Bind a form](#bind-a-form)
@@ -31,13 +23,13 @@ they are.
 
 ## Get started
 
-The library targets Angular 22 and is not published to npm yet. The `ngx-urlik` entry point holds
-the router; `ngx-urlik/forms` holds the form bindings and needs `@angular/forms`.
+The library targets Angular 22. It is not on npm yet. The router comes from `ngx-urlik`. The form
+bindings come from `ngx-urlik/forms`, which needs `@angular/forms`.
 
 ### Define the routes
 
-Declare the route names, then pass them with Angular's ordered route array to `defineAppRouter()`.
-Add `routeName` to each route that should get a typed node:
+List your route names in an enum. Pass the enum and Angular's usual route array to
+`defineAppRouter()`. Give `routeName` to each route you want to use from code:
 
 ```ts
 import { defineAppRouter, numberCodec, queryParam, stringCodec } from 'ngx-urlik';
@@ -61,11 +53,10 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
 });
 ```
 
-`RESULTS` is the name you use in code; `results` is the URL path. `AppRouter.routes` is typed from
-the `RouteNames` members, so Go to Definition on `routes.RESULTS` opens the enum member that the
-route declaration also uses.
+`RESULTS` is the name in your code. `results` is the URL path. Go to Definition on `routes.RESULTS`
+jumps to the enum member. The route declaration uses the same member, so you land next to it.
 
-Provide the router at bootstrap:
+Provide the router when you bootstrap:
 
 ```ts
 bootstrapApplication(App, { providers: [provideAppRouter()] });
@@ -73,76 +64,84 @@ bootstrapApplication(App, { providers: [provideAppRouter()] });
 
 ### Read, write, and link
 
+Say the user is on `/results?search=oak&page=4`.
+
 ```ts
 const results = inject(AppRouter).routes.RESULTS;
 
-const search = computed(() => results.params().query.search);
-await results.patchQuery((query) => ({ page: query.page + 1 }));
+results.params().query; // { search: 'oak', page: 4 }
 
-const link = results.createUrlTree({ query: { search: 'elm' } });
+await results.patchQuery({ search: 'elm', page: 1 });
+// URL is now /results?search=elm
+
+const link = results.createUrlTree({ query: { page: 2 } });
+// link points to /results?page=2
 ```
 
 ```html
-<a [routerLink]="link">Search for elm</a>
+<a [routerLink]="link">Page 2</a>
 ```
 
-`params` is a readonly signal of `{ path, query }` for the committed URL. `patchQuery` edits the
-current URL. `createUrlTree` and `navigate` build a destination from the values you pass and do not
-copy filters from the current URL.
+`params` is a readonly signal of the current URL. It holds `{ path, query }`.
+
+`patchQuery` edits the URL you are on. It changed two fields in one navigation. `page=1` left the
+URL because 1 is the default.
+
+`createUrlTree` builds a fresh URL from only what you pass. The link has no `search=elm`. It never
+copies the current filters.
 
 ## Routes
 
-`AppRouter.routes` is flat even when the Angular routes are nested. A named descendant inherits the
-path and query definitions of its ancestors, including unnamed ones.
+`AppRouter.routes` is flat, even when your routes are nested. A named child gets the path and query
+fields of every route above it. That includes routes without a name.
 
-Routes without `routeName` stay ordinary Angular routes and get no node. They can use any Angular
-feature, such as redirects, wildcards, matchers, named outlets, and `loadChildren`. If no route uses
-an ngx-urlik field, `defineAppRouter()` passes the array to Angular unchanged.
+A route without `routeName` is a plain Angular route. It gets no entry in `AppRouter.routes`. It can
+use anything Angular offers: redirects, wildcards, matchers, named outlets, `loadChildren`. If no
+route uses an ngx-urlik field, Angular gets your array untouched.
 
 ### Fields added to Angular routes
 
-| Field         | What it does                                                                                                                                                                                          |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `routeName`   | Adds a node under `AppRouter.routes`. Names must be unique across the whole route array; `defineAppRouter()` throws and identifies both declarations. The name does not change the URL.               |
-| `pathParam`   | Sets codecs for placeholders declared in this route's `path`, and optionally `persist`. Without it, placeholders are strings. Use `{ codec }` for one placeholder or a map keyed by placeholder name. |
-| `queryParams` | Declares query fields this route owns. Named descendants inherit them, including fields on unnamed ancestors. Each key has one definition along a named route's chain.                                |
-| `isEqual`     | Compares decoded `{ path, query }` state for the route's `params` signal. Descendants inherit it unless they provide their own. It controls signal updates, not which URL values a patch reads.       |
+| Field         | What it does                                                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `routeName`   | Adds an entry to `AppRouter.routes`. Each name must be unique. A duplicate makes `defineAppRouter()` throw and name both routes. The URL is unchanged. |
+| `pathParam`   | Sets codecs for the placeholders in this route's `path`. It can also set `persist`. Without it, placeholders are strings.                              |
+| `queryParams` | Declares the query fields this route owns. Children inherit them. A key can be declared only once along a chain.                                       |
+| `isEqual`     | Decides when the route's `params` signal counts as changed. Children inherit it. It does not affect what a patch reads.                                |
 
-Angular fields such as `component`, `loadComponent`, and `canActivate` stay at the top level of the
-route. A key that is neither an Angular `Route` field nor one of the four above is a type error.
+Angular fields like `component`, `loadComponent`, and `canActivate` stay where they always are. Any
+other unknown key is a type error.
 
-Keep `path` and `routeName` literal so TypeScript can infer the nodes. A route array already
-widened to Angular's `Routes` type type-checks, but its named routes produce no typed nodes.
+Write `path` and `routeName` as literals. TypeScript needs the literals to infer the routes. If you
+first type the array as Angular's `Routes`, it still compiles. You just get no typed routes.
 
 ### Named routes
 
-A named route needs a statically known primary-outlet path. It and its ancestors cannot use
-`loadChildren`, and its ancestors must declare their children statically. Components can still
-load lazily with `loadComponent`. Named routes can have no component, including at a leaf.
+A named route needs a path that is known when the app starts. It cannot use `loadChildren`, and
+neither can the routes above it. Those routes must list their children directly. Components can
+still load lazily with `loadComponent`. A named route does not need a component.
 
-The typed catalog is fixed when the router is defined. Replacing the named routes with
-`Router.resetConfig()` is unsupported and not detected: stale nodes keep building URLs and reading
-state against routes Angular no longer uses.
+The route list is fixed once you call `defineAppRouter()`. Don't swap routes with
+`Router.resetConfig()`. Nothing catches it. The old typed routes would keep building URLs for routes
+Angular no longer has.
 
 ### Paths and placeholders
 
-Paths contain static segments and Angular `:name` placeholders, such as
-`shows/:showId/seasons/:season`. For one placeholder, `pathParam` can be `{ codec }` or
-`{ showId: { codec } }`. For several, use a map with exactly one `{ codec }` entry per placeholder
-on that route.
+Placeholders use Angular's `:name` syntax, as in `shows/:showId/seasons/:season`. With one
+placeholder, `pathParam` can be `{ codec }` or `{ showId: { codec } }`. With several, give a map with
+one `{ codec }` per placeholder.
 
-Path values are required when building a destination. Placeholder names cannot repeat along a named
-route chain. A placeholder and a query field may share a name, because state keeps them under
-separate `path` and `query` objects.
+You must supply every path value when you build a link. A placeholder name can appear only once
+along a chain. A placeholder and a query field can share a name. State keeps them apart under `path`
+and `query`.
 
-A `pathParam` codec also decides whether the route matches. ngx-urlik puts a `canMatch` check in
-front of the route's own `canMatch` guards. With `numberCodec()` on `items/:id`, `/items/abc` does
-not match, and Angular tries the next route. Add a route such as `items/:slug` or a wildcard if
-those URLs should show a page.
+A path codec also decides whether the route matches. Take `items/:id` with `numberCodec()`.
+`/items/42` matches. `/items/abc` does not, so Angular tries the next route. Add `items/:slug` or a
+wildcard if `/items/abc` should show something. This check runs before the route's own `canMatch`
+guards.
 
 ### Landing content
 
-Use an empty-path child when a route needs content at its own URL as well as child pages:
+Sometimes a route needs its own page and child pages. Give it an empty-path child:
 
 ```ts
 {
@@ -157,13 +156,13 @@ Use an empty-path child when a route needs content at its own URL as well as chi
 }
 ```
 
-At `/account/7`, both `ACCOUNT` and `ACCOUNT_OVERVIEW` are active, and `activeRoute()` reports the
-deeper one. At `/account/7/settings`, `ACCOUNT_SETTINGS` is deeper. The empty child builds the same
-URL as its parent.
+At `/account/7`, both `ACCOUNT` and `ACCOUNT_OVERVIEW` are active. `activeRoute()` reports the
+deeper one, `ACCOUNT_OVERVIEW`. At `/account/7/settings`, it reports `ACCOUNT_SETTINGS`. The empty
+child builds the same URL as its parent.
 
 ## Codecs and query fields
 
-A codec converts one decoded string to a value and back:
+A codec turns one URL string into a value, and back:
 
 ```ts
 interface UrlParamCodec<T> {
@@ -172,8 +171,10 @@ interface UrlParamCodec<T> {
 }
 ```
 
-`null` means conversion failed. `T` cannot contain `null` or `undefined`. Codecs are pure; calling
-`inject()` inside one is unsupported. The same codec can serve a placeholder or a query field:
+Returning `null` means "this didn't convert". So `T` itself can't include `null` or `undefined`.
+Keep codecs pure. Don't call `inject()` inside one.
+
+One codec works for a placeholder and a query field alike:
 
 ```ts
 const id = stringCodec();
@@ -189,41 +190,49 @@ const route = {
 };
 ```
 
-Each query property name is also its URL key.
+The property name is the URL key. `search` above lives at `?search=`.
 
 ### Built-in codecs
 
-| Codec                        | Accepted values                                                                                                                                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stringCodec()`              | Any string, including a present empty query value                                                                                                                                                       |
-| `numberCodec()`              | A complete decimal number with optional sign, fraction, and exponent (`-1.5`, `.5`, `1e3`), or `Infinity` and `-Infinity`. Not `NaN`, hex, whitespace, empty strings, or partial numbers such as `12px` |
-| `booleanCodec()`             | Exactly `true` and `false` in lowercase                                                                                                                                                                 |
-| `enumCodec(values)`          | Values from a readonly string array, tuple, or string record. Throws at creation if any value is not a string                                                                                           |
-| `listCodec(item, separator)` | A list of `item` values joined by `separator`. `''` is the empty list. Throws at creation if the separator is empty                                                                                     |
+| Codec                        | Accepts                                                                                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stringCodec()`              | Any string. That includes an empty value that is present, like `?search=`                                                                       |
+| `numberCodec()`              | A whole decimal number: `-1.5`, `.5`, `1e3`, `Infinity`, `-Infinity`. Not `NaN`, hex, whitespace, an empty string, or a partial one like `12px` |
+| `booleanCodec()`             | Exactly `true` or `false`, lowercase                                                                                                            |
+| `enumCodec(values)`          | A value from a readonly string array, tuple, or string record. Throws on creation if any value isn't a string                                   |
+| `listCodec(item, separator)` | `item` values joined by `separator`. `''` is the empty list. Throws on creation if the separator is empty                                       |
 
-A numeric TypeScript enum fails `enumCodec`, because its reverse mapping adds number values. A path
-segment cannot be empty, so building a URL whose path value serializes to `''` fails. Write a
-custom codec for dates, structured values, or stricter rules such as positive integers.
+A numeric TypeScript enum fails `enumCodec`. Its reverse mapping adds numbers to the values.
+
+A path segment can't be empty. Building a URL whose path value turns into `''` fails.
+
+For dates, objects, or stricter rules like "positive integers only", write your own codec.
 
 ### Single and repeated values
 
-A scalar uses the last value if its key repeats: `?page=1&page=2` reads as `2`. An array can live in
-the URL two ways:
+When a key appears twice, a single field takes the last one. `?page=1&page=2` reads as `2`.
 
-| Definition                                                       | URL            | Decoded array |
-| ---------------------------------------------------------------- | -------------- | ------------- |
-| `repeatedQueryParam({ codec })`                                  | `?tag=a&tag=b` | `['a', 'b']`  |
-| `queryParam({ codec: listCodec(codec, ','), defaultValue: [] })` | `?tag=a,b`     | `['a', 'b']`  |
+An array can sit in the URL two ways:
 
-A repeated field reads a missing key as its default or `[]`. Empty items are kept if their codec
-accepts them, so `?tag=` reads as `['']` with `stringCodec()`. One invalid item rejects the whole
-array, which then reads as the default or `[]`.
+| Definition                                                       | URL            | Reads as     |
+| ---------------------------------------------------------------- | -------------- | ------------ |
+| `repeatedQueryParam({ codec })`                                  | `?tag=a&tag=b` | `['a', 'b']` |
+| `queryParam({ codec: listCodec(codec, ','), defaultValue: [] })` | `?tag=a,b`     | `['a', 'b']` |
 
-A list is an ordinary scalar field, so the scalar rules apply. Give it `defaultValue: []`, or a
-missing key reads as `null`. If the key repeats, the last value wins: `?tag=a&tag=b,c` reads as
-`['b', 'c']`. Angular encodes the whole joined value, not each item. An empty item, or an item whose
-output contains the separator, fails conversion: `?tag=a,,b` reads as the default with a
-diagnostic, and serializing `['a,b']` with `,` omits the field with a diagnostic.
+With repeated keys:
+
+- No key reads as the default, or `[]`.
+- Empty items stay if the codec accepts them. `?tag=` reads as `['']` with `stringCodec()`.
+- One bad item spoils the whole array. It reads as the default, or `[]`.
+
+With a list, the field is a single field, so single-field rules apply:
+
+- Give it `defaultValue: []`. Without one, no key reads as `null`.
+- A repeated key keeps the last one. `?tag=a&tag=b,c` reads as `['b', 'c']`.
+- Angular encodes the joined string as a whole, not item by item.
+- An empty item fails. `?tag=a,,b` reads as the default and reports a diagnostic.
+- An item containing the separator fails too. Writing `['a,b']` with `,` drops the field and
+  reports a diagnostic.
 
 ### Defaults and required fields
 
@@ -232,24 +241,26 @@ queryParam({ codec: stringCodec(), defaultValue: 'en' });
 queryParam({ codec: stringCodec(), defaultValue: () => inject(LocaleSettings).locale() });
 ```
 
-A missing or malformed query value reads as its current default. A value deeply equal to the
-default is left out of a built or patched URL, except for a
-[persisted field](#remember-values-in-storage), which always appears.
+A missing or broken value reads as the default. With `page` defaulting to 1, `/results` and
+`/results?page=abc` both read `page` as 1.
 
-A default factory is synchronous and runs in the injection context of the environment that
-provided the router. It runs on every read and write, so a factory that reads a signal can change
-the decoded state without a navigation. Its errors propagate; they are not treated as malformed URL
-data.
+A value equal to the default stays out of the URL. Patch `page` to 1 and `page` leaves the URL. The
+one exception is a [persisted field](#remember-values-in-storage), which always shows.
 
-Without a default, an optional scalar reads as `null` and an array as `[]`. Every declared field is
-present in the decoded state, and a defaulted scalar keeps its non-null type.
+A default can be a function. It runs synchronously, in the injection context of the environment
+that provided the router. It runs on every read and every write. So if it reads a signal, the state
+can change without any navigation. If it throws, the error goes up to you. It is not treated as a
+bad URL.
 
-`required: true` means a caller must supply the field when building a destination. TypeScript
-enforces it; there is no runtime check. It does not require a key in the URL or change reads. Pass
-`null` for a nullable scalar or `[]` for an array to choose "no value" explicitly. Path values are
-always required and non-null.
+With no default, a single field reads as `null` and an array as `[]`. Every declared field is always
+in the state. A field with a default never reads as `null`.
 
-## Build destinations
+`required: true` means callers must pass the field when they build a link. TypeScript checks this.
+Nothing checks at runtime. The URL doesn't need the key, and reading works the same. To say "no
+value" on purpose, pass `null` for a single field or `[]` for an array. Path values are always
+required and never `null`.
+
+## Build links
 
 ```ts
 const user = inject(AppRouter).routes.USER;
@@ -257,26 +268,27 @@ const link = user.createUrlTree({ path: { userId: '42' }, fragment: 'profile' })
 await user.navigate({ path: { userId: '42' } }, { replaceUrl: true });
 ```
 
-Supply every path value along the chain, including those declared on ancestors. Query input can
-leave out any field not marked `required`. The destination depends only on these inputs and the
-declarations. It never copies the current query, even when Angular's `defaultQueryParamsHandling`
-is set to merge or preserve, and there is no relative navigation. Ancestor query fields come before
-child fields in the URL, in declaration order at each level.
+`link` is `/users/42#profile`.
 
-`createUrlTree()` returns a `UrlTree`. If a path codec returns a non-string, throws, or produces an
-empty segment, `createUrlTree()` throws and `navigate()` rejects without calling Angular. The error
-names the route and placeholder, and a codec's exception is in `cause`. A query value that fails to
-serialize is reported as a diagnostic and left out; the rest of the URL is still built.
+You pass every path value along the chain, including ones from parent routes. Query fields are
+optional unless marked `required`. The result depends only on what you pass. It never copies the
+current query. Angular's `defaultQueryParamsHandling` doesn't change that. There is no relative
+navigation. Parent query fields come before child ones, in the order you declared them.
 
-`navigate()` takes the destination values first and navigation options second. A route without
-required values can pass `{}` or `undefined` first: `navigate({}, { replaceUrl: true })`. It
-accepts Angular's navigation options except `browserUrl`, which could show a different address
-from the typed destination.
+`createUrlTree()` returns a `UrlTree`. Path values have no fallback. If a path codec returns a
+non-string, throws, or gives an empty segment, `createUrlTree()` throws. `navigate()` rejects and
+never calls Angular. The error names the route and the placeholder. The codec's own error is in
+`cause`. A query value that won't serialize is different. It is dropped and reported, and the rest
+of the URL is built.
 
-`fragment` accepts a string or `null`. It has no codec and does not appear in `params()`.
+`navigate()` takes the URL values first and the options second. With nothing required, pass `{}` or
+`undefined` first: `navigate({}, { replaceUrl: true })`. It takes Angular's navigation options,
+except `browserUrl`. That one could show an address other than the typed one.
 
-Pass the `UrlTree` to Angular's `RouterLink`. `RouterLinkActive` works too. There is no
-library-specific link directive.
+`fragment` takes a string or `null`. It has no codec. It doesn't show up in `params()`.
+
+Hand the `UrlTree` to Angular's `RouterLink`. `RouterLinkActive` works too. There is no special link
+directive.
 
 ## Read state
 
@@ -285,15 +297,18 @@ const results = inject(AppRouter).routes.RESULTS;
 const query = computed(() => results.params().query);
 ```
 
-Each named route has one readonly `params` signal of `{ path, query }`, including inherited
-parameters. It reads Angular's committed router state. Angular commits that state and creates the
-routed components before it emits `NavigationEnd`, so a component constructor reads the
-destination's values, not the page it replaced. Reading an inactive route throws.
+Each named route has one `params` signal. It holds `{ path, query }`, inherited fields included. It
+reads the state Angular has committed.
+
+Angular commits the new state and creates the new components before it emits `NavigationEnd`. So
+when a page's constructor reads `params()`, it sees its own URL, not the page it replaced.
+
+Reading a route that isn't active throws.
 
 ### Guards and resolvers
 
-A guard or resolver runs before Angular commits the destination, so `params()` still describes the
-current page. Decode the destination from the snapshot Angular passes in:
+A guard runs before Angular commits the new URL. There, `params()` still shows the page you are
+leaving. Read the destination from the snapshot Angular hands you:
 
 ```ts
 export const seasonResolver: ResolveFn<Season> = (route) => {
@@ -302,13 +317,13 @@ export const seasonResolver: ResolveFn<Season> = (route) => {
 };
 ```
 
-`paramsFrom(snapshot)` uses the same codecs and defaults as `params()`. The snapshot can be any
-route snapshot from that navigation, so a child route's guard can read an ancestor's node. It
-throws when the snapshot's tree does not contain the route.
+`paramsFrom(snapshot)` uses the same codecs and defaults as `params()`. Any snapshot from that
+navigation works, so a child's guard can read its parent. It throws if the snapshot's tree doesn't
+contain the route.
 
-### Components shared by several routes
+### One component, several routes
 
-A component shared by several routes names the routes it supports:
+Say one detail page serves both movies and episodes. Name the routes it handles:
 
 ```ts
 const detail = router.activeRoute({
@@ -318,24 +333,26 @@ const detail = router.activeRoute({
 
 const current = detail();
 if (current.route === 'episode') {
-  // current.node and current.params have the episode route's types.
+  // current.node and current.params now have the episode route's types.
 }
 ```
 
-The result is a readonly signal of `{ route, node, params, createUrlTree, patchQuery }`. Checking
-the `route` alias narrows the other fields. The deepest active candidate wins, whatever the order
-of the candidates. If two aliases name the same node, the first is reported. Candidates must be
-named nodes, and reading while none is active throws.
+You get a readonly signal of `{ route, node, params, createUrlTree, patchQuery }`. Checking `route`
+narrows the rest. The deepest active route wins, whatever order you list them in. If two names point
+at the same route, the first name is used. Only named routes can be listed. Reading while none is
+active throws.
 
-`patchQuery` is the selected node's `patchQuery`. `createUrlTree({ query, fragment })` differs from
-a node's: it starts from the active route's current path values and query, then applies the
-supplied query fields. Use it for links such as "next page" that keep the current filters. The
-fragment comes only from the argument.
+`patchQuery` is the active route's `patchQuery`.
 
-### Query fields that belong to no page
+`createUrlTree({ query, fragment })` works differently from the one on a route. It starts from the
+current path and query, then applies your fields. On `/results?search=oak&page=4`,
+`createUrlTree({ query: { page: 5 } })` gives `/results?search=oak&page=5`. That's what you want for
+a "next page" link. The fragment comes only from what you pass.
 
-Declare fields a page owns on its route. A service that follows a convention across pages, such as
-a campaign source, can read it independently:
+### Query fields no single page owns
+
+Fields a page owns go on its route. Some fields follow you across every page, like a campaign tag.
+A service can read those on its own:
 
 ```ts
 const campaign = router.globalQueryParams({
@@ -344,30 +361,35 @@ const campaign = router.globalQueryParams({
 campaign().source;
 ```
 
-The result is a readonly signal of the decoded query object, without a `query` wrapper. It uses the
-same codecs, defaults, and timing as route state and does not need an active route. Before the
-initial navigation finishes, it reads the current snapshot. Diagnostics name `globalQueryParams`
-as their route.
+On `/results?source=newsletter`, `campaign().source` is `'newsletter'`.
 
-Each observer applies its own definitions; share definition objects when observers should agree.
-`required` and `persist` have no effect here. An observer does not register its fields with the
-routes, keep them during navigation, or write them back. There is no write method.
+You get a readonly signal of the query object. There is no `query` wrapper. Codecs, defaults, and
+timing work as they do on routes. No route needs to be active. Before the first navigation ends, it
+reads the current snapshot. Diagnostics name `globalQueryParams` as the route.
 
-An optional second argument, `{ isEqual }`, compares the whole decoded query. You can create an
-observer outside an injection context once you have the router. The router owns the subscription,
-so there is nothing to clean up.
+Each observer uses its own definitions. Share the definition objects if two observers should agree.
+`required` and `persist` do nothing here. An observer doesn't register its fields with any route.
+Navigation won't keep them, and nothing writes them back. There is no write method.
+
+A second argument, `{ isEqual }`, compares the whole query. Once you have the router, you can create
+an observer anywhere, not just in an injection context. The router owns the subscription. You don't
+clean anything up.
 
 ### Equality
 
-`isEqual()`, exported from `ngx-urlik`, is the default comparator. It compares primitives with
-`Object.is`, requires matching prototypes, and compares dates by time. Maps compare by entries,
-with keys matched by identity. Sets compare by members, each matched to one deeply equal member.
-Arrays and other objects compare by their enumerable string and symbol keys, recursively. Cyclic
-values compare by structure. Two invalid dates are not equal.
+`isEqual()` is the default comparator. You can import it from `ngx-urlik`.
 
-A route inherits its parent's `isEqual` unless it declares its own. The comparator only decides
-when the signal notifies. Patches and forms read fresh committed state, so a retained signal value
-cannot make a write use an old query.
+- Primitives compare with `Object.is`.
+- Prototypes must match.
+- Dates compare by time. Two invalid dates are not equal.
+- Maps compare by entries. Keys match by identity.
+- Sets compare by members. Each member matches one deeply equal member.
+- Arrays and other objects compare by their own enumerable keys, strings and symbols, all the way
+  down.
+- Objects that point to themselves compare by structure.
+
+A route uses its parent's `isEqual` unless it sets its own. It only decides when the signal fires.
+Patches and forms always read the latest URL, so an old signal value never leaks into a write.
 
 ## Write the query
 
@@ -376,49 +398,59 @@ await results.patchQuery({ search: 'elm', page: 1 });
 await results.patchQuery((query) => ({ page: query.page + 1 }));
 ```
 
-A patch changes only the fields you supply. Omitted and `undefined` fields stay unchanged. To
-remove a field from the URL, set it to its default, `null` for a nullable scalar, or `[]` for an
-array. The path, fragment, fields owned by descendant routes, and undeclared keys stay as they
-are. `patchQuery` accepts `{ replaceUrl?: boolean }`.
+Start on `/results?sort=new&search=oak&page=4`. `sort` isn't declared on the route.
 
-A patch rewrites every query field the route declares from its decoded state, so malformed and
-non-canonical values are cleaned up along the way. After any patch on a route with a
-`numberCodec()` page and default `1`, `?page=abc` and `?page=1` both disappear, and `?page=02`
-becomes `?page=2`.
+The first patch gives `/results?sort=new&search=elm`. `search` changed. `page` hit its default, so
+it left. `sort` stayed, because a patch never drops keys it doesn't know.
+
+The second patch reads `page` as 1 and gives `/results?sort=new&search=elm&page=2`.
+
+The rules:
+
+- A patch changes only the fields you give it.
+- A field you leave out, or set to `undefined`, stays as it is.
+- To clear a field, set it to its default. Use `null` for a field without one, or `[]` for an array.
+- The path, the fragment, fields owned by child routes, and unknown keys stay.
+- `patchQuery` takes `{ replaceUrl?: boolean }`.
+
+A patch also rewrites every field the route declares. So it cleans up the rest of the URL as it
+goes. After any patch, `?page=abc` and `?page=1` both disappear, and `?page=02` becomes `?page=2`.
 
 ### One write at a time
 
-Every route and form shares one write queue. Each patch waits for the previous write to commit,
-then applies to the URL it left. Two components that patch different fields at the same moment both
-keep their edit. Two plain `router.navigate()` calls would each build from the snapshot they read,
-and the second would drop the first one's change.
+Every route and every form shares one write queue. Each write waits for the one before it to
+finish. Then it applies to the URL that write left behind.
 
-A function patch runs once, when its turn starts, against the latest committed query. It never runs
-synchronously. Return only the fields to change; no spread is needed. Later writes to the same field
-win. If the route is not active when the write's turn starts, the promise rejects.
+Say a search box and a sort menu both write in the same moment. The search box sets `search=elm`.
+The sort menu sets `order=price`. The URL ends up with both. With two plain `router.navigate()`
+calls, each would build from the URL it saw first. The second would wipe out the first.
 
-The returned promise reports the navigation result:
+A function patch runs once, when its turn comes. It gets the latest URL. It never runs right away.
+Return only what changes; you don't need to spread the old query. If two writes set the same field,
+the later one wins. If the route isn't active when the turn comes, the promise rejects.
 
-| Event                                                 | Result                                                                                       |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Successful navigation                                 | Resolves `true`                                                                              |
-| Guard rejects, or Angular skips the same URL          | Resolves `false`; later writes continue                                                      |
-| Patch function or navigation throws                   | Rejects; later writes continue                                                               |
-| External navigation starts                            | Waiting writes resolve `false` without running; new writes resolve `false` until it finishes |
-| A guard or route redirect changes a coordinated write | Waiting writes resolve `false`; the active write resolves with Angular's result              |
-| Router's environment is destroyed                     | Waiting and active writes resolve `false`                                                    |
+The promise tells you how the navigation went:
 
-External navigation is any navigation the queue did not start, such as a link, the Back button, or
-a call through Angular's `Router`. It cancels waiting work even if a guard later rejects it, so a
-stale edit cannot pull the user back to a page they tried to leave. The initial navigation counts
-as external: writes submitted before it finishes resolve `false`.
+| What happened                                 | Result                                                                             |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| It worked                                     | Resolves `true`                                                                    |
+| A guard said no, or the URL was the same      | Resolves `false`. Later writes still run                                           |
+| The patch function or the navigation threw    | Rejects. Later writes still run                                                    |
+| Some other navigation started                 | Waiting writes resolve `false` without running. New ones do too, until it finishes |
+| A guard or redirect changed one of our writes | Waiting writes resolve `false`. The running write gets Angular's result            |
+| The router's environment was destroyed        | Waiting and running writes resolve `false`                                         |
+
+"Some other navigation" means anything the queue didn't start. A link click. The Back button. A call
+through Angular's `Router`. It cancels waiting writes the moment it starts, even if a guard blocks it
+later. Why: the user is trying to leave. A stale edit shouldn't pull them back. The app's first
+navigation counts too. Writes sent before it ends resolve `false`.
 
 ## Bind a form
 
-A form holds a draft while the URL holds the committed value. Both Angular form systems bind an
-active route's query fields; path values are not form state. Import the bindings from
-`ngx-urlik/forms`, and create or bind a form in an injection context while its route is active.
-Cleanup uses `DestroyRef`.
+The form holds what the user is typing. The URL holds what was saved. Both Angular form systems
+work. A form binds the active route's query fields. Path values aren't part of the form. Import from
+`ngx-urlik/forms`. Create or bind the form in an injection context while its route is active. It
+cleans up through `DestroyRef`.
 
 ### Reactive Forms
 
@@ -429,10 +461,9 @@ const filters = createQueryParamsFormGroup(results);
 filters.patchValue({ search: 'elm', page: 1 });
 ```
 
-The group has one non-nullable `FormControl` per query field. Arrays use array-valued controls;
-nested groups and `FormArray` are not supported. The creator adds no validators. For validators or
-control options, build the group yourself and call
-`bindQueryParamsToFormGroup(results, group, options)`.
+You get one non-nullable `FormControl` per query field. Arrays get array-valued controls. Nested
+groups and `FormArray` aren't supported. No validators are added. To add validators or control
+options, build the group yourself. Then call `bindQueryParamsToFormGroup(results, group, options)`.
 
 ### Signal Forms
 
@@ -446,27 +477,33 @@ const { model, form } = createQueryParamsSignalForm(results, {
 model.update((query) => ({ ...query, search: 'elm' }));
 ```
 
-This returns a writable model and an Angular `FieldTree`. To bind a field tree you already have,
-call `bindQueryParamsToSignalForm(results, form, options)`.
+You get a writable model and an Angular `FieldTree`. Already have a field tree? Call
+`bindQueryParamsToSignalForm(results, form, options)`.
 
 ### How a form writes
 
-The form starts from the URL. A multi-field `patchValue` or `setValue` produces one write. Signal
-Forms read the model in an effect, so model updates made before that effect runs share one write.
-Writes replace the current history entry unless you pass `replaceUrl: false`.
+The form starts with the URL's values.
 
-Writes from other routes and forms update unrelated fields without touching drafts or interaction
-state. After a write commits, a draft that encodes to the committed URL value stays as typed: with a
-codec that trims, `'elm '` writes `?search=elm` and the input keeps its trailing space.
+`patchValue({ search: 'elm', page: 1 })` is one write, not two. Signal Forms read the model in an
+effect. Model updates made before that effect runs go out as one write.
 
-External navigation, such as the Back button, cancels pending edits when it starts and resets the
-form to a pristine, untouched copy of the URL, even if the navigation is then blocked. The form
-resets again when the navigation finishes.
+Form writes replace the current history entry. So typing `elm` doesn't leave three Back-button
+stops. Pass `replaceUrl: false` if you want them.
+
+Writes from elsewhere update other fields. They don't touch what the user is typing, or whether a
+field is touched or dirty.
+
+After a write, the form keeps what the user typed if it means the same URL value. Say the codec
+trims. The user types `'elm '`. The URL gets `?search=elm`. The input keeps its trailing space.
+
+The Back button, or any other outside navigation, cancels pending edits as soon as it starts. The
+form resets to the URL's values, pristine and untouched. That happens even if a guard then blocks the
+navigation. When the navigation finishes, the form resets again.
 
 ### Delay a field
 
-Signal Forms delay a field with Angular's own `debounce()` rule. The model updates when the delay
-ends, and the binding writes then:
+In Signal Forms, use Angular's own `debounce()` rule. The model updates when the delay ends. The URL
+updates then too:
 
 ```ts
 import { debounce } from '@angular/forms/signals';
@@ -476,22 +513,22 @@ const { form } = createQueryParamsSignalForm(results, {
 });
 ```
 
-The rule acts on input that goes through the `[formField]` directive. A direct `model.update(...)`
-is not delayed.
+The rule applies to input through the `[formField]` directive. A direct `model.update(...)` isn't
+delayed.
 
-Reactive Forms have no debounce of their own, so the Reactive Forms binding takes one:
+Reactive Forms have no debounce, so the binding gives you one:
 
 ```ts
 const filters = createQueryParamsFormGroup(results, { debounce: { search: 300 } });
 ```
 
-The search writes 300 ms after its last change. Other fields write at once, without flushing or
-replacing the pending search. External navigation and destroying the binding drop the pending
-write.
+The user types `elm` and stops. 300 ms later, the search writes. Other fields write right away. They
+don't flush or replace the pending search. Outside navigation drops the pending write. So does
+destroying the binding.
 
 ### Hold invalid input
 
-By default every change writes. With `writeWhen: 'valid'`, a field writes only while its validators
+By default, every change writes. With `writeWhen: 'valid'`, a field writes only while its validators
 pass:
 
 ```ts
@@ -506,17 +543,18 @@ const { form } = createQueryParamsSignalForm(results, {
 });
 ```
 
-Typing `el` writes nothing; `elm` writes. Clearing the field writes the empty search, because
-Angular's length validators accept empty values. The rule applies per field: an invalid search does
-not stop a valid page change. A field with a pending async validator waits and writes when the
-validator passes. A held field keeps its draft until it becomes valid, the user changes it, or
-external navigation resets the form. Reactive Forms take the same option; add the validators to the
-controls.
+Typing `el` writes nothing. Typing `elm` writes. Clearing the box writes an empty search, because
+Angular's length validators accept empty values.
+
+Each field is judged alone. A bad search doesn't block a good page change. A field waiting on an
+async validator writes once it passes. A held field keeps its draft until it becomes valid, the user
+edits it, or an outside navigation resets the form. Reactive Forms take the same option. Put the
+validators on the controls.
 
 ### Change other fields before a write
 
-A new search usually sends the user back to the first page. Which fields reset, and when, depends on
-the page, so the binding asks through `beforeWrite`:
+A new search should usually go back to page 1. Only your page knows that. So the binding asks you,
+through `beforeWrite`:
 
 ```ts
 const filters = createQueryParamsFormGroup(results, {
@@ -525,34 +563,38 @@ const filters = createQueryParamsFormGroup(results, {
 });
 ```
 
-On `/results?page=4`, typing `elm` writes `?search=elm` in one navigation, and the page control then
-shows 1. A page change on its own is written unchanged. Because `patch` is spread last,
-`patchValue({ search: 'elm', page: 3 })` keeps page 3. Signal Forms take the same option. Outside a
-form, set both fields in one patch: `patchQuery({ search, page: 1 })`.
+The user is on `/results?page=4` and types `elm`. One navigation goes to `/results?search=elm`. The
+page control shows 1.
 
-`beforeWrite(patch, draft)` runs right before a write is queued: after `writeWhen` has held back
-invalid fields, and after a delayed field's delay ends. `patch` holds only the fields about to be
-written; `draft` is the whole form value. The binding writes the returned object, and an
-`undefined` field keeps its URL value, as in `patchQuery()`.
+Changing just the page writes the page as is. `patch` is spread last, so
+`patchValue({ search: 'elm', page: 3 })` keeps page 3. Signal Forms take the same option. Without a
+form, set both in one patch: `patchQuery({ search, page: 1 })`.
 
-Use `beforeWrite` to change other fields, and shape a field's own value in its codec. A field that
-`beforeWrite` trims writes a URL value that differs from the draft, so the committed value replaces
-the draft in the form. Fields that `beforeWrite` adds are not drafts; after the write commits, the
-form reads them from the URL.
+`beforeWrite(patch, draft)` runs right before the write is queued. That's after `writeWhen` has held
+back invalid fields, and after any delay has ended. `patch` has only the fields about to be written.
+`draft` is the whole form. Whatever you return is written. An `undefined` field keeps its URL value,
+as in `patchQuery()`.
+
+Use `beforeWrite` for other fields. Shape a field's own value in its codec. Here's why. Say
+`beforeWrite` trims `search`. The URL value then differs from what the user typed. The URL value
+wins and replaces the draft. Fields that `beforeWrite` adds aren't drafts either. After the write,
+the form reads them from the URL.
 
 ### Failed writes
 
-Failed writes keep the entered values and are not retried. `onWriteFailure` receives
-`{ kind: 'declined' }` or `{ kind: 'error', error }`. Without a callback, errors go to Angular's
-`ErrorHandler` and declined writes are silent. If `beforeWrite` throws, the error goes to
-`ErrorHandler`, not to `onWriteFailure`; nothing is written, and the edited fields keep their
-drafts. Destroying a binding cancels its waiting writes but does not abort a navigation that
-already started.
+A failed write keeps what the user typed. It isn't retried. `onWriteFailure` gets
+`{ kind: 'declined' }` or `{ kind: 'error', error }`. Without that callback, errors go to Angular's
+`ErrorHandler`, and declines are silent.
+
+If `beforeWrite` throws, the error goes to `ErrorHandler`, not `onWriteFailure`. Nothing is written.
+The edited fields keep their drafts.
+
+Destroying a binding cancels its waiting writes. It doesn't stop a navigation that already started.
 
 ## Remember values in storage
 
-A list page can remember the page size a user chose, so a plain link back to the list shows it
-again:
+Say the user sets the page size to 48. Later they follow a plain link to `/results`. You want 48
+again, not the default 24.
 
 ```ts
 pageSize: queryParam({
@@ -562,80 +604,87 @@ pageSize: queryParam({
 }),
 ```
 
-After a navigation to `/results?pageSize=48`, `localStorage` holds `48` under
-`ngx-urlik:pageSize`. A later navigation to `/results` arrives at `/results?pageSize=48`.
+The user visits `/results?pageSize=48`. `localStorage` now holds `48` under `ngx-urlik:pageSize`.
+Next time they go to `/results`, they land on `/results?pageSize=48`.
 
 ### Persist options
 
-| Option    | Meaning                                                                                                             |
-| --------- | ------------------------------------------------------------------------------------------------------------------- |
-| `key`     | Names the stored value. Fields that use the same key share one value, even on different routes                      |
-| `storage` | `'local'` for `localStorage`, which outlives the tab, or `'session'` for `sessionStorage`, which belongs to one tab |
-| `scope`   | Optional. Path parameter names whose values narrow the key                                                          |
+| Option    | Meaning                                                                                         |
+| --------- | ----------------------------------------------------------------------------------------------- |
+| `key`     | Names the stored value. Fields with the same key share one value, even on different routes      |
+| `storage` | `'local'` for `localStorage`, which outlives the tab. `'session'` for `sessionStorage`, one tab |
+| `scope`   | Optional. Path parameter names whose values make the key more specific                          |
 
-Only `queryParam` with a `defaultValue` accepts `persist`: a persisted field always has a value in
-the URL, and `null` has no URL text. `repeatedQueryParam` does not accept it, because an empty array
-has no URL keys. Persist an array as a list instead:
-`queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [], persist })` writes the empty
-list as `?tags=`. TypeScript rejects both cases, and `defineAppRouter()` checks them again at
+Only `queryParam` with a `defaultValue` can persist. A persisted field always has a value in the URL,
+and `null` has no URL text.
+
+`repeatedQueryParam` can't persist. An empty array has no URL keys. Use a list instead:
+`queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [], persist })`. The empty list is
+written as `?tags=`. TypeScript rejects both mistakes, and `defineAppRouter()` checks again at
 runtime.
 
-`scope` gives each path value its own stored value. On `users/:userId`, a tab field with
-`scope: ['userId']` stores the tab of user 7 under `ngx-urlik:tab:7`. A query field's scope may name
-any path parameter of its route chain.
+`scope` stores one value per path value. On `users/:userId`, a `tab` field with `scope: ['userId']`
+stores user 7's tab under `ngx-urlik:tab:7`. User 8 gets `ngx-urlik:tab:8`. A query field's scope can
+name any path parameter in its chain.
 
-The storage key is `${prefix}${key}`, or `${prefix}${key}:${values}` with a scope. Each scope value
-is the parameter's raw path segment passed through `encodeURIComponent`, and the values are joined
-with `:`. A key must not contain `:`, or `clearPersisted({ local: ['a'] })` could not tell the scopes
-of `a` from a key named `a:b`. The prefix applies to the whole router and defaults to
-`'ngx-urlik:'`:
+The storage key is `${prefix}${key}`. With a scope, it's `${prefix}${key}:${values}`. Each scope
+value is the raw path segment through `encodeURIComponent`. The values are joined with `:`.
+
+So a key can't contain `:`. Otherwise `clearPersisted({ local: ['a'] })` couldn't tell `a`'s scopes
+from a key named `a:b`.
+
+The prefix covers the whole router. It defaults to `'ngx-urlik:'`:
 
 ```ts
 defineAppRouter(RouteNames, { routes, persistence: { prefix: 'shop:' } });
 ```
 
-### Read order
+### Which value wins
 
-A valid URL value wins. Otherwise the stored value is used if it decodes with the field's codec,
-and otherwise the default. A stored value that fails to decode is removed from storage, so it is
-reported once. `params()`, `paramsFrom()`, `activeRoute()`, and form bindings all follow this
-order. `globalQueryParams()` ignores `persist`.
+1. A valid value in the URL.
+2. Otherwise, the stored value, if it decodes.
+3. Otherwise, the default.
+
+A stored value that fails to decode is deleted. So you hear about it once. `params()`,
+`paramsFrom()`, `activeRoute()`, and forms all follow this order. `globalQueryParams()` ignores
+`persist`.
 
 ### Restored values go into the URL
 
-When a navigation arrives at a route chain with a persisted field that is missing from the URL or
-fails to decode, ngx-urlik redirects to the same URL with that field filled in: from storage, or
-with the default when nothing usable is stored. The path, the other query keys, and the fragment
-stay. One redirect fills every persisted field of the chain.
+The user lands on `/results` with `48` stored. ngx-urlik redirects to `/results?pageSize=48`. If
+nothing usable is stored, it redirects to `/results?pageSize=24`. A broken value in the URL is
+replaced the same way. The path, other query keys, and the fragment stay. One redirect fills in every
+persisted field on the route chain.
 
-The redirect adds no history entry of its own. A link click adds one entry, for the restored URL;
-the first page load and the Back button replace the current entry. Angular reports the replaced
+The redirect adds no history entry of its own. A link click adds one entry, for the filled-in URL.
+The first page load and the Back button replace the current entry. Angular reports the replaced
 navigation with `NavigationCancel`.
 
-The redirect comes from a `canMatch` check appended to the `canMatch` guards of each route in the
-chain. Angular runs `canMatch` on every navigation, including when it reuses the route, so the
-route's own guards and `runGuardsAndResolvers` stay as they are. Only the route that ends the match
-redirects, so a layout route never redirects a URL that then fails to match below it.
+Under the hood, this is a `canMatch` check added after the route's own `canMatch` guards. Angular
+runs `canMatch` on every navigation, even when the route is reused. So your guards and
+`runGuardsAndResolvers` stay as they are. Only the route that ends the match redirects. A layout
+route never redirects a URL that fails to match below it.
 
-Because the check runs during matching, `canActivate`, `canActivateChild`, resolvers, and the
-`canDeactivate` of the page you leave run once, and only see the URL with the value filled in.
-`canMatch` guards on the route and its ancestors run before the check, so they run twice when a
-value is restored: first without it, then with it. Do not base a `canMatch` decision on a persisted
-query value.
+The check runs while Angular matches routes. So `canActivate`, `canActivateChild`, resolvers, and
+the old page's `canDeactivate` run once, and only see the filled-in URL. `canMatch` guards are
+different. They run before the check, so they run twice when a value is restored: once without it,
+once with it. Don't base a `canMatch` decision on a persisted query value.
 
-If the URL has named outlets, such as `/library/(books//side:panel)`, and an earlier redirect in
-the same navigation changed the primary path, the check does not redirect; `params()` still reads
-the stored value.
+One edge case: a URL with named outlets, like `/library/(books//side:panel)`. If an earlier redirect
+in the same navigation changed the main path, nothing is redirected. `params()` still reads the
+stored value.
 
-A persisted field always appears in the URL, even at its default: `patchQuery()`, form writes, and
-`activeRoute().createUrlTree()` write `?pageSize=24` instead of leaving it out. `createUrlTree()`
-and `navigate()` on a node leave out a persisted field you do not supply, and the arrival restores
-it, so a missing key means "restore, else default". A supplied value equal to the default is
-written.
+A persisted field always shows in the URL, even at its default. `patchQuery()`, forms, and
+`activeRoute().createUrlTree()` write `?pageSize=24` instead of dropping it.
+
+`createUrlTree()` and `navigate()` on a route are the opposite. If you don't pass `pageSize`, they
+leave it out. Arrival then restores it. So a missing key means "use what's stored, else the default".
+If you pass 24, they write 24.
 
 ### Remember a path value
 
-A show page can reopen the season a user watched last:
+Say the user was watching season 2 of a show. Next time they open that show's seasons, you want
+season 2 again.
 
 ```ts
 {
@@ -654,47 +703,50 @@ A show page can reopen the season a user watched last:
 }
 ```
 
-After a visit to `/shows/tv_1/seasons/2`, a navigation to `/shows/tv_1/seasons` arrives at
-`/shows/tv_1/seasons/2`. The query and fragment stay. Without a stored season for that show, the
-shorter URL matches whatever it would match otherwise: a route declared earlier at that path, the
-next matching route, or the not-found page.
+The user visits `/shows/tv_1/seasons/2`. Later they go to `/shows/tv_1/seasons`. They land on
+`/shows/tv_1/seasons/2`. The query and fragment come along.
 
-The shorter URL is always the route's own path without the persisted placeholders, so choose the
-path with that URL in mind. Here `/shows/tv_1/seasons` means "the season I opened last". To open the
-show page when nothing is stored, declare an ordinary redirect after the named route:
+With nothing stored for that show, the short URL matches whatever it would match anyway. That could
+be a route declared earlier, the next matching route, or the not-found page.
+
+The short URL is always the route's own path minus the remembered placeholders. Pick the path with
+that in mind. Here `/shows/tv_1/seasons` means "the season I watched last". To show the show page
+when nothing is stored, add a plain redirect after the named route:
 `{ path: 'seasons', pathMatch: 'full', redirectTo: '' }`.
 
-Only a named route can persist a placeholder, and the persisted placeholders must end the route's
-own `path`. In `shows/:showId/seasons/:season`, only `season` can persist. In `pair/:a/:b`, both can,
-and then `/pair` and `/pair/5` are both restored. A placeholder's scope may name only placeholders
-before it in the route chain, because the shorter URL must already contain them.
+Rules:
 
-For this, `defineAppRouter()` adds unnamed Angular routes right after the named one, each with a
-`matcher` that accepts the shorter path only when the missing values are stored and decode, and a
-`redirectTo` with the full path. The restore is part of the same navigation: one
-`NavigationStart`, no `NavigationCancel`, and `urlAfterRedirects` is the full URL. These routes do
-not appear in `AppRouter.routes`.
+- Only a named route can remember a placeholder.
+- The remembered placeholders must end the route's own `path`. In `shows/:showId/seasons/:season`,
+  only `season` qualifies.
+- In `pair/:a/:b`, both qualify. Then `/pair` and `/pair/5` are both restored.
+- A placeholder's scope can only name placeholders before it. The short URL has to contain them.
 
-Angular turns redirects off at a level after a sibling route there redirected, so a shorter URL
-produced by an earlier redirect in the same navigation is not restored.
+How it works: `defineAppRouter()` adds unnamed routes right after the named one. Each has a
+`matcher` that accepts the short path only when the missing values are stored and decode. Each
+redirects to the full path. The restore happens inside the same navigation. You get one
+`NavigationStart`, no `NavigationCancel`, and `urlAfterRedirects` is the full URL. These routes don't
+appear in `AppRouter.routes`.
 
-ngx-urlik saves any value that decodes; it cannot know whether season 9 exists. When the app finds
-that a restored value is wrong, for example because the backend has no such season, the app decides
-what to do, such as calling `clearPersisted()` and navigating to the show page.
+Angular turns off redirects on a level after a sibling route there has redirected. So if an earlier
+redirect in the same navigation produced the short URL, it isn't restored.
+
+ngx-urlik saves any value that decodes. It can't know whether season 9 exists. If your backend says
+it doesn't, that's your call. You might call `clearPersisted()` and go to the show page.
 
 ### Save
 
-After every committed navigation (`NavigationEnd`), whatever started it, ngx-urlik saves each
-persisted field and placeholder of the active route chain. Form writes, `patchQuery()`, links, and
-the Back button all count. It stores the URL text of the committed value and skips a value that
-does not decode. Form drafts are never saved.
+After every finished navigation (`NavigationEnd`), ngx-urlik saves each persisted field and
+placeholder on the active route chain. It doesn't matter what started the navigation. Forms,
+`patchQuery()`, links, and the Back button all count. It saves the URL text. It skips values that
+don't decode. Form drafts are never saved.
 
-Storage is read only when the URL lacks a usable value. Changes made in another tab are not
-observed; they apply at the next restore.
+Storage is read only when the URL lacks a usable value. Changes from another tab aren't watched.
+They apply the next time a value is restored.
 
 ### Forget stored values
 
-A reset button can forget what the router remembered:
+A reset button can wipe what the router remembers:
 
 ```ts
 router.clearPersisted();
@@ -702,95 +754,104 @@ router.clearPersisted({ session: true });
 router.clearPersisted({ local: ['pageSize'] });
 ```
 
-Without an argument, `clearPersisted()` removes every key with the router's prefix from both
-`localStorage` and `sessionStorage`. With an object, it touches only the storages set to `true` or
-to an array, so `{}` removes nothing. `true` removes every prefixed key in that storage. An array
-removes each listed key with all of its scopes: `['tab']` removes `ngx-urlik:tab` and
-`ngx-urlik:tab:7`, but not `ngx-urlik:tabs`. A listed key that no route declares is reported as
-`UNKNOWN_PERSIST_KEY` and otherwise ignored.
+With no argument, it removes every key with the router's prefix, from both storages.
 
-Clearing does not change the current URL. The current page's values are saved again at its next
-committed navigation.
+With an object, it touches only storages set to `true` or to an array. So `{}` removes nothing.
+
+- `true` removes every prefixed key in that storage.
+- An array removes each listed key with all its scopes. `['tab']` removes `ngx-urlik:tab` and
+  `ngx-urlik:tab:7`. It leaves `ngx-urlik:tabs` alone.
+- A listed key no route declares is reported as `UNKNOWN_PERSIST_KEY`, then ignored.
+
+Clearing doesn't change the current URL. The current page's values are saved again on its next
+navigation.
 
 ### Without storage
 
-On the server, and when browser storage is unavailable or throws (private browsing, a full quota,
-blocked access), persistence does nothing: reads use the default, nothing is saved or cleared, and
-nothing is redirected. With server rendering, the server renders the default and the browser
-restores the stored value in its first navigation, so the page content can change after hydration.
+On the server, persistence does nothing. Same when storage is missing or throws: private browsing,
+a full quota, blocked access. Reads use the default. Nothing is saved, cleared, or redirected.
+
+With server rendering, the server renders the default. The browser then restores the stored value
+on its first navigation. So the page can change right after hydration.
 
 ## Diagnostics and errors
 
-Bad query data falls back to the default and reports a diagnostic; the operation continues.
-Configure the reporter with `diagnostics: { warn }` on `defineAppRouter`. The default calls
-`console.warn` with the message.
+Bad query data falls back to the default. You get a diagnostic, and things carry on. Set the
+reporter with `diagnostics: { warn }` on `defineAppRouter`. By default it calls `console.warn` with
+the message.
 
 | Code                              | When                                                                              |
 | --------------------------------- | --------------------------------------------------------------------------------- |
 | `PARAM_DESERIALIZE_FAILED`        | A codec returned `null` or threw                                                  |
 | `PARAM_SERIALIZE_FAILED`          | A query codec returned a non-string or threw, or a repeated field got a non-array |
-| `STORED_VALUE_DESERIALIZE_FAILED` | A stored value failed to decode; it is removed and the default applies            |
-| `UNKNOWN_PERSIST_KEY`             | `clearPersisted()` received a key that no route declares                          |
+| `STORED_VALUE_DESERIALIZE_FAILED` | A stored value didn't decode. It's deleted and the default applies                |
+| `UNKNOWN_PERSIST_KEY`             | `clearPersisted()` got a key no route declares                                    |
 
-`AppRouterDiagnostic` is a union; narrow it by `code`. A parameter diagnostic contains `code`,
-`message`, `route`, `parameter`, and `operation` (`'serialize'` or `'deserialize'`), plus `index`,
-`cause`, and the storage `key` when available. A codec's exception is in `cause`, and for a repeated
-field `index` names the failed item. An `UNKNOWN_PERSIST_KEY` diagnostic contains only `code`,
+Take `/results?page=abc`. `page` reads as 1, and you get `PARAM_DESERIALIZE_FAILED` with `route`
+`'RESULTS'` and `parameter` `'page'`.
+
+`AppRouterDiagnostic` is a union. Narrow it by `code`. A parameter diagnostic has `code`, `message`,
+`route`, `parameter`, and `operation` (`'serialize'` or `'deserialize'`). When they apply, it also
+has `index`, `cause`, and the storage `key`. A codec's thrown error is in `cause`. For a repeated
+field, `index` says which item failed. An `UNKNOWN_PERSIST_KEY` diagnostic has only `code`,
 `message`, and `key`.
 
-`route` names the route that declares the parameter, which may be an ancestor of the route you
-read. An unnamed ancestor is identified by position, such as `routes[0].children[1]`.
+`route` names the route that declares the field. That may be a parent of the route you read. An
+unnamed parent is named by position, like `routes[0].children[1]`.
 
-Some failures throw because there is no valid value to return: reading an inactive route, a path
-value that fails to serialize, and errors from default factories. A path value that fails to decode
-never reaches a read, because the route does not match.
+Some things throw, because there is no sensible value to return:
 
-`defineAppRouter()` validates the named route chains and throws one error that lists every problem:
+- Reading a route that isn't active.
+- A path value that won't serialize.
+- An error inside a default function.
 
-- repeated or empty route names
-- names on redirects, wildcards, or matchers
-- `loadChildren` on a named route or its ancestors
-- paths that are not statically known, or contain empty segments or reserved characters
-- `pathParam` maps that do not match the placeholders
-- repeated placeholder names or query keys along a chain
+A path value that won't decode never reaches a read. The route just doesn't match.
+
+`defineAppRouter()` checks the named route chains. It throws one error listing every problem:
+
+- Repeated or empty route names.
+- Names on redirects, wildcards, or matchers.
+- `loadChildren` on a named route or anything above it.
+- Paths that aren't known up front, or have empty segments or reserved characters.
+- `pathParam` maps that don't match the placeholders.
+- A placeholder name or query key repeated along a chain.
 - `persist` options that are malformed, lack a default, sit on a repeated field, name an unknown
-  scope, use a key containing `:`, or persist a placeholder that does not end a named route's path
+  scope, use a key with `:`, or remember a placeholder that doesn't end a named route's path.
 
-TypeScript catches some of these earlier. Angular validates its own route configuration.
+TypeScript catches some of these first. Angular checks its own route config.
 
 ## Work with Angular Router
 
-`provideAppRouter(...features)` returns `EnvironmentProviders` that register the routes and the
-`AppRouter` token, and forwards other Angular router features. Put router options on
-`defineAppRouter(RouteNames, { routerConfig })`; passing `withRouterConfig()` to
-`provideAppRouter()` throws. ngx-urlik keeps the options you supply, including
+`provideAppRouter(...features)` returns `EnvironmentProviders`. They register the routes and the
+`AppRouter` token. Other Angular router features pass through.
+
+Put router options on `defineAppRouter(RouteNames, { routerConfig })`. Passing `withRouterConfig()`
+to `provideAppRouter()` throws. Your options are kept as they are, including
 `paramsInheritanceStrategy`.
 
-Angular's route order, matching, guards, redirects, and outlets decide which route activates. Keep
-the order meaningful for overlapping patterns.
+Angular still decides which route wins: route order, matching, guards, redirects, outlets. Keep the
+order sensible when patterns overlap.
 
 ### Escape hatch
 
-`AppRouter.escapeHatch` exposes Angular's own addressing and navigation observations, for URLs
-outside the typed routes:
+`AppRouter.escapeHatch` gives you Angular's own tools, for URLs outside your typed routes:
 
-| Methods                                      | Readonly observations                                                           |
+| Methods                                      | Readonly values                                                                 |
 | -------------------------------------------- | ------------------------------------------------------------------------------- |
 | `createUrlTree`, `navigate`, `navigateByUrl` | `url`, `events`, `navigated`                                                    |
 | `parseUrl`, `serializeUrl`, `isActive`       | `currentNavigation`, `lastSuccessfulNavigation`, `componentInputBindingEnabled` |
 
-These keep Angular's types and behavior, including `browserUrl`.
-`isActive(url, matchOptions?)` is Angular's `isActive()` function bound to the router and returns a
-`Signal<boolean>`. The escape hatch does not expose `routerState`, route configuration, lifecycle
-controls, or deprecated mutable properties.
+They keep Angular's types and behavior, `browserUrl` included. `isActive(url, matchOptions?)` is
+Angular's `isActive()` function bound to the router. It returns a `Signal<boolean>`. The escape hatch
+doesn't expose `routerState`, route config, lifecycle controls, or deprecated mutable properties.
 
-Angular's `Router` stays injectable, because it runs the application. Calls through it bypass the
-typed routes and the write queue.
+You can still inject Angular's `Router`. It runs the app, so it has to stay. Calls through it skip
+the typed routes and the write queue.
 
 ### Flag direct router use
 
-ESLint's core `no-restricted-imports` rule makes each import of `Router` or `ActivatedRoute`
-visible:
+ESLint's built-in `no-restricted-imports` rule can flag every import of `Router` or
+`ActivatedRoute`:
 
 ```js
 // eslint.config.js
@@ -816,51 +877,50 @@ export default [
 ];
 ```
 
-The rule warns rather than fails, so a deliberate native call can stay with an
-`eslint-disable-next-line` comment that explains it. `RouterLink`, `RouterOutlet`, `ResolveFn`,
-`ActivatedRouteSnapshot`, and other router imports stay allowed, because templates and guards still
-need them.
+It warns instead of failing. A deliberate call can stay, with an `eslint-disable-next-line` comment
+that says why. `RouterLink`, `RouterOutlet`, `ResolveFn`, `ActivatedRouteSnapshot`, and other router
+imports stay allowed. Templates and guards still need them.
 
 ## Types
 
-| Type                            | Meaning                                     |
-| ------------------------------- | ------------------------------------------- |
-| `RouteNode<P, Q, R>`            | A generated route node                      |
-| `PathParamsOf<Node>`            | The node's accumulated path values          |
-| `QueryParamsOf<Node>`           | The node's accumulated query values         |
-| `RouteStateOf<Node>`            | The `{ path, query }` value of `params()`   |
-| `RouteQueryPatch<Node>`         | The argument accepted by `patchQuery`       |
-| `ActiveRoute<Candidates>`       | The value of an `activeRoute()` signal      |
-| `GeneratedAppRouter`            | The value of the `AppRouter` token          |
-| `UrlParamCodec<T>`              | A codec                                     |
-| `AppRouterDiagnostic`           | One diagnostic passed to `diagnostics.warn` |
-| `AppRouterParameterDiagnostic`  | A diagnostic about one parameter's value    |
-| `AppRouterUnknownKeyDiagnostic` | An `UNKNOWN_PERSIST_KEY` diagnostic         |
+| Type                            | Meaning                                      |
+| ------------------------------- | -------------------------------------------- |
+| `RouteNode<P, Q, R>`            | A typed route                                |
+| `PathParamsOf<Node>`            | The route's path values, inherited included  |
+| `QueryParamsOf<Node>`           | The route's query values, inherited included |
+| `RouteStateOf<Node>`            | What `params()` returns: `{ path, query }`   |
+| `RouteQueryPatch<Node>`         | What `patchQuery` accepts                    |
+| `ActiveRoute<Candidates>`       | What an `activeRoute()` signal holds         |
+| `GeneratedAppRouter`            | What the `AppRouter` token gives you         |
+| `UrlParamCodec<T>`              | A codec                                      |
+| `AppRouterDiagnostic`           | One diagnostic passed to `diagnostics.warn`  |
+| `AppRouterParameterDiagnostic`  | A diagnostic about one parameter             |
+| `AppRouterUnknownKeyDiagnostic` | An `UNKNOWN_PERSIST_KEY` diagnostic          |
 
 ## Not supported
 
-| Not supported                                              | Current behavior                                                                |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Angular versions other than 22                             | The library targets Angular 22                                                  |
-| Typed redirects, wildcards, matchers, and named outlets    | Declare them as unnamed Angular routes                                          |
-| Route arrays split across files                            | Pass the literal routes to `defineAppRouter()` directly                         |
-| Replacing routes with `Router.resetConfig()`               | Declare every named route up front; load components lazily with `loadComponent` |
-| Query property names that differ from URL keys             | Each property name is its URL key                                               |
-| One array field in both repeated-key and joined-list form  | Each field uses one form                                                        |
-| Built-in date or structured codecs                         | Write a custom codec                                                            |
-| Writing global query fields                                | Global observers are read-only; route nodes own query writes                    |
-| Reading the fragment                                       | Fragments can be supplied when building a destination                           |
-| Typed relative navigation                                  | Use the escape hatch                                                            |
-| Write options other than `replaceUrl`                      | Patches accept `replaceUrl` only                                                |
-| Inferred types in route `isEqual` callbacks                | The callback receives `unknown`                                                 |
-| Following stored values that another tab changes           | The change applies at the next restore                                          |
-| Forgetting the stored value of one scope, such as one show | `clearPersisted()` forgets a key for every scope                                |
+| Not supported                                        | What happens today                                                       |
+| ---------------------------------------------------- | ------------------------------------------------------------------------ |
+| Angular versions other than 22                       | The library targets Angular 22                                           |
+| Typed redirects, wildcards, matchers, named outlets  | Declare them as unnamed Angular routes                                   |
+| Route arrays split across files                      | Pass the literal routes straight to `defineAppRouter()`                  |
+| Swapping routes with `Router.resetConfig()`          | Declare every named route up front. Load components with `loadComponent` |
+| Query property names that differ from URL keys       | The property name is the URL key                                         |
+| One array field as both repeated keys and a list     | Each field uses one form                                                 |
+| Built-in date or object codecs                       | Write your own codec                                                     |
+| Writing global query fields                          | Global observers only read. Routes own writes                            |
+| Reading the fragment                                 | You can only pass a fragment when building a link                        |
+| Typed relative navigation                            | Use the escape hatch                                                     |
+| Write options besides `replaceUrl`                   | Patches take only `replaceUrl`                                           |
+| Typed state in a route's `isEqual`                   | The callback gets `unknown`                                              |
+| Noticing storage changes from another tab            | The change applies at the next restore                                   |
+| Forgetting one scope's value, like one show's season | `clearPersisted()` forgets a key for every scope                         |
 
 ## TasteTrack demo
 
 TasteTrack is a movie and TV journal in [`projects/taste-track`](projects/taste-track). It uses only
-the public `ngx-urlik` and `ngx-urlik/forms` entry points, and stores its data in the browser with
-IndexedDB. Run it from the repository root with the Node version in `.nvmrc`:
+the public `ngx-urlik` and `ngx-urlik/forms` entry points. It keeps its data in the browser, in
+IndexedDB. Run it from the repo root, with the Node version in `.nvmrc`:
 
 ```sh
 npm ci
@@ -869,43 +929,44 @@ npm start
 
 Things to try:
 
-1. Change the movie genres, sort order, and page size. Reload. The URL restores the filters.
+1. Change the movie genres, sort order, and page size. Reload. The filters come back from the URL.
 2. Open TV shows → Brambleworth Manor → Season 2 → Browse episodes → The Callback Nobody Returned.
-   The address, `/tv/brambleworth-manor/s/2/e/1`, supplies the show, season, and episode
-   parameters. The ID codec leaves the `tv_` prefix out of the URL and adds it back when reading.
-   Then open `/tv/brambleworth-manor/s`. It arrives at `…/s/2`, the season you opened last in this
-   tab. A show with no remembered season opens the show page, which lists its seasons.
-3. Follow a credit to a person or studio, then follow a title back to the catalog.
-4. Change a rating and log a viewing. Reload to check that both were saved.
-5. Filter Library, then Viewing history. Library uses Signal Forms; history uses Reactive Forms
-   with a debounced search. Both hold searches shorter than three letters.
-6. Reset TasteTrack in Settings. The seed data returns and your theme stays.
+   The URL is `/tv/brambleworth-manor/s/2/e/1`. It carries the show, season, and episode. The ID
+   codec drops the `tv_` prefix from the URL and adds it back when reading.
+3. Now open `/tv/brambleworth-manor/s`. You land on `…/s/2`, the season you opened last in this tab.
+   A show with no remembered season opens the show page, which lists its seasons.
+4. Follow a credit to a person or studio. Then follow a title back to the catalog.
+5. Change a rating and log a viewing. Reload. Both are still there.
+6. Filter Library, then Viewing history. Library uses Signal Forms. History uses Reactive Forms with
+   a delayed search. Both ignore searches shorter than three letters.
+7. Reset TasteTrack in Settings. The starting data comes back. Your theme stays.
 
-| Page                             | Feature                                                                                                      |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Movie and TV browsing            | Query fields inherited from a parent route with no path segment, repeated genres, sorting, and pagination    |
-| Show → season → episode          | Accumulated path parameters, an ID codec that leaves its prefix out of the URL, and an integer codec         |
-| Page size and last season        | A persisted query field in `localStorage`, and a persisted path value scoped to the show in `sessionStorage` |
-| Detail section links             | URL fragments                                                                                                |
-| Credits and contributor profiles | Typed navigation across branches                                                                             |
-| Library                          | Signal Forms, repeated statuses, joined media list, structured viewing counts                                |
-| Viewing history                  | Reactive Forms with a debounced, validated search                                                            |
-| Landing pages                    | Empty-path children and redirects                                                                            |
-| Unknown URLs                     | Wildcard routes                                                                                              |
+| Page                             | Shows                                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Movie and TV browsing            | Query fields from a parent route with no path segment, repeated genres, sorting, pagination      |
+| Show → season → episode          | Inherited path parameters, an ID codec that hides its prefix, an integer codec                   |
+| Page size and last season        | A remembered query field in `localStorage`, a remembered path value per show in `sessionStorage` |
+| Detail section links             | URL fragments                                                                                    |
+| Credits and contributor profiles | Typed links across branches                                                                      |
+| Library                          | Signal Forms, repeated statuses, a joined media list, structured viewing counts                  |
+| Viewing history                  | Reactive Forms with a delayed, validated search                                                  |
+| Landing pages                    | Empty-path children and redirects                                                                |
+| Unknown URLs                     | Wildcard routes                                                                                  |
 
-Shared pages use `activeRoute()` to select their route, and `paginationParams()` shares definitions
-across pages. The form pages reset the page number in `beforeWrite`; the catalog resets it in the
-same `patchQuery()` patch. Sort order is one structured codec value, so the field and direction
-travel together.
+Shared pages pick their route with `activeRoute()`. `paginationParams()` shares field definitions
+across pages. The form pages reset the page number in `beforeWrite`. The catalog resets it in the
+same `patchQuery()` call. Sort order is one codec value, so field and direction always travel
+together.
 
-The backend lives in `projects/taste-track/src/app/backend/`. `BackendApi` runs every query and
-mutation, and each query returns an `Observable` that pages turn into signals with `toObservable`,
-`switchMap`, and `toSignal`. `TasteTrackRepository` keeps the IndexedDB tables, through Dexie, in
-signals; after a mutation it reloads them and bumps `dataVersion`, so open queries emit again. A
-deterministic seed fills the database on first run and on reset: 30 movies, 30 shows, 66 seasons,
-394 episodes, 8 people, and 4 studios. Catalog data is read-only; ratings, statuses, favorites,
-counts, and viewing events survive reloads. Reset affects only the TasteTrack database, and the
-theme lives in separate storage.
+The backend is in `projects/taste-track/src/app/backend/`. `BackendApi` runs every query and
+change. Each query returns an `Observable`. Pages turn it into a signal with `toObservable`,
+`switchMap`, and `toSignal`. `TasteTrackRepository` holds the IndexedDB tables in signals, through
+Dexie. After a change, it reloads them and bumps `dataVersion`. Open queries then emit again.
+
+A fixed seed fills the database on first run and on reset: 30 movies, 30 shows, 66 seasons, 394
+episodes, 8 people, and 4 studios. Catalog data is read-only. Ratings, statuses, favorites, counts,
+and viewings survive reloads. Reset clears only the TasteTrack database. The theme is stored
+elsewhere.
 
 ## Develop
 
@@ -919,9 +980,9 @@ npm run typecheck  # public type tests
 npm run e2e        # Playwright against the demo
 ```
 
-[Design decisions](docs/decisions.md) explains why the library looks this way and what each choice
-costs. [Reading the code](docs/implementation.md) shows where behavior lives and how writes move
-through it.
+[Design decisions](docs/decisions.md) explains why the library works this way, and what each choice
+costs. [Reading the code](docs/implementation.md) shows where things live and how a write moves
+through.
 
 ## License
 
