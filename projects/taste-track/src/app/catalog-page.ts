@@ -136,21 +136,22 @@ export class CatalogPage {
     void this.route.patchQuery(patch, { replaceUrl: true });
   }
   protected sort(field: 'title' | 'year') {
-    this.update((query) => ({ sort: { ...query.sort, field }, page: 1 }));
+    this.update({ sort: { ...this.query().sort, field }, page: 1 });
   }
   protected direction(direction: 'asc' | 'desc') {
-    this.update((query) => ({ sort: { ...query.sort, direction }, page: 1 }));
+    this.update({ sort: { ...this.query().sort, direction }, page: 1 });
   }
   protected pageSize(value: string) {
     this.update({ pageSize: Number(value) as PageSize, page: 1 });
   }
   protected toggleGenre(genre: string) {
-    this.update(({ genres }) => ({
+    const { genres } = this.query();
+    this.update({
       genres: genres.includes(genre)
         ? genres.filter((value) => value !== genre)
         : [...genres, genre],
       page: 1,
-    }));
+    });
   }
   protected toggleFavorite(id: CatalogItem['id']) {
     void this.backendApi.toggleFavorite(id);

@@ -37,7 +37,7 @@ export type UrlParamsState<P, Q> = Readonly<{
   path: Readonly<Simplify<P>>;
   query: Readonly<Simplify<Q>>;
 }>;
-export type QueryPatch<Q> = Partial<Readonly<Q>> | ((query: Readonly<Q>) => Partial<Readonly<Q>>);
+export type QueryPatch<Q> = Partial<Readonly<Q>>;
 export type TypedNavigationBehaviorOptions = Omit<NavigationBehaviorOptions, 'browserUrl'>;
 
 type ConstructionValues = { path?: AnyRecord; query?: AnyRecord; fragment?: string | null };
@@ -151,12 +151,10 @@ export function createAppRouter(
         throw new Error(`${info.identity}: the snapshot does not contain route '${info.pattern}'`);
       return readActiveState(info, active);
     };
-    // Like router.navigate(), the patch reads the committed query when called, not when it lands.
-    const update = async (
-      updater: (query: AnyRecord) => AnyRecord,
-      options?: { replaceUrl?: boolean },
-    ) => {
-      const next = updater(requireState().query);
+    // Like router.navigate(), the patch builds on the committed URL when called, not when it lands.
+    node['patchQuery'] = async (patch: Partial<AnyRecord>, options?: { replaceUrl?: boolean }) => {
+      const supplied = Object.entries(patch).filter(([, value]) => value !== undefined);
+      const next = { ...requireState().query, ...Object.fromEntries(supplied) };
       const tree = router.parseUrl(router.url);
       for (const param of info.queryParams) {
         const output = serializeQuery(param, next[param.name]);
@@ -165,15 +163,6 @@ export function createAppRouter(
       }
       return router.navigateByUrl(tree, options);
     };
-    node['patchQuery'] = (
-      patch: Partial<AnyRecord> | ((query: AnyRecord) => Partial<AnyRecord>),
-      options?: { replaceUrl?: boolean },
-    ) =>
-      update((query) => {
-        const changes = typeof patch === 'function' ? patch(query) : patch;
-        const supplied = Object.entries(changes).filter(([, value]) => value !== undefined);
-        return { ...query, ...Object.fromEntries(supplied) };
-      }, options);
     // Types key routes by member name, so a member whose value differs from its name still works.
     for (const [member, value] of Object.entries(routeNames))
       if (value === routeName) routes[member] = node;
@@ -247,10 +236,8 @@ export function createAppRouter(
               query: patch?.query ? { ...params.query, ...patch.query } : params.query,
               fragment: patch?.fragment,
             }),
-          patchQuery: (
-            patch: Partial<AnyRecord> | ((query: AnyRecord) => Partial<AnyRecord>),
-            options?: { replaceUrl?: boolean },
-          ) => (node as Record<string, Function>)['patchQuery'](patch, options),
+          patchQuery: (patch: Partial<AnyRecord>, options?: { replaceUrl?: boolean }) =>
+            (node as Record<string, Function>)['patchQuery'](patch, options),
         };
       }
       throw new Error(

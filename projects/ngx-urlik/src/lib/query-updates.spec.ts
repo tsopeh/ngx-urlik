@@ -79,8 +79,9 @@ describe('query writes', () => {
   it('lets the second same-turn write supersede the first', async () => {
     const { app, router } = setup();
     await router.navigateByUrl('/results?search=a');
-    const first = app.routes.RESULTS.patchQuery((query) => ({ search: `${query.search}b` }));
-    const second = app.routes.RESULTS.patchQuery((query) => ({ search: `${query.search}c` }));
+    const results = app.routes.RESULTS;
+    const first = results.patchQuery({ search: `${results.params().query.search}b` });
+    const second = results.patchQuery({ search: `${results.params().query.search}c` });
 
     expect(await Promise.all([first, second])).toEqual([false, true]);
     expect(router.url).toBe('/results?search=ac');
@@ -96,7 +97,7 @@ describe('query writes', () => {
     expect(router.url).toBe('/results?locale=fr&search=old');
   });
 
-  it('runs a function patch when called, and an external navigation supersedes it', async () => {
+  it('lets an external navigation supersede a write that started before it', async () => {
     const entered = deferred<void>();
     const release = deferred<boolean>();
     let hold = false;
@@ -109,9 +110,7 @@ describe('query writes', () => {
     hold = true;
     const active = app.routes.RESULTS.patchQuery({ search: 'new' });
     await entered.promise;
-    const updater = vi.fn(() => ({ locale: 'fr' }));
-    const second = app.routes.ROOT.patchQuery(updater);
-    expect(updater).toHaveBeenCalledTimes(1);
+    const second = app.routes.ROOT.patchQuery({ locale: 'fr' });
     const leaving = router.navigateByUrl('/other');
     release.resolve(true);
 

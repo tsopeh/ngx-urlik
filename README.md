@@ -590,13 +590,14 @@ clean anything up.
 - Objects that point to themselves compare by structure.
 
 A route uses its parent's `isEqual` unless it sets its own. It only decides when the signal fires.
-Patches and forms always read the latest URL, so an old signal value never leaks into a write.
+A patch merges into the latest URL, so fields you don't give it never come from an old signal
+value. Forms follow the signal.
 
 ## Write the query
 
 ```ts
 await results.patchQuery({ search: 'elm', page: 1 });
-await results.patchQuery((query) => ({ page: query.page + 1 }));
+await results.patchQuery({ page: results.params().query.page + 1 });
 ```
 
 Start on `/results?sort=new&search=oak&page=4`. `sort` isn't declared on the route.
@@ -620,8 +621,7 @@ goes. After any patch, `?page=abc` and `?page=1` both disappear, and `?page=02` 
 ### Writes are navigations
 
 A patch is one `router.navigateByUrl()` call. It reads the committed URL when you call it, merges
-your fields, and navigates right away. A function patch runs then too, with the committed query.
-If the route isn't active, the promise rejects.
+your fields, and navigates right away. If the route isn't active, the promise rejects.
 
 Angular runs one navigation at a time, and the newest one wins. A navigation that starts while
 another is still running cancels it. So two writes in the same turn don't combine:
