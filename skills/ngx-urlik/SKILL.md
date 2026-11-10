@@ -22,7 +22,7 @@ When moving a component from the native `ActivatedRoute` to `ngx-urlik`, the goa
 - Declare every route in the single `defineAppRouter()` call, as a literal array. Do not split it into `Routes`-typed arrays in other files; a widened array produces no typed routes.
 - Load pages lazily with `loadComponent`. A named route, and every route above it, cannot use `loadChildren`. `loadComponent` needs a standalone component.
 - Converting a lazy feature module: move its routes into the router file, replace its `component` entries with `loadComponent`, and move the module's `providers` to the route above its pages. Leave unconverted features on `loadChildren`; they keep working, untyped.
-- Convert one feature or page at a time. Code that still uses `ActivatedRoute` reads the same URL. Calls through Angular's `Router` skip the write queue and cancel pending `patchQuery` and form writes, so convert a page's writes together.
+- Convert one feature or page at a time. Code that still uses `ActivatedRoute` reads the same URL. Calls through Angular's `Router` navigate the same router, so both styles work side by side.
 
 ## 2. State & Writes
 
@@ -30,7 +30,7 @@ Interact with the URL exclusively through the typed `RouteNode`.
 
 - **Read:** Convert RxJS subscriptions into synchronous signal reads (`node.params().query.search`). Read parameters within a `computed()` or template. If the route is inactive, reading it throws—only read active routes.
 - **Guards and resolvers:** Read the destination with `node.paramsFrom(route)`, passing the snapshot Angular gives the guard or resolver. `params()` still describes the previous page there.
-- **Write:** Call `node.patchQuery(patch)`. Provide only the fields that actually changed. The write coordinator queues updates sequentially, ensuring concurrent patches never clobber each other.
+- **Write:** Call `node.patchQuery(patch)`. Provide only the fields that actually changed. Each patch is one navigation built from the committed URL, and a later navigation cancels it, so change fields that go together in one patch.
 - **Build Links:** Call `node.createUrlTree(inputs)` for deterministic link generation that ignores current URL context.
 
 **Completion criterion**: All parameter reads are synchronous signals. Every URL update is a `patchQuery` or `navigate` call.

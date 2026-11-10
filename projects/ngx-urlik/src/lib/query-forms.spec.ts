@@ -76,7 +76,7 @@ describe('query forms', () => {
     expect(starts).toEqual(['/results?search=new&page=2']);
   });
 
-  it('keeps an invalid draft until external navigation resets it', async () => {
+  it('keeps an invalid draft when an external navigation changes the field', async () => {
     const { results, router } = await setup();
     const form = TestBed.runInInjectionContext(() =>
       createQueryParamsFormGroup(results, { writeWhen: 'valid' }),
@@ -87,18 +87,24 @@ describe('query forms', () => {
     expect(router.url).toBe('/results');
 
     await router.navigateByUrl('/results?search=external');
-    await vi.waitFor(() => expect(form.controls.search.value).toBe('external'));
-    expect(form.pristine).toBe(true);
+    TestBed.flushEffects();
+    expect(form.controls.search.value).toBe('draft');
   });
 
-  it('shares the write queue with direct route patches', async () => {
+  it('loses a form write that a same-turn direct patch supersedes', async () => {
     const { results, router } = await setup();
-    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
+    const onWriteFailure = vi.fn();
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(results, { onWriteFailure }),
+    );
     form.controls.search.setValue('first');
     const direct = results.patchQuery({ page: 2 });
 
     expect(await direct).toBe(true);
-    await vi.waitFor(() => expect(router.url).toBe('/results?search=first&page=2'));
+    expect(router.url).toBe('/results?page=2');
+    await vi.waitFor(() => expect(onWriteFailure).toHaveBeenCalledWith({ kind: 'declined' }));
+    TestBed.flushEffects();
+    // The form keeps the draft, but the URL never gets it.
     expect(form.getRawValue()).toEqual({ search: 'first', page: 2 });
   });
 
@@ -221,7 +227,7 @@ describe('query forms', () => {
       expect(starts).toEqual(['/results?page=2', '/results?page=2&search=elm']);
     });
 
-    it('drops a pending debounced write when external navigation starts', async () => {
+    it('still writes a pending debounced field after an external navigation', async () => {
       const { results, router } = await setup();
       const form = TestBed.runInInjectionContext(() =>
         createQueryParamsFormGroup(results, { debounce: { search: 40 } }),
@@ -229,9 +235,8 @@ describe('query forms', () => {
 
       form.controls.search.setValue('stale');
       await router.navigateByUrl('/results?page=3');
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      expect(router.url).toBe('/results?page=3');
-      expect(form.controls.search.value).toBe('');
+      await vi.waitFor(() => expect(router.url).toBe('/results?page=3&search=stale'));
+      expect(form.controls.search.value).toBe('stale');
     });
   });
 

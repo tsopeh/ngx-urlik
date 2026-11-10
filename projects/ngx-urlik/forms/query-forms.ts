@@ -65,7 +65,6 @@ const bindQueryParams = <Q extends QueryState>(
   const errorHandler = inject(ErrorHandler);
   const binding = ɵgetQueryBinding<Q>(route);
   let observed = binding.read() ?? route.params().query;
-  const owner = {};
   // Each edit identifies the draft that a write may acknowledge. Newer edits remain pending.
   type Edit = { value: Q[keyof Q] };
   const staged = new Map<keyof Q, Edit>();
@@ -113,8 +112,16 @@ const bindQueryParams = <Q extends QueryState>(
       }
     }
     // Only the edited fields are acknowledged. Fields that beforeWrite adds come back from the URL.
-    const committed = () => {
-      for (const [param, edit] of edits) if (staged.get(param) === edit) staged.delete(param);
+    // Angular skips a navigation to the same URL, so a draft the URL already holds counts as written.
+    const acknowledge = (result: boolean) => {
+      const query = binding.read();
+      for (const [param, edit] of edits)
+        if (
+          staged.get(param) === edit &&
+          (result || (query && binding.sameUrlValue(param, edit.value, query[param])))
+        )
+          staged.delete(param);
+      synchronize();
     };
     void binding
       .update(
@@ -124,18 +131,18 @@ const bindQueryParams = <Q extends QueryState>(
           return { ...query, ...Object.fromEntries(supplied) };
         },
         { replaceUrl: options.replaceUrl ?? true },
-        owner,
-        committed,
       )
       .then((result) => {
-        if (!result && !destroyed) reportFailure({ kind: 'declined' });
+        if (destroyed) return;
+        acknowledge(result);
+        if (!result) reportFailure({ kind: 'declined' });
       })
       .catch((error: unknown) => {
         if (!destroyed) reportFailure({ kind: 'error', error });
       });
   };
 
-  const synchronize = (reset: boolean) => {
+  const synchronize = () => {
     const incoming = binding.read();
     if (!incoming) return;
     const next = { ...incoming };
@@ -144,22 +151,14 @@ const bindQueryParams = <Q extends QueryState>(
       if (pending) next[param] = pending.value;
       // A draft that encodes to the committed value is already in the URL, such as 'elm ' with a
       // trimming codec. Keep what the user typed instead of replacing it mid-edit.
-      else if (!reset && binding.sameUrlValue(param, observed[param], incoming[param]))
+      else if (binding.sameUrlValue(param, observed[param], incoming[param]))
         next[param] = observed[param];
     }
-    if (reset || !isEqual(next, observed)) {
+    if (!isEqual(next, observed)) {
       observed = next;
-      if (reset) adapter.reset(next);
-      else adapter.write(next);
+      adapter.write(next);
     }
   };
-
-  const subscription = binding.coordinator.changes.subscribe((kind) => {
-    if (kind === 'external') {
-      clearPending();
-      synchronize(true);
-    } else synchronize(false);
-  });
 
   const stopFormChanges = adapter.changes((next) => {
     const immediate: (keyof Q)[] = [];
@@ -191,14 +190,12 @@ const bindQueryParams = <Q extends QueryState>(
   });
 
   // Defaults can change through injection without a navigation, so observe them as well.
-  const urlEffect = effect(() => synchronize(false));
+  const urlEffect = effect(() => synchronize());
   destroyRef.onDestroy(() => {
     destroyed = true;
     clearPending();
-    binding.coordinator.cancelOwner(owner);
     stopFormChanges();
     stopValidityChanges();
-    subscription.unsubscribe();
     urlEffect.destroy();
   });
 };

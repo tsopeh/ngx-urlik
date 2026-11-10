@@ -304,10 +304,8 @@ const order = inject(AppRouter).routes.ORDER;
 const orderId = computed(() => order.params().path.orderId); // number
 ```
 
-One thing to watch while both styles live side by side: a call through Angular's `Router` skips the
-write queue. It also cancels writes still waiting in it, as any outside navigation does. See
-[One write at a time](#one-write-at-a-time). The [ESLint rule](#flag-direct-router-use) lists the
-places still left to change.
+Both styles navigate through the same Angular router, so they can live side by side. The
+[ESLint rule](#flag-direct-router-use) lists the places still left to change.
 
 **4. Repeat for each feature.** When the last one is in, the router file is the whole map.
 
@@ -619,34 +617,36 @@ The rules:
 A patch also rewrites every field the route declares. So it cleans up the rest of the URL as it
 goes. After any patch, `?page=abc` and `?page=1` both disappear, and `?page=02` becomes `?page=2`.
 
-### One write at a time
+### Writes are navigations
 
-Every route and every form shares one write queue. Each write waits for the one before it to
-finish. Then it applies to the URL that write left behind.
+A patch is one `router.navigateByUrl()` call. It reads the committed URL when you call it, merges
+your fields, and navigates right away. A function patch runs then too, with the committed query.
+If the route isn't active, the promise rejects.
 
-Say a search box and a sort menu both write in the same moment. The search box sets `search=elm`.
-The sort menu sets `order=price`. The URL ends up with both. With two plain `router.navigate()`
-calls, each would build from the URL it saw first. The second would wipe out the first.
+Angular runs one navigation at a time, and the newest one wins. A navigation that starts while
+another is still running cancels it. So two writes in the same turn don't combine:
 
-A function patch runs once, when its turn comes. It gets the latest URL. It never runs right away.
-Return only what changes; you don't need to spread the old query. If two writes set the same field,
-the later one wins. If the route isn't active when the turn comes, the promise rejects.
+```ts
+void results.patchQuery({ search: 'elm' });
+void results.patchQuery({ page: 2 }); // Built from the URL without search=elm
+```
 
-The promise tells you how the navigation went:
+The second write cancels the first, and the URL gets only `page=2`. Put fields that change
+together in one patch. A query-only navigation usually finishes within a few milliseconds, so
+writes that the user starts at different moments don't overlap. They can overlap when a guard or
+resolver runs on query changes, as with `runGuardsAndResolvers: 'paramsOrQueryParamsChange'`.
 
-| What happened                                 | Result                                                                             |
-| --------------------------------------------- | ---------------------------------------------------------------------------------- |
-| It worked                                     | Resolves `true`                                                                    |
-| A guard said no, or the URL was the same      | Resolves `false`. Later writes still run                                           |
-| The patch function or the navigation threw    | Rejects. Later writes still run                                                    |
-| Some other navigation started                 | Waiting writes resolve `false` without running. New ones do too, until it finishes |
-| A guard or redirect changed one of our writes | Waiting writes resolve `false`. The running write gets Angular's result            |
-| The router's environment was destroyed        | Waiting and running writes resolve `false`                                         |
+The promise gives Angular's result:
 
-"Some other navigation" means anything the queue didn't start. A link click. The Back button. A call
-through Angular's `Router`. It cancels waiting writes the moment it starts, even if a guard blocks it
-later. Why: the user is trying to leave. A stale edit shouldn't pull them back. The app's first
-navigation counts too. Writes sent before it ends resolve `false`.
+| What happened                              | Result           |
+| ------------------------------------------ | ---------------- |
+| It worked                                  | Resolves `true`  |
+| A guard said no, or the URL was the same   | Resolves `false` |
+| A later navigation cancelled it            | Resolves `false` |
+| The patch function or the navigation threw | Rejects          |
+
+A later navigation can be another write, a link click, the Back button, or a call through Angular's
+`Router`. They all follow the same rule.
 
 ## Bind a form
 
@@ -693,15 +693,15 @@ effect. Model updates made before that effect runs go out as one write.
 Form writes replace the current history entry. So typing `elm` doesn't leave three Back-button
 stops. Pass `replaceUrl: false` if you want them.
 
-Writes from elsewhere update other fields. They don't touch what the user is typing, or whether a
-field is touched or dirty.
+A field keeps its draft until the draft is written. URL changes from anywhere update the other
+fields. They don't touch what the user is typing, or whether a field is touched or dirty.
 
 After a write, the form keeps what the user typed if it means the same URL value. Say the codec
 trims. The user types `'elm '`. The URL gets `?search=elm`. The input keeps its trailing space.
 
-The Back button, or any other outside navigation, cancels pending edits as soon as it starts. The
-form resets to the URL's values, pristine and untouched. That happens even if a guard then blocks the
-navigation. When the navigation finishes, the form resets again.
+A form write is a navigation like any other, so a later navigation can cancel it. See
+[Writes are navigations](#writes-are-navigations). The draft then stays in the form, and the write
+isn't retried. The Back button doesn't clear drafts either.
 
 ### Delay a field
 
@@ -726,8 +726,9 @@ const filters = createQueryParamsFormGroup(results, { debounce: { search: 300 } 
 ```
 
 The user types `elm` and stops. 300 ms later, the search writes. Other fields write right away. They
-don't flush or replace the pending search. Outside navigation drops the pending write. So does
-destroying the binding.
+don't flush or replace the pending search. A navigation in the meantime doesn't drop it: the search
+writes when its delay ends, on top of the URL at that moment. Destroying the binding drops it, so
+leaving the page does too.
 
 ### Hold invalid input
 
@@ -751,7 +752,7 @@ Angular's length validators accept empty values.
 
 Each field is judged alone. A bad search doesn't block a good page change. A field waiting on an
 async validator writes once it passes. A held field keeps its draft until it becomes valid, the user
-edits it, or an outside navigation resets the form. Reactive Forms take the same option. Put the
+edits it, or the binding is destroyed. Reactive Forms take the same option. Put the
 validators on the controls.
 
 ### Change other fields before a write
@@ -773,7 +774,7 @@ Changing just the page writes the page as is. `patch` is spread last, so
 `patchValue({ search: 'elm', page: 3 })` keeps page 3. Signal Forms take the same option. Without a
 form, set both in one patch: `patchQuery({ search, page: 1 })`.
 
-`beforeWrite(patch, draft)` runs right before the write is queued. That's after `writeWhen` has held
+`beforeWrite(patch, draft)` runs right before the write navigates. That's after `writeWhen` has held
 back invalid fields, and after any delay has ended. `patch` has only the fields about to be written.
 `draft` is the whole form. Whatever you return is written. An `undefined` field keeps its URL value,
 as in `patchQuery()`.
@@ -792,7 +793,8 @@ A failed write keeps what the user typed. It isn't retried. `onWriteFailure` get
 If `beforeWrite` throws, the error goes to `ErrorHandler`, not `onWriteFailure`. Nothing is written.
 The edited fields keep their drafts.
 
-Destroying a binding cancels its waiting writes. It doesn't stop a navigation that already started.
+Destroying a binding drops its pending edits and delays. It doesn't stop a navigation that already
+started.
 
 ## Remember values in storage
 
@@ -1049,7 +1051,7 @@ Angular's `isActive()` function bound to the router. It returns a `Signal<boolea
 doesn't expose `routerState`, route config, lifecycle controls, or deprecated mutable properties.
 
 You can still inject Angular's `Router`. It runs the app, so it has to stay. Calls through it skip
-the typed routes and the write queue.
+the typed routes.
 
 ### Flag direct router use
 

@@ -25,7 +25,7 @@ import {
 } from './compiled-route';
 import { isEqual } from './is-equal';
 import { ClearPersistedOptions, Persistence, persistOf } from './persistence';
-import { QueryWriteCoordinator, registerQueryBinding } from './query-write-coordinator';
+import { registerQueryBinding } from './query-binding';
 import { QueryDefinitions } from './route-definition';
 import { ReportParameterFailure } from './route-diagnostics';
 import { createParameterReader, createParameterSerializer } from './route-params-runtime';
@@ -53,7 +53,6 @@ export function createAppRouter(
   persistence: Persistence,
 ): Record<string, unknown> {
   const destroyRef = injector.get(DestroyRef);
-  const coordinator = new QueryWriteCoordinator(router, destroyRef);
   const navigation = signal(0);
   const subscription = router.events
     .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
@@ -155,27 +154,20 @@ export function createAppRouter(
         throw new Error(`${info.identity}: the snapshot does not contain route '${info.pattern}'`);
       return readActiveState(info, active);
     };
-    const update = (
+    // Like router.navigate(), the patch reads the committed query when called, not when it lands.
+    const update = async (
       updater: (query: AnyRecord) => AnyRecord,
       options?: { replaceUrl?: boolean },
-      owner?: object,
-      committed?: () => void,
-    ) =>
-      coordinator.enqueue(
-        () => {
-          const next = updater(requireState().query);
-          const tree = router.parseUrl(router.url);
-          for (const param of info.queryParams) {
-            const output = serializeQuery(param, next[param.name]);
-            if (output === null) delete tree.queryParams[param.name];
-            else tree.queryParams[param.name] = output;
-          }
-          return tree;
-        },
-        options,
-        owner,
-        committed,
-      );
+    ) => {
+      const next = updater(requireState().query);
+      const tree = router.parseUrl(router.url);
+      for (const param of info.queryParams) {
+        const output = serializeQuery(param, next[param.name]);
+        if (output === null) delete tree.queryParams[param.name];
+        else tree.queryParams[param.name] = output;
+      }
+      return router.navigateByUrl(tree, options);
+    };
     node['patchQuery'] = (
       patch: Partial<AnyRecord> | ((query: AnyRecord) => Partial<AnyRecord>),
       options?: { replaceUrl?: boolean },
@@ -186,7 +178,6 @@ export function createAppRouter(
         return { ...query, ...Object.fromEntries(supplied) };
       }, options);
     registerQueryBinding(node, {
-      coordinator,
       read: () => {
         navigation();
         return read()?.query;

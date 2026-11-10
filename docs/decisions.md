@@ -118,8 +118,7 @@ produce. There is no custom link directive: a typed `UrlTree` goes to Angular's 
 Router options go on `defineAppRouter()`, so the configuration and the typed catalog are declared
 together.
 
-**Cost:** Angular's `Router` stays injectable, and calls through it bypass both the types and the
-write queue. The library discourages that path instead of blocking it: the docs give an ESLint
+**Cost:** Angular's `Router` stays injectable, and calls through it bypass the types. The library discourages that path instead of blocking it: the docs give an ESLint
 [configuration](../README.md#flag-direct-router-use) that warns on `Router` and
 `ActivatedRoute` imports. Nothing enforces the boundary at runtime.
 
@@ -143,25 +142,21 @@ Rejected alternatives:
 **Cost:** some invalid trees pass `tsc` and throw as soon as `defineAppRouter()` runs. Any future
 editor or lint diagnostics must reuse the runtime rules, not define a second set.
 
-## Send every query write through one queue
+## Let query writes follow Angular's navigation rules
 
-Two callers that build URLs from the same committed state overwrite each other, even when they
-change different fields. An investigation reproduced this with writes started in the same turn,
-with a parent and child route writing at once, and with one write waiting on a guard. Each router
-therefore owns one coordinator. Route patches and both form systems submit to it. Each write reads
-fresh committed state when its turn starts and keeps its own `replaceUrl` choice.
+A query write is one `navigateByUrl()` call, built from the committed URL when it is called. If
+two writes overlap, the later one cancels the earlier one, as with two `router.navigate()` calls.
 
-Rejected alternatives:
+An earlier design sent every write through one queue per router. Each write waited its turn and
+read the latest URL, so overlapping writes combined, and an outside navigation such as Back
+cancelled waiting writes. It was removed because overlapping query writes did not cause reported
+problems in real projects, while the queue added a second set of timing rules to learn on top of
+Angular's.
 
-- **A queue per form binding.** The first forms design used one. It cannot order writes from two
-  bindings, or from a parent and a child route.
-- **A plain promise chain.** When external navigation cancels the active write, the chain releases
-  the next one, which then cancels the user's navigation away. The coordinator cancels waiting work
-  when external navigation starts, before any promise can release it.
-
-**Cost:** function patches run asynchronously, and callers must handle a rejected promise. Writes
-are not merged, so high-frequency inputs need an explicit debounce or throttle. The forms package
-reaches the coordinator through the internal `ɵgetQueryBinding` export.
+**Cost:** two writes started in the same turn, or a write that starts while a slow guard or
+resolver runs, lose the earlier write's fields. A debounced form field still writes after the user
+presses Back, if the page is still active. Callers that change several fields together should do
+so in one patch.
 
 ## Let forms hold drafts while the URL holds committed state
 
@@ -182,8 +177,7 @@ An earlier design exposed an RxJS stream of field changes. It could express any 
 the common case took a `groupBy`/`mergeMap` pipeline, it duplicated native Signal Forms debounce,
 and it could not reset another field, such as the page.
 
-The URL wins after external navigation: pending edits are dropped and the form resets, so a stale
-debounced value cannot overwrite a page the user moved to. Writes replace the history entry by
+A draft stays until it is written or the binding is destroyed. Writes replace the history entry by
 default, because each keystroke is not a place the user wants to return to.
 
 **Cost:** forms bind only query fields, as flat controls; nested groups and `FormArray` are not
@@ -301,7 +295,7 @@ There is no write method; the README lists writing global fields under [Not supp
 ## Organize internals as an acyclic module graph
 
 `app-router.ts` composes the public API. Each other module owns one model: definitions and
-validation, compiled routes, parameter runtime, diagnostics, route nodes, the write coordinator,
+validation, compiled routes, parameter runtime, diagnostics, route nodes,
 and the escape hatch. Lower modules do not import `app-router.ts`, and sibling modules do not import
 each other in a cycle. Internal types stay private unless the public barrel exports them.
 

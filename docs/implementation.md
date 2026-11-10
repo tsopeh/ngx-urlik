@@ -65,18 +65,10 @@ also runs a browser injector of the same definition, such as a test, never resto
 
 ## Write
 
-Suppose two controls change different filters before either navigation finishes. If both build a
-URL from the same old snapshot, one erases the other's edit.
-
-`query-write-coordinator.ts` prevents this by running one write at a time. A patch reads the
-committed query when its turn starts, merges its fields, and navigates. The next patch sees the
-result. A rejected write leaves the queue free to continue.
-
-Navigation away needs a separate rule. When an external navigation starts, the coordinator
-cancels waiting work before a completed promise can release it, and declines new writes until that
-navigation finishes. Otherwise a stale filter edit could navigate the user back to the page they
-just left. The coordinator recognizes its own navigations by a token it passes in Angular's
-navigation `info`.
+`patchQuery` in `route-node.ts` reads the committed query, merges the patch, serializes every
+declared field into the current URL tree, and calls `router.navigateByUrl()`. There is no
+scheduling layer. Angular's rule applies: the newest navigation cancels any that is still running.
+Two writes that overlap therefore don't combine; the later one wins.
 
 ## Follow a form edit
 
@@ -87,17 +79,18 @@ The binding remembers each edit as an object. On success, it clears the object t
 submitted. If the user has edited the same field again, the newer object stays. Incoming URL
 values are combined with outstanding edits before the form is updated.
 
-One form notification can change several fields; the fields that write at once share one queued
-write. A Reactive Forms field with a `debounce` entry waits on its own timer. With
+One form notification can change several fields; the fields that write at once share one
+navigation. A Reactive Forms field with a `debounce` entry waits on its own timer. With
 `writeWhen: 'valid'`, an invalid field goes into a held set, and the binding retries the held set
 whenever the form's validity changes, which is how a field waits for an async validator. Right
-before a write is queued, `beforeWrite` may change its fields; only the edited fields are
-acknowledged when the write commits, so fields it adds return to the form from the URL. All of
-these writes go through the router's queue.
+before a write navigates, `beforeWrite` may change its fields; only the edited fields are
+acknowledged when the write commits, so fields it adds return to the form from the URL. A write
+acknowledges its edits when it succeeds, or when Angular skips it because the URL already holds
+them. A cancelled write leaves its edits staged; they are not retried.
 
-External navigation clears the edits, the held set, and the debounce timers, then resets the
-form. The private `ɵgetQueryBinding` bridge gives the forms package
-access to fresh route state and the coordinator.
+Destroying the binding clears the edits, the held set, and the debounce timers. The private
+`ɵgetQueryBinding` bridge gives the forms package access to fresh route state and the route's
+write function.
 
 ## Check a change
 
