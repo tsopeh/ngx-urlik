@@ -21,7 +21,6 @@ export {
   type GeneratedAppRouter,
   type PathParamsOf,
   type QueryParamsOf,
-  type QueryPatch,
   type RouteDefinition,
   type RouteDefinitions,
   type RouteNode,

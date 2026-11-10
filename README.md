@@ -613,7 +613,7 @@ The rules:
 - A field you leave out, or set to `undefined`, stays as it is.
 - To clear a field, set it to its default. Use `null` for a field without one, or `[]` for an array.
 - The path, the fragment, fields owned by child routes, and unknown keys stay.
-- `patchQuery` takes `{ replaceUrl?: boolean }`.
+- `patchQuery` takes the same navigation options as `navigate()`, such as `replaceUrl` or `state`.
 
 A patch also rewrites every field the route declares. So it cleans up the rest of the URL as it
 goes. After any patch, `?page=abc` and `?page=1` both disappear, and `?page=02` becomes `?page=2`.
@@ -1117,7 +1117,6 @@ imports stay allowed. Templates and guards still need them.
 | Writing global query fields                          | Global observers only read. Routes own writes                              |
 | Reading the fragment                                 | You can only pass a fragment when building a link                          |
 | Typed relative navigation                            | Use the escape hatch                                                       |
-| Write options besides `replaceUrl`                   | Patches take only `replaceUrl`                                             |
 | Typed state in a route's `isEqual`                   | The callback gets `unknown`                                                |
 | Noticing storage changes from another tab            | The change applies at the next restore                                     |
 | Forgetting one scope's value, like one show's season | `clearPersisted()` forgets a key for every scope                           |

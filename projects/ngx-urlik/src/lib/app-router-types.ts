@@ -8,7 +8,7 @@ import type {
   UrlParamCodec,
 } from './params';
 import type { QueryDefinitions, RouteDefinition } from './route-definition';
-import type { QueryPatch, TypedNavigationBehaviorOptions, UrlParamsState } from './route-node';
+import type { TypedNavigationBehaviorOptions, UrlParamsState } from './route-node';
 import type { routeNodeInfo } from './route-symbols';
 import type { AppRouterEscapeHatch } from './router-escape-hatch';
 import type { Simplify } from './type-utils';
@@ -51,25 +51,24 @@ export type RouteNode<P = unknown, Q = unknown, Required extends PropertyKey = n
   readonly params: Signal<UrlParamsState<P, Q>>;
   /** Decodes this route from a snapshot, such as the one a guard or resolver receives. */
   paramsFrom(snapshot: ActivatedRouteSnapshot): UrlParamsState<P, Q>;
-  patchQuery(patch: QueryPatch<Q>, options?: { replaceUrl?: boolean }): Promise<boolean>;
+  patchQuery(
+    patch: Partial<Readonly<Q>>,
+    options?: TypedNavigationBehaviorOptions,
+  ): Promise<boolean>;
 };
 
 type AnyStatefulNode = {
   readonly [routeNodeInfo]: unknown;
   readonly params: Signal<UrlParamsState<unknown, unknown>>;
-  patchQuery(patch: never, options?: { replaceUrl?: boolean }): Promise<boolean>;
+  patchQuery(patch: never, options?: TypedNavigationBehaviorOptions): Promise<boolean>;
 };
 type StateOfNode<N> = N extends { params: Signal<infer S> } ? S : never;
-type QueryOfNode<N> = N extends {
-  patchQuery(patch: QueryPatch<infer Q>, ...args: unknown[]): unknown;
-}
-  ? Q
-  : never;
+type QueryOfNode<N> = N extends { params: Signal<{ query: infer Q }> } ? Q : never;
 
 export type QueryParamsOf<N> = QueryOfNode<N>;
 export type PathParamsOf<N> = N extends RouteNode<infer P, infer Q, infer R> ? P : never;
 export type RouteStateOf<N> = StateOfNode<N>;
-export type RouteQueryPatch<N> = QueryPatch<QueryParamsOf<N>>;
+export type RouteQueryPatch<N> = Partial<Readonly<QueryParamsOf<N>>>;
 
 export type ActiveRoute<C extends Readonly<Record<PropertyKey, AnyStatefulNode>>> = {
   readonly [K in keyof C]: Readonly<{
@@ -81,8 +80,8 @@ export type ActiveRoute<C extends Readonly<Record<PropertyKey, AnyStatefulNode>>
       fragment?: string | null;
     }): UrlTree;
     patchQuery(
-      patch: QueryPatch<QueryOfNode<C[K]>>,
-      options?: { replaceUrl?: boolean },
+      patch: Partial<Readonly<QueryOfNode<C[K]>>>,
+      options?: TypedNavigationBehaviorOptions,
     ): Promise<boolean>;
   }>;
 }[keyof C];

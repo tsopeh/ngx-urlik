@@ -37,7 +37,6 @@ export type UrlParamsState<P, Q> = Readonly<{
   path: Readonly<Simplify<P>>;
   query: Readonly<Simplify<Q>>;
 }>;
-export type QueryPatch<Q> = Partial<Readonly<Q>>;
 export type TypedNavigationBehaviorOptions = Omit<NavigationBehaviorOptions, 'browserUrl'>;
 
 type ConstructionValues = { path?: AnyRecord; query?: AnyRecord; fragment?: string | null };
@@ -152,7 +151,10 @@ export function createAppRouter(
       return readActiveState(info, active);
     };
     // Like router.navigate(), the patch builds on the committed URL when called, not when it lands.
-    node['patchQuery'] = async (patch: Partial<AnyRecord>, options?: { replaceUrl?: boolean }) => {
+    node['patchQuery'] = async (
+      patch: Partial<AnyRecord>,
+      options?: TypedNavigationBehaviorOptions,
+    ) => {
       const supplied = Object.entries(patch).filter(([, value]) => value !== undefined);
       const next = { ...requireState().query, ...Object.fromEntries(supplied) };
       const tree = router.parseUrl(router.url);
@@ -236,7 +238,7 @@ export function createAppRouter(
               query: patch?.query ? { ...params.query, ...patch.query } : params.query,
               fragment: patch?.fragment,
             }),
-          patchQuery: (patch: Partial<AnyRecord>, options?: { replaceUrl?: boolean }) =>
+          patchQuery: (patch: Partial<AnyRecord>, options?: TypedNavigationBehaviorOptions) =>
             (node as Record<string, Function>)['patchQuery'](patch, options),
         };
       }

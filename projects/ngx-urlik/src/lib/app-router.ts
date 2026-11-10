@@ -51,7 +51,7 @@ export type {
   RouteStateOf,
 } from './app-router-types';
 export type { RouteDefinition, RouteDefinitions } from './route-definition';
-export type { QueryPatch, UrlParamsState } from './route-node';
+export type { UrlParamsState } from './route-node';
 
 type ForwardedRouterFeature = Exclude<RouterFeatures, RouterConfigurationFeature>;
 const routerConfigurationFeatureKind = 5;

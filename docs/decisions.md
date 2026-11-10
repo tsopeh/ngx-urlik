@@ -113,7 +113,7 @@ declared route. Integrations that need arbitrary URLs, relative commands, or out
 `AppRouter.escapeHatch`, which mirrors a chosen set of native operations with Angular's types. It
 leaves out configuration mutation, raw router state, and lifecycle controls.
 
-Typed `navigate()` rejects `browserUrl`, which could show an address the typed destination did not
+Typed `navigate()` and `patchQuery()` reject `browserUrl`, which could show an address the typed destination did not
 produce. There is no custom link directive: a typed `UrlTree` goes to Angular's `RouterLink`.
 Router options go on `defineAppRouter()`, so the configuration and the typed catalog are declared
 together.

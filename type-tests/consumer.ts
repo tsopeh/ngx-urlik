@@ -248,6 +248,13 @@ memberPath.memberId satisfies number;
 
 declare const memberPatch: MemberPatch;
 router.routes.MEMBER.patchQuery(memberPatch);
+// Patches take the same navigation options as navigate()
+router.routes.MEMBER.patchQuery(
+  { page: 2 },
+  { replaceUrl: true, skipLocationChange: true, state: { from: 'sidebar' }, info: 1 },
+) satisfies Promise<boolean>;
+// @ts-expect-error browserUrl would let the address bar disagree with the typed state
+router.routes.MEMBER.patchQuery({ page: 2 }, { browserUrl: '/elsewhere' });
 
 // activeRoute ambient createUrlTree
 const activeContext = router.activeRoute({
@@ -256,6 +263,7 @@ const activeContext = router.activeRoute({
 });
 declare const currentActive: ReturnType<typeof activeContext>;
 currentActive.createUrlTree({ fragment: 'bio' }) satisfies UrlTree;
+currentActive.patchQuery({}, { state: { from: 'sidebar' } }) satisfies Promise<boolean>;
 
 // Remember values in storage
 enum PersistRouteNames {

@@ -74,6 +74,23 @@ describe('query writes', () => {
     expect(router.url).toBe('/results?locale=fr&campaign=summer#section');
   });
 
+  it("passes navigation options through to Angular's router", async () => {
+    const { app, router } = setup();
+    await router.navigateByUrl('/results');
+    const extras: unknown[] = [];
+    router.events.subscribe((event) => {
+      if (event instanceof NavigationStart) extras.push(router.currentNavigation()?.extras);
+    });
+
+    await app.routes.RESULTS.patchQuery(
+      { search: 'elm' },
+      { replaceUrl: true, state: { from: 'sidebar' }, info: 'filters' },
+    );
+    expect(extras).toEqual([
+      expect.objectContaining({ replaceUrl: true, state: { from: 'sidebar' }, info: 'filters' }),
+    ]);
+  });
+
   // Like router.navigate(), a patch reads the committed query when called and the newest
   // navigation wins. These cases record what that costs.
   it('lets the second same-turn write supersede the first', async () => {
