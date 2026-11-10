@@ -298,9 +298,9 @@ There is no write method; the README lists writing global fields under [Not supp
 ## Organize internals as an acyclic module graph
 
 `app-router.ts` composes the public API. Each other module owns one model: definitions and
-validation, compiled routes, parameter runtime, diagnostics, route nodes,
-and the escape hatch. Lower modules do not import `app-router.ts`, and sibling modules do not import
-each other in a cycle. Internal types stay private unless the public barrel exports them.
+validation, compiled routes, parameter runtime, diagnostics, route nodes, and the escape hatch.
+Lower modules do not import `app-router.ts`, and sibling modules do not import each other in a
+cycle. Internal types stay private unless the public barrel exports them.
 
 **Cost:** acyclicity is checked in review, not by a tool.
 
