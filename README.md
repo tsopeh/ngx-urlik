@@ -638,12 +638,12 @@ resolver runs on query changes, as with `runGuardsAndResolvers: 'paramsOrQueryPa
 
 The promise gives Angular's result:
 
-| What happened                              | Result           |
-| ------------------------------------------ | ---------------- |
-| It worked                                  | Resolves `true`  |
-| A guard said no, or the URL was the same   | Resolves `false` |
-| A later navigation cancelled it            | Resolves `false` |
-| The patch function or the navigation threw | Rejects          |
+| What happened                             | Result           |
+| ----------------------------------------- | ---------------- |
+| It worked                                 | Resolves `true`  |
+| A guard said no, or the URL was the same  | Resolves `false` |
+| A later navigation cancelled it           | Resolves `false` |
+| The route wasn't active, or Angular threw | Rejects          |
 
 A later navigation can be another write, a link click, the Back button, or a call through Angular's
 `Router`. They all follow the same rule.
@@ -701,8 +701,8 @@ After its own write, the form keeps what the user typed. Say the codec trims. Th
 `'elm '`. The URL gets `?search=elm`. The input keeps its trailing space.
 
 A form write is a navigation like any other, so a later navigation can cancel it. See
-[Writes are navigations](#writes-are-navigations). The draft then stays in the form, and the write
-isn't retried. The Back button doesn't clear drafts either.
+[Writes are navigations](#writes-are-navigations). The form keeps what the user typed until that
+field's URL value changes. The write isn't retried.
 
 ### Delay a field
 

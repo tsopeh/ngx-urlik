@@ -91,9 +91,9 @@ describe('query writes', () => {
     ]);
   });
 
-  // Like router.navigate(), a patch reads the committed query when called and the newest
-  // navigation wins. These cases record what that costs.
-  it('lets the second same-turn write supersede the first', async () => {
+  // Like router.navigate(), a patch reads the committed query when called, and the newest
+  // navigation wins.
+  it('cancels the first of two writes started in the same turn', async () => {
     const { app, router } = setup();
     await router.navigateByUrl('/results?search=a');
     const results = app.routes.RESULTS;
@@ -104,7 +104,7 @@ describe('query writes', () => {
     expect(router.url).toBe('/results?search=ac');
   });
 
-  it('loses a parent write that a same-turn child write supersedes', async () => {
+  it('cancels a child route write when a parent route writes in the same turn', async () => {
     const { app, router } = setup();
     await router.navigateByUrl('/results?locale=en&search=old');
     const first = app.routes.RESULTS.patchQuery({ search: 'new' });
@@ -114,7 +114,7 @@ describe('query writes', () => {
     expect(router.url).toBe('/results?locale=fr&search=old');
   });
 
-  it('lets an external navigation supersede a write that started before it', async () => {
+  it('cancels running writes when a router navigation starts', async () => {
     const entered = deferred<void>();
     const release = deferred<boolean>();
     let hold = false;
@@ -135,7 +135,7 @@ describe('query writes', () => {
     expect(router.url).toBe('/other');
   });
 
-  it('lets a write that starts later cancel a write that a guard redirects', async () => {
+  it('cancels a redirected write when a later write starts', async () => {
     let router!: Router;
     const setupResult = setup((route) =>
       route.queryParamMap.get('search') === 'redirect' ? router.parseUrl('/other') : true,
@@ -150,7 +150,7 @@ describe('query writes', () => {
     expect(router.url).toBe('/results?search=old&locale=fr');
   });
 
-  it('uses fresh URL state even if equality retains an older signal value', async () => {
+  it('merges into the URL even when equality keeps an older signal value', async () => {
     const { app, router } = setup(undefined, () => true);
     await router.navigateByUrl('/results?locale=en&search=old');
     const results = app.routes.RESULTS;

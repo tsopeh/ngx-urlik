@@ -40,7 +40,7 @@ Interact with the URL exclusively through the typed `RouteNode`.
 There is a fundamental difference between draft state (what the user is typing right now) and committed state (what the URL holds).
 
 - **Rule:** Never bind rapid text inputs directly to the URL. Doing so destroys UX and pollutes browser history.
-- **Binding:** Use `createQueryParamsSignalForm(node)` to isolate the draft state. The form holds the user's unfinished edits; the URL holds the committed truth. If an external navigation occurs (like a back button press), the form automatically resets to match the URL.
+- **Binding:** Use `createQueryParamsSignalForm(node)` to isolate the draft state. The form holds the user's unfinished edits; the URL holds the committed truth. When the URL changes a field's value, for example after Back, the form takes the new value, unless that field has an edit that hasn't been written yet. A write to one field never touches another field the user is typing in.
 
 - **Timing and validity:** Delay Signal Forms fields with Angular's `debounce()` schema rule and Reactive Forms fields with the binding's `debounce` option. Pass `writeWhen: 'valid'` to hold invalid input back. Put value shaping, such as trimming, in the codec.
 - **Dependent fields:** Reset fields such as `page` in the binding's `beforeWrite` (`(patch) => ('search' in patch ? { page: 1, ...patch } : patch)`), or set them in the same `patchQuery()` patch (`patchQuery({ search, page: 1 })`).

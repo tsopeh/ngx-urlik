@@ -45,8 +45,8 @@ matched path, reads scope values from it by position, collects the persisted fie
 value is missing or fails to decode, and returns a `RedirectCommand` with those fields filled in.
 The path-codec check comes first in `canMatch` and the restore check last, so a route that fails
 its codecs or its own `canMatch` guards never redirects. The reader asks the same module for a
-stored value before it falls back to a default; stored text that fails to decode is removed there. `route-node.ts` saves the active
-chain's persisted values on each `NavigationEnd`.
+stored value before it falls back to a default; stored text that fails to decode is removed there.
+`route-node.ts` saves the active chain's persisted values on each `NavigationEnd`.
 
 For a named route with persisted trailing placeholders, `compileRoutes` inserts unnamed routes
 right after it, one per count of missing placeholders, each with `restorePathMatcher` and a static
@@ -66,32 +66,31 @@ also runs a browser injector of the same definition, such as a test, never resto
 ## Write
 
 `patchQuery` in `route-node.ts` reads the committed query, merges the patch, serializes every
-declared field into the current URL tree, and calls `router.navigateByUrl()`. There is no
-scheduling layer. Angular's rule applies: the newest navigation cancels any that is still running.
-Two writes that overlap therefore don't combine; the later one wins.
+declared field into the current URL tree, and calls `router.navigateByUrl()` with the caller's
+options. Angular's rule applies: the newest navigation cancels any that is still running.
 
 ## Follow a form edit
 
 `projects/ngx-urlik/forms/query-forms.ts` adapts both Angular form systems to the same binding. The
 form holds a draft that may be waiting for a debounce or a guard. The URL holds committed state.
 
-The binding remembers each edit as an object. On success, it clears the object that write
-submitted. If the user has edited the same field again, the newer object stays. Incoming URL
-values are combined with outstanding edits before the form is updated.
+The binding uses only the public route node. It reads `params()` and writes with `patchQuery()`.
 
-One form notification can change several fields; the fields that write at once share one
+Each edit is stored as an object in `staged`, keyed by field. When a write settles, whatever the
+result, the binding removes the objects that write sent. If the user edited the field again in the
+meantime, the newer object stays. The form keeps showing what the user typed either way.
+
+`committed` holds the URL values the form last took in. When `params()` changes, a field follows
+the URL only if its URL value differs from `committed` and the field has no staged edit. A write to
+one field therefore never touches another field the user is typing in.
+
+One form notification can change several fields. The fields that write at once share one
 navigation. A Reactive Forms field with a `debounce` entry waits on its own timer. With
-`writeWhen: 'valid'`, an invalid field goes into a held set, and the binding retries the held set
-whenever the form's validity changes, which is how a field waits for an async validator. Right
-before a write navigates, `beforeWrite` may change its fields; only the edited fields are
-acknowledged when the write settles, so fields it adds return to the form from the URL. A write
-acknowledges its edits when it settles, whatever the result. The form keeps showing the draft, and
-the draft is not retried.
+`writeWhen: 'valid'`, an invalid field goes into `held`, and the binding tries the held fields again
+whenever the form's validity changes. That is how a field waits for an async validator.
 
-Destroying the binding clears the debounce timers. The forms package uses only the public route
-node: it reads `params()` and writes with `patchQuery()`. To leave a field the user is typing in
-alone, the binding remembers the URL values it last took in, and a field follows the URL only when
-its URL value changes.
+Right before a write navigates, `beforeWrite` may change its fields. Fields it adds are not staged,
+so they come back into the form from the URL. Destroying the binding clears its timers.
 
 ## Check a change
 
@@ -105,7 +104,7 @@ Library test paths below are relative to `projects/ngx-urlik`.
 | Parameter decoding        | `src/lib/parameter-state.spec.ts`               |
 | Reads during navigation   | `src/lib/navigation-reads.spec.ts`              |
 | Server rendering          | `src/lib/server-rendering.spec.ts`              |
-| Query write ordering      | `src/lib/query-updates.spec.ts`                 |
+| Query writes              | `src/lib/query-updates.spec.ts`                 |
 | Query form bindings       | `src/lib/query-forms.spec.ts`                   |
 | Global query observations | `src/lib/global-query.spec.ts`                  |
 | Default equality          | `src/lib/is-equal.spec.ts`                      |

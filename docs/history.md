@@ -16,7 +16,7 @@ as its first argument so Go to Definition reaches the route name. Form bindings 
 their values in browser storage and restore them into the URL, and `clearPersisted()` forgets them. A stored value that fails to
 decode is removed when it is read.
 
-Several 0.1.0 ideas carried over: codecs separate from placement, deterministic construction, the
-shared write queue, form drafts, `activeRoute()`, and read-only global observation.
+Several 0.1.0 ideas carried over: codecs separate from placement, deterministic construction, form
+drafts, `activeRoute()`, and read-only global observation.
 [Design decisions](decisions.md) records why. The [README](../README.md) describes
 current behavior. There is no migration path because the library has not been published.

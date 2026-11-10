@@ -76,7 +76,7 @@ describe('query forms', () => {
     expect(starts).toEqual(['/results?search=new&page=2']);
   });
 
-  it('keeps an invalid draft when an external navigation changes the field', async () => {
+  it('keeps a held draft when a navigation changes that field', async () => {
     const { results, router } = await setup();
     const form = TestBed.runInInjectionContext(() =>
       createQueryParamsFormGroup(results, { writeWhen: 'valid' }),
@@ -91,7 +91,7 @@ describe('query forms', () => {
     expect(form.controls.search.value).toBe('draft');
   });
 
-  it('loses a form write that a same-turn direct patch supersedes', async () => {
+  it('keeps the draft and reports a decline when a same-turn patch cancels the write', async () => {
     const { results, router } = await setup();
     const onWriteFailure = vi.fn();
     const form = TestBed.runInInjectionContext(() =>
@@ -227,7 +227,7 @@ describe('query forms', () => {
       expect(starts).toEqual(['/results?page=2', '/results?page=2&search=elm']);
     });
 
-    it('still writes a pending debounced field after an external navigation', async () => {
+    it('writes a debounced field on top of a navigation that lands during its delay', async () => {
       const { results, router } = await setup();
       const form = TestBed.runInInjectionContext(() =>
         createQueryParamsFormGroup(results, { debounce: { search: 40 } }),

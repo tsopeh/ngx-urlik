@@ -1,7 +1,7 @@
 {
   "name": "ngx-urlik",
   "version": "0.2.0",
-  "description": "Named routes and typed URL parameters for Angular Router, with signal state and coordinated query writes.",
+  "description": "Named routes and typed URL parameters for Angular Router, with signal reads, query patches, and form bindings.",
   "license": "MIT",
   "keywords": [
     "angular",

@@ -11,7 +11,7 @@ Start with the reader's task or the behavior they need to understand. Show a sma
 Then explain what happens and why. Introduce a term when it gives a useful name to something
 the example already shows.
 
-Use concrete subjects and verbs: “The queue runs one write at a time.” Give each paragraph one
+Use concrete subjects and verbs: “A patch is one navigation.” Give each paragraph one
 idea, and make the next paragraph answer the question that idea raises. Prefer familiar words;
 keep technical terms when they make the explanation more exact.
 
@@ -31,8 +31,8 @@ answer. End when the document has done its job.
 
 Instead of:
 
-> Synchronous transformed emissions from one form notification submit their changed fields
-> together as one atomic write to the shared coordinator.
+> Synchronously emitted changes from one form notification are aggregated into a single atomic
+> navigation request.
 
 Write:
 

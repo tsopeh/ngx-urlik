@@ -33,7 +33,7 @@ export interface QueryParamsBindingOptions<Q extends QueryState> {
    */
   readonly writeWhen?: 'always' | 'valid';
   /**
-   * Adjusts a write right before it is queued. Receives the fields about to be written and the
+   * Adjusts a write right before it navigates. Receives the fields about to be written and the
    * whole draft, and returns the fields to write, such as the same patch with `page: 1`.
    */
   readonly beforeWrite?: (patch: Partial<Q>, draft: Q) => Partial<Q>;

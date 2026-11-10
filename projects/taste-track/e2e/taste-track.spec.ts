@@ -146,9 +146,7 @@ test('restores library select values and browser back/forward state', async ({ p
   await expect(page.getByRole('searchbox', { name: 'Search history' })).toHaveValue('inference');
 });
 
-test('browser back cancels a staged search instead of replaying it on forward', async ({
-  page,
-}) => {
+test('leaving the page with Back drops a pending debounced search', async ({ page }) => {
   await page.clock.install();
   await page.goto('/library');
   await page

@@ -113,12 +113,13 @@ declared route. Integrations that need arbitrary URLs, relative commands, or out
 `AppRouter.escapeHatch`, which mirrors a chosen set of native operations with Angular's types. It
 leaves out configuration mutation, raw router state, and lifecycle controls.
 
-Typed `navigate()` and `patchQuery()` reject `browserUrl`, which could show an address the typed destination did not
-produce. There is no custom link directive: a typed `UrlTree` goes to Angular's `RouterLink`.
+Typed `navigate()` and `patchQuery()` reject `browserUrl`, which could show an address the typed
+destination did not produce. There is no custom link directive: a typed `UrlTree` goes to Angular's `RouterLink`.
 Router options go on `defineAppRouter()`, so the configuration and the typed catalog are declared
 together.
 
-**Cost:** Angular's `Router` stays injectable, and calls through it bypass the types. The library discourages that path instead of blocking it: the docs give an ESLint
+**Cost:** Angular's `Router` stays injectable, and calls through it bypass the types. The library
+discourages that path instead of blocking it: the docs give an ESLint
 [configuration](../README.md#flag-direct-router-use) that warns on `Router` and
 `ActivatedRoute` imports. Nothing enforces the boundary at runtime.
 
@@ -146,12 +147,8 @@ editor or lint diagnostics must reuse the runtime rules, not define a second set
 
 A query write is one `navigateByUrl()` call, built from the committed URL when it is called. If
 two writes overlap, the later one cancels the earlier one, as with two `router.navigate()` calls.
-
-An earlier design sent every write through one queue per router. Each write waited its turn and
-read the latest URL, so overlapping writes combined, and an outside navigation such as Back
-cancelled waiting writes. It was removed because overlapping query writes did not cause reported
-problems in real projects, while the queue added a second set of timing rules to learn on top of
-Angular's.
+Anyone who knows Angular's router already knows the rules, and a patch, a link, and the Back
+button all behave the same way.
 
 **Cost:** two writes started in the same turn, or a write that starts while a slow guard or
 resolver runs, lose the earlier write's fields. A debounced form field still writes after the user
@@ -178,9 +175,8 @@ the common case took a `groupBy`/`mergeMap` pipeline, it duplicated native Signa
 and it could not reset another field, such as the page.
 
 A field follows the URL only when the URL's value for that field changes, so a write to another
-field never replaces what the user is typing. The binding needs nothing beyond the public route
-node, `params()` and `patchQuery()`, so the forms package has no private bridge into the core.
-Writes replace the history entry by default, because each keystroke is not a place the user wants
+field never replaces what the user is typing. The binding uses only the public route node:
+`params()` to read and `patchQuery()` to write. Writes replace the history entry by default, because each keystroke is not a place the user wants
 to return to.
 
 **Cost:** forms bind only query fields, as flat controls; nested groups and `FormArray` are not
