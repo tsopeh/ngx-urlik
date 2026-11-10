@@ -177,8 +177,11 @@ An earlier design exposed an RxJS stream of field changes. It could express any 
 the common case took a `groupBy`/`mergeMap` pipeline, it duplicated native Signal Forms debounce,
 and it could not reset another field, such as the page.
 
-A draft stays until it is written or the binding is destroyed. Writes replace the history entry by
-default, because each keystroke is not a place the user wants to return to.
+A field follows the URL only when the URL's value for that field changes, so a write to another
+field never replaces what the user is typing. The binding needs nothing beyond the public route
+node, `params()` and `patchQuery()`, so the forms package has no private bridge into the core.
+Writes replace the history entry by default, because each keystroke is not a place the user wants
+to return to.
 
 **Cost:** forms bind only query fields, as flat controls; nested groups and `FormArray` are not
 supported. Failed writes are reported, not retried. Debounce is configured differently in the two

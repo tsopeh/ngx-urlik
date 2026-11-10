@@ -693,11 +693,12 @@ effect. Model updates made before that effect runs go out as one write.
 Form writes replace the current history entry. So typing `elm` doesn't leave three Back-button
 stops. Pass `replaceUrl: false` if you want them.
 
-A field keeps its draft until the draft is written. URL changes from anywhere update the other
-fields. They don't touch what the user is typing, or whether a field is touched or dirty.
+A field follows the URL only when the URL's value for that field changes. A write to another
+field leaves what the user is typing alone. A field with an edit that hasn't been written yet keeps
+the edit even then. URL changes never touch whether a field is touched or dirty.
 
-After a write, the form keeps what the user typed if it means the same URL value. Say the codec
-trims. The user types `'elm '`. The URL gets `?search=elm`. The input keeps its trailing space.
+After its own write, the form keeps what the user typed. Say the codec trims. The user types
+`'elm '`. The URL gets `?search=elm`. The input keeps its trailing space.
 
 A form write is a navigation like any other, so a later navigation can cancel it. See
 [Writes are navigations](#writes-are-navigations). The draft then stays in the form, and the write
@@ -779,10 +780,9 @@ back invalid fields, and after any delay has ended. `patch` has only the fields 
 `draft` is the whole form. Whatever you return is written. An `undefined` field keeps its URL value,
 as in `patchQuery()`.
 
-Use `beforeWrite` for other fields. Shape a field's own value in its codec. Here's why. Say
-`beforeWrite` trims `search`. The URL value then differs from what the user typed. The URL value
-wins and replaces the draft. Fields that `beforeWrite` adds aren't drafts either. After the write,
-the form reads them from the URL.
+Use `beforeWrite` for other fields. Shape a field's own value in its codec, so links and patches
+write it the same way. Fields that `beforeWrite` adds aren't drafts. After the write, the form reads
+them from the URL.
 
 ### Failed writes
 

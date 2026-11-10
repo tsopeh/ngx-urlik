@@ -29,6 +29,3 @@ export {
   type RouteStateOf,
   type UrlParamsState,
 } from './lib/app-router';
-
-// Keep the internal bridge available to the forms entry point.
-export { getQueryBinding as ɵgetQueryBinding } from './lib/query-binding';

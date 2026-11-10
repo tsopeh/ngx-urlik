@@ -84,13 +84,14 @@ navigation. A Reactive Forms field with a `debounce` entry waits on its own time
 `writeWhen: 'valid'`, an invalid field goes into a held set, and the binding retries the held set
 whenever the form's validity changes, which is how a field waits for an async validator. Right
 before a write navigates, `beforeWrite` may change its fields; only the edited fields are
-acknowledged when the write commits, so fields it adds return to the form from the URL. A write
-acknowledges its edits when it succeeds, or when Angular skips it because the URL already holds
-them. A cancelled write leaves its edits staged; they are not retried.
+acknowledged when the write settles, so fields it adds return to the form from the URL. A write
+acknowledges its edits when it settles, whatever the result. The form keeps showing the draft, and
+the draft is not retried.
 
-Destroying the binding clears the edits, the held set, and the debounce timers. The private
-`ɵgetQueryBinding` bridge gives the forms package access to fresh route state and the route's
-write function.
+Destroying the binding clears the debounce timers. The forms package uses only the public route
+node: it reads `params()` and writes with `patchQuery()`. To leave a field the user is typing in
+alone, the binding remembers the URL values it last took in, and a field follows the URL only when
+its URL value changes.
 
 ## Check a change
 

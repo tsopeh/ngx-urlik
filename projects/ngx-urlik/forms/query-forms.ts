@@ -10,10 +10,13 @@ import {
 } from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
 import { FieldTree, form as signalForm, SchemaOrSchemaFn } from '@angular/forms/signals';
-import { isEqual, ɵgetQueryBinding } from 'ngx-urlik';
+import { isEqual } from 'ngx-urlik';
 
 type QueryState = Readonly<Record<string, unknown>>;
-type QueryRoute<Q extends QueryState> = { readonly params: Signal<{ readonly query: Q }> };
+type QueryRoute<Q extends QueryState> = {
+  readonly params: Signal<{ readonly query: Q }>;
+  patchQuery(patch: Partial<Q>, options?: { replaceUrl?: boolean }): Promise<boolean>;
+};
 
 export type QueryParamsFormControls<Q extends QueryState> = {
   [K in keyof Q]: FormControl<Q[K]>;
@@ -63,8 +66,18 @@ const bindQueryParams = <Q extends QueryState>(
 ): void => {
   const destroyRef = inject(DestroyRef);
   const errorHandler = inject(ErrorHandler);
-  const binding = ɵgetQueryBinding<Q>(route);
-  let observed = binding.read() ?? route.params().query;
+  // The route can go inactive before the binding is destroyed. The form then keeps its values.
+  const read = (): Q | undefined => {
+    try {
+      return route.params().query;
+    } catch {
+      return undefined;
+    }
+  };
+  let observed = route.params().query;
+  // The URL values the form last took in. A field follows the URL only when its URL value changes,
+  // so a write from elsewhere leaves a field the user is typing in alone.
+  let committed = observed;
   // Each edit identifies the draft that a write may acknowledge. Newer edits remain pending.
   type Edit = { value: Q[keyof Q] };
   const staged = new Map<keyof Q, Edit>();
@@ -73,13 +86,6 @@ const bindQueryParams = <Q extends QueryState>(
   const timers = new Map<keyof Q, ReturnType<typeof setTimeout>>();
   let destroyed = false;
   adapter.reset(observed);
-
-  const clearPending = () => {
-    for (const timer of timers.values()) clearTimeout(timer);
-    timers.clear();
-    held.clear();
-    staged.clear();
-  };
 
   const reportFailure = (failure: QueryWriteFailure) => {
     if (options.onWriteFailure) options.onWriteFailure(failure);
@@ -111,49 +117,39 @@ const bindQueryParams = <Q extends QueryState>(
         return;
       }
     }
-    // Only the edited fields are acknowledged. Fields that beforeWrite adds come back from the URL.
-    // Angular skips a navigation to the same URL, so a draft the URL already holds counts as written.
-    const acknowledge = (result: boolean) => {
-      const query = binding.read();
-      for (const [param, edit] of edits)
-        if (
-          staged.get(param) === edit &&
-          (result || (query && binding.sameUrlValue(param, edit.value, query[param])))
-        )
-          staged.delete(param);
-      synchronize();
+    // Once the write settles, the URL value counts as taken in, and the form keeps what the user
+    // typed. With a trimming codec, 'elm ' stays in the input while the URL gets 'elm'. Fields that
+    // beforeWrite adds aren't edits, so they come back from the URL.
+    const settle = () => {
+      const query = read();
+      for (const [param, edit] of edits) {
+        if (staged.get(param) !== edit) continue;
+        staged.delete(param);
+        if (query) committed = { ...committed, [param]: query[param] };
+      }
     };
-    void binding
-      .update(
-        (query) => {
-          // As in patchQuery, an undefined field keeps its value.
-          const supplied = Object.entries(patch).filter(([, value]) => value !== undefined);
-          return { ...query, ...Object.fromEntries(supplied) };
-        },
-        { replaceUrl: options.replaceUrl ?? true },
-      )
-      .then((result) => {
+    void route.patchQuery(patch, { replaceUrl: options.replaceUrl ?? true }).then(
+      (result) => {
         if (destroyed) return;
-        acknowledge(result);
+        settle();
         if (!result) reportFailure({ kind: 'declined' });
-      })
-      .catch((error: unknown) => {
-        if (!destroyed) reportFailure({ kind: 'error', error });
-      });
+      },
+      (error: unknown) => {
+        if (destroyed) return;
+        settle();
+        reportFailure({ kind: 'error', error });
+      },
+    );
   };
 
   const synchronize = () => {
-    const incoming = binding.read();
+    const incoming = read();
     if (!incoming) return;
-    const next = { ...incoming };
-    for (const param of Object.keys(next) as (keyof Q)[]) {
-      const pending = staged.get(param);
-      if (pending) next[param] = pending.value;
-      // A draft that encodes to the committed value is already in the URL, such as 'elm ' with a
-      // trimming codec. Keep what the user typed instead of replacing it mid-edit.
-      else if (binding.sameUrlValue(param, observed[param], incoming[param]))
-        next[param] = observed[param];
-    }
+    const next = { ...observed };
+    for (const param of Object.keys(incoming) as (keyof Q)[])
+      if (!staged.has(param) && !isEqual(committed[param], incoming[param]))
+        next[param] = incoming[param];
+    committed = incoming;
     if (!isEqual(next, observed)) {
       observed = next;
       adapter.write(next);
@@ -193,7 +189,7 @@ const bindQueryParams = <Q extends QueryState>(
   const urlEffect = effect(() => synchronize());
   destroyRef.onDestroy(() => {
     destroyed = true;
-    clearPending();
+    for (const timer of timers.values()) clearTimeout(timer);
     stopFormChanges();
     stopValidityChanges();
     urlEffect.destroy();
@@ -228,7 +224,7 @@ export function createQueryParamsFormGroup<Q extends QueryState>(
   route: QueryRoute<Q>,
   options: QueryParamsFormGroupOptions<Q> = {},
 ): FormGroup<QueryParamsFormControls<Q>> {
-  const query = ɵgetQueryBinding<Q>(route).read() ?? route.params().query;
+  const query = route.params().query;
   const controls = Object.fromEntries(
     Object.entries(query).map(([param, value]) => [
       param,
@@ -285,9 +281,7 @@ export function createQueryParamsSignalForm<Q extends QueryState>(
   route: QueryRoute<Q>,
   options: CreateQueryParamsSignalFormOptions<Q> = {},
 ): Readonly<{ model: WritableSignal<Q>; form: FieldTree<Q> }> {
-  const model = signal(
-    ɵgetQueryBinding<Q>(route).read() ?? route.params().query,
-  ) as WritableSignal<Q>;
+  const model = signal(route.params().query) as WritableSignal<Q>;
   const result = options.schema ? signalForm(model, options.schema) : signalForm(model);
   bindQueryParamsToSignalForm(route, result, options);
   return { model, form: result };
