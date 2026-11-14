@@ -6,7 +6,7 @@ import {
   makeEnvironmentProviders,
 } from '@angular/core';
 import { provideRouter, Router, RouterFeatures } from '@angular/router';
-import type { ContextualRouteArray, GeneratedAppRouter, InferDefinition } from './app-router-types';
+import type { GeneratedAppRouter, RouteArrayInput } from './app-router-types';
 import { RouteDefinitions, validateRouteDefinitions } from './route-definition';
 import { AppRouterDiagnostics, createDiagnosticReporter } from './route-diagnostics';
 import { compileRoutes } from './compiled-route';
@@ -50,7 +50,7 @@ export function defineAppRouter<
 >(
   routeNames: E,
   options: {
-    routes: InferDefinition<R> & ContextualRouteArray<NoInfer<R>>;
+    routes: RouteArrayInput<R>;
     diagnostics?: AppRouterDiagnostics;
   },
 ): {

@@ -11,5 +11,5 @@
       "ngx-urlik/forms": ["../dist/ngx-urlik/forms"]
     }
   },
-  "include": ["consumer.ts"]
+  "include": ["consumer.ts", "large-app.generated.ts"]
 }

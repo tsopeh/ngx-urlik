@@ -286,6 +286,47 @@ describe('defineAppRouter with Angular route arrays', () => {
     ).toBe('/items/a%2Fb%3Fc');
   });
 
+  it("builds the same tree as Angular's createUrlTree", () => {
+    const definition = defineAppRouter(
+      { HOME: RouteNames.HOME, ITEM: RouteNames.ITEM },
+      {
+        routes: [
+          {
+            path: '',
+            queryParams: { q: queryParam({ codec: stringCodec() }) },
+            children: [
+              {
+                path: '',
+                pathMatch: 'full',
+                routeName: RouteNames.HOME,
+                component: EmptyComponent,
+              },
+              { path: 'items/:id', routeName: RouteNames.ITEM, component: EmptyComponent },
+            ],
+          },
+        ],
+      },
+    );
+    const { appRouter, router } = setup(
+      definition,
+      withRouterConfig({ defaultQueryParamsHandling: 'merge' }),
+    );
+    const angular = (commands: string[], queryParams = {}, fragment?: string) =>
+      router.createUrlTree(commands, { queryParams, queryParamsHandling: 'replace', fragment });
+
+    expect(appRouter.routes.HOME.createUrlTree()).toEqual(angular(['/']));
+    expect(appRouter.routes.HOME.createUrlTree({ query: { q: 'oak' }, fragment: '' })).toEqual(
+      angular(['/'], { q: 'oak' }, ''),
+    );
+    expect(
+      appRouter.routes.ITEM.createUrlTree({
+        path: { id: 'a/b;c' },
+        query: { q: 'x y' },
+        fragment: 'top',
+      }),
+    ).toEqual(angular(['/', 'items', 'a/b;c'], { q: 'x y' }, 'top'));
+  });
+
   it('inherits query definitions through unnamed ancestors and allows path/query name overlap', async () => {
     const definition = defineAppRouter(
       { EPISODE: RouteNames.EPISODE },

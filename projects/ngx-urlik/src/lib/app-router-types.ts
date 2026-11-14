@@ -61,8 +61,8 @@ export type PathParamsOf<N> = N extends RouteNode<infer P, infer _Q, infer _R> ?
 export type RouteStateOf<N> = N extends { params: Signal<infer S> } ? S : never;
 export type RouteQueryPatch<N> = Partial<Readonly<QueryParamsOf<N>>>;
 
-// Let TypeScript infer each route object first, then check its nested fields.
-export type InferDefinition<T> = {
+// Lets TypeScript infer each field's literal type, nested objects included, before the checks apply.
+type InferDefinition<T> = {
   [K in keyof T]: T[K] &
     (unknown extends T[K]
       ? unknown
@@ -92,75 +92,93 @@ type AccumulatedPath<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
 type AccumulatedQuery<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
 type RouteKey = keyof Route | 'routeName' | 'pathParam' | 'queryParams';
 
-// Checks one route where it's written: only known keys, a literal routeName, codecs only for real
-// placeholders, and no query key a parent already declares.
-type ContextualRoute<D, AncestorQuery> = {
-  [K in keyof D]: K extends RouteKey
-    ? K extends 'children'
-      ? D[K] extends readonly unknown[]
-        ? ContextualRouteArray<D[K], AccumulatedQuery<D, AncestorQuery>>
-        : never
-      : K extends 'routeName'
-        ? D extends { path: '**' } | { redirectTo: unknown }
-          ? never
-          : D[K] extends string
-            ? string extends D[K]
-              ? never
-              : D[K]
+// What a field must be: only known keys, a literal routeName, codecs only for real placeholders,
+// and no query key a parent already declares.
+type FieldCheck<D, K extends keyof D, AncestorQuery> = K extends RouteKey
+  ? K extends 'children'
+    ? Exclude<D[K], undefined> extends readonly unknown[]
+      ? unknown
+      : never
+    : K extends 'routeName'
+      ? D extends { path: '**' } | { redirectTo: unknown }
+        ? never
+        : D[K] extends string
+          ? string extends D[K]
+            ? never
+            : D[K]
+          : never
+      : K extends 'pathParam'
+        ? PathConfig<OwnPathNames<D>, D[K]>
+        : K extends 'queryParams'
+          ? D[K] extends QueryDefinitions
+            ? Record<Extract<keyof D[K], keyof AncestorQuery>, never>
             : never
-        : K extends 'pathParam'
-          ? PathConfig<OwnPathNames<D>, D[K]>
-          : K extends 'queryParams'
-            ? D[K] extends QueryDefinitions
-              ? Record<Extract<keyof D[K], keyof AncestorQuery>, never>
-              : never
-            : K extends keyof Route
-              ? Route[K]
-              : never
-    : never;
-} & (D extends { matcher: unknown } ? { readonly path?: string } : { readonly path: string });
-
-/** Type checks for a literal route array, applied to each route where it's written. */
-export type ContextualRouteArray<R, AncestorQuery = object> = R extends readonly unknown[]
-  ? number extends R['length']
-    ? R extends readonly Route[]
-      ? R
-      : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery> }
-    : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery> }
+          : K extends keyof Route
+            ? Route[K]
+            : never
   : never;
+
+// A route needs a path unless it has a matcher. A path that's there is checked as a field.
+type PathRequirement<D> = D extends { matcher: unknown }
+  ? { readonly path?: string }
+  : 'path' extends keyof D
+    ? unknown
+    : { readonly path: string };
+
+// Infers one route from the literal and checks each field where it's written. The checks sit in
+// NoInfer, so they never change what TypeScript infers.
+type RouteInput<D, AncestorQuery> = {
+  [K in keyof D]: K extends 'children'
+    ? RouteArrayInput<D[K], AccumulatedQuery<D, AncestorQuery>> &
+        NoInfer<FieldCheck<D, K, AncestorQuery>>
+    : InferDefinition<D>[K] & NoInfer<FieldCheck<D, K, AncestorQuery>>;
+} & NoInfer<PathRequirement<D>>;
+
+/**
+ * Infers a literal route array and checks each route where it's written. Every level is one
+ * mapped type, so TypeScript compares a route array element by element.
+ */
+export type RouteArrayInput<R, AncestorQuery = object> = {
+  readonly [K in keyof R]: RouteInput<R[K], AncestorQuery>;
+};
 
 type CompiledRouteNode<D, AP, AQ, Required extends PropertyKey> = RouteNode<
   AccumulatedPath<D, AP>,
   AccumulatedQuery<D, AQ>,
   Required | RequiredQueryKeys<D>
 >;
-type NamedNode<D, AP, AQ, Required extends PropertyKey> = D extends {
+type Entry<Name extends string, Node> = { readonly name: Name; readonly node: Node };
+type NamedEntry<D, AP, AQ, Required extends PropertyKey> = D extends {
   path: string;
   routeName: infer Name extends string;
 }
   ? D extends { path: '**' } | { redirectTo: unknown }
-    ? object
-    : Readonly<Record<Name, CompiledRouteNode<D, AP, AQ, Required>>>
-  : object;
-// Walks the route tree and gives each named route its node, with every parent's values included.
+    ? never
+    : Entry<Name, CompiledRouteNode<D, AP, AQ, Required>>
+  : never;
+type ChildEntries<D, AP, AQ, Required extends PropertyKey> = D extends {
+  children: infer Children extends readonly unknown[];
+}
+  ? RouteEntries<
+      Children,
+      AccumulatedPath<D, AP>,
+      AccumulatedQuery<D, AQ>,
+      Required | RequiredQueryKeys<D>
+    >
+  : never;
+// One entry per named route, with every parent's values included. It maps over each array instead
+// of walking it one route at a time, so the recursion only goes as deep as the routes nest.
 type RouteEntries<
-  R,
+  R extends readonly unknown[],
   AP = object,
   AQ = object,
   Required extends PropertyKey = never,
-> = R extends readonly [infer D, ...infer Rest]
-  ? NamedNode<D, AP, AQ, Required> &
-      (D extends { children: infer Children extends readonly unknown[] }
-        ? RouteEntries<
-            Children,
-            AccumulatedPath<D, AP>,
-            AccumulatedQuery<D, AQ>,
-            Required | RequiredQueryKeys<D>
-          >
-        : object) &
-      RouteEntries<Rest, AP, AQ, Required>
-  : object;
-type NamedRoutes<R> = Simplify<RouteEntries<R>>;
+> = {
+  [I in keyof R]: NamedEntry<R[I], AP, AQ, Required> | ChildEntries<R[I], AP, AQ, Required>;
+}[number];
+type NamedRoutes<R> = R extends readonly unknown[]
+  ? { readonly [E in RouteEntries<R> as E['name']]: E['node'] }
+  : never;
 type PathCodecs = Readonly<Record<string, UrlParamCodec<unknown>>>;
 type GlobalValues<P extends PathCodecs, Q extends QueryDefinitions> = Readonly<{
   path: Readonly<{ [K in keyof P]: CodecValue<P[K]> | null }>;

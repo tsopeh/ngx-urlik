@@ -77,7 +77,7 @@ export function createParameterReader(report: ReportParameterFailure) {
     info: Pick<CompiledRoute, 'label' | 'pattern' | 'pathParams' | 'queryParams'>,
     params: ParamMap,
     query: ParamMap,
-    attemptedPath: string,
+    attemptedUrl: () => string,
     cache?: ValueCache,
   ): RuntimeState => {
     const path: Record<string, unknown> = {};
@@ -86,7 +86,7 @@ export function createParameterReader(report: ReportParameterFailure) {
         const value = raw === null ? undefined : decode(param, raw);
         if (value === undefined) {
           throw new Error(
-            `${info.label}: can't read path parameter '${param.name}' from '${attemptedPath}' for route '${info.pattern}'`,
+            `${info.label}: can't read path parameter '${param.name}' from '${attemptedUrl()}' for route '${info.pattern}'`,
           );
         }
         return value;

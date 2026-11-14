@@ -126,37 +126,52 @@ function matchPathCodecs(
     });
 }
 
+// One router state has one snapshot tree, so its chain and active routes are found once and shared
+// by every signal that reads them.
+const chains = new WeakMap<ActivatedRouteSnapshot, readonly ActivatedRouteSnapshot[]>();
+const activeRoutes = new WeakMap<
+  ActivatedRouteSnapshot,
+  ReadonlyMap<CompiledRoute, ActivatedRouteSnapshot>
+>();
+
+const primaryChild = (snapshot: ActivatedRouteSnapshot) =>
+  snapshot.children.find((child) => child.outlet === 'primary');
+
+/** The snapshots from the root down through the primary outlet. */
+export function getPrimaryActiveChain(
+  root: ActivatedRouteSnapshot,
+): readonly ActivatedRouteSnapshot[] {
+  let chain = chains.get(root);
+  if (!chain) {
+    const snapshots = [root];
+    for (let child = primaryChild(root); child; child = primaryChild(child)) {
+      snapshots.push(child);
+    }
+    chain = snapshots;
+    chains.set(root, chain);
+  }
+  return chain;
+}
+
+/** The snapshot where `target` is active, or `null` if it isn't. */
 export function findActiveRoute(
   root: ActivatedRouteSnapshot,
   target: CompiledRoute,
 ): ActivatedRouteSnapshot | null {
-  if (compiledRouteOf(root) === target) {
-    return root;
-  }
-  for (const child of root.children) {
-    if (child.outlet !== 'primary') {
-      continue;
+  let active = activeRoutes.get(root);
+  if (!active) {
+    const routes = new Map<CompiledRoute, ActivatedRouteSnapshot>();
+    for (const snapshot of getPrimaryActiveChain(root)) {
+      const info = compiledRouteOf(snapshot);
+      const firstMatch = info !== undefined && !routes.has(info);
+      if (firstMatch) {
+        routes.set(info, snapshot);
+      }
     }
-    const found = findActiveRoute(child, target);
-    if (found) {
-      return found;
-    }
+    active = routes;
+    activeRoutes.set(root, active);
   }
-  return null;
-}
-
-export function getPrimaryActiveChain(root: ActivatedRouteSnapshot): ActivatedRouteSnapshot[] {
-  const chain = [root];
-  let current = root;
-  while (current.children.length) {
-    const primary = current.children.find((c) => c.outlet === 'primary');
-    if (!primary) {
-      break;
-    }
-    current = primary;
-    chain.push(current);
-  }
-  return chain;
+  return active.get(target) ?? null;
 }
 
 /** The compiled route an Angular snapshot came from, if ngx-urlik compiled it. */

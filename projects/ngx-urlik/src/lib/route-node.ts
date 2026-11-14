@@ -3,8 +3,11 @@ import {
   ActivatedRouteSnapshot,
   NavigationBehaviorOptions,
   NavigationEnd,
+  PRIMARY_OUTLET,
   Router,
   RouterState,
+  UrlSegment,
+  UrlSegmentGroup,
   UrlTree,
 } from '@angular/router';
 import { filter } from 'rxjs';
@@ -100,14 +103,15 @@ export function createAppRouter(
 
   const createUrlTree = (info: CompiledRoute, values: LinkValues = {}): UrlTree => {
     const { path = {}, query = {}, fragment } = values;
-    const commands: unknown[] = ['/'];
-    for (const segment of info.fullSegments) {
-      commands.push(
-        segment.kind === 'static'
-          ? segment.value
-          : serializePath(segment.param, path[segment.name]),
-      );
-    }
+    const segments = info.fullSegments.map(
+      (segment) =>
+        new UrlSegment(
+          segment.kind === 'static'
+            ? segment.value
+            : serializePath(segment.param, path[segment.name]),
+          {},
+        ),
+    );
     const queryParams: Record<string, string> = {};
     for (const param of info.queryParams) {
       // Like patchQuery(), `undefined` leaves a field out, so a caller can pass an optional value.
@@ -119,11 +123,12 @@ export function createAppRouter(
         queryParams[param.name] = output;
       }
     }
-    return router.createUrlTree(commands, {
-      queryParams,
-      queryParamsHandling: 'replace',
-      fragment: fragment ?? undefined,
-    });
+    // A typed link is absolute, with known segments, so it skips Angular's command parsing. It
+    // builds the same tree Angular's createUrlTree(['/', ...segments]) would.
+    const children: Record<string, UrlSegmentGroup> = segments.length
+      ? { [PRIMARY_OUTLET]: new UrlSegmentGroup(segments, {}) }
+      : {};
+    return new UrlTree(new UrlSegmentGroup([], children), queryParams, fragment ?? null);
   };
 
   const readActiveState = (
@@ -131,8 +136,8 @@ export function createAppRouter(
     active: ActivatedRouteSnapshot,
     values?: ValueCache,
   ) => {
-    // Named in the error when a path value doesn't decode.
-    const url =
+    // Named in the error when a path value doesn't decode, so it's built only then.
+    const url = () =>
       '/' + active.pathFromRoot.flatMap((snapshot) => snapshot.url.map((s) => s.path)).join('/');
     return readState(info, activePathParams(info, active), active.queryParamMap, url, values);
   };
