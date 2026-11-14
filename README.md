@@ -712,8 +712,8 @@ type ResultsQuery = QueryParamsOf<typeof results>; // { search: string; minRatin
 
 ## TasteTrack demo
 
-[`projects/demo-app`](projects/demo-app) is a small movie and TV journal built with ngx-urlik. Run
-`npm ci` and `npm start` from the repo root.
+[`projects/demo-app`](projects/demo-app) is a small movie and TV journal built with ngx-urlik. Try
+it at <https://tsopeh.github.io/ngx-urlik>, or run `npm ci` and `npm start` from the repo root.
 
 Change the movie genres, sort, and page size, then reload. The filters come back, because they're in
 the URL. Then open Brambleworth Manor, season 2, episode 1. The URL is
