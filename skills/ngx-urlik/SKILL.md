@@ -1,82 +1,124 @@
 ---
 name: ngx-urlik
-description: Use for any task involving Angular routing, URL state management, or migrating from ActivatedRoute.
+description: Use for any task involving Angular routing, URL state, or moving pages off ActivatedRoute.
 ---
 
 # ngx-urlik
 
-**Philosophy: The URL is the Source of Truth.**
-Most front-end complexity comes from trying to reinvent state management. But the web already has a foundational state store: the URL. It is the only state that survives a page reload, the only state a user can bookmark, and the only state you can safely share. If state isn't in the URL, it doesn't really exist. `ngx-urlik` enforces this reality by turning the URL into a strictly typed, declarative data store.
+ngx-urlik puts typed values in the URL. You declare each value once, on its route, with a codec and
+a default. Then you read it as a signal, change it with a patch, and build links that TypeScript
+checks. The URL holds the page's state, so a reload, a bookmark, or a shared link shows the same
+page.
 
-## 1. Declarative Setup & Migration
+## 1. Declare the route
 
-When moving a component from the native `ActivatedRoute` to `ngx-urlik`, the goal is to eliminate implicit state and untyped reads.
+When you move a component off `ActivatedRoute`, declare everything it reads from the URL.
 
-- **Schema:** Find the `defineAppRouter` catalog. Declare path placeholders in `pathParam` and query fields in `queryParams`. Define explicit `defaultValue`s for optional parameters. If a parameter isn't typed here, it shouldn't be read.
-- **Injections:** Purge native routing tokens. Remove `ActivatedRoute` and `Router`. Inject `AppRouter`.
+- Find the `defineAppRouter()` call. Put path placeholders in `pathParam` and query fields in
+  `queryParams`. Give optional fields a `defaultValue`. Don't read a value the route doesn't
+  declare.
+- Remove `ActivatedRoute` and `Router` from the component. Inject `AppRouter`.
 
-**Completion criterion**: Every parameter the component touches is defined in the schema with a codec. Zero `ActivatedRoute` or `Router` tokens remain in the file.
+**Done when** every value the component uses has a codec on its route, and the file doesn't
+mention `ActivatedRoute` or `Router`.
 
 **Where routes go**
 
-- Declare every route in the single `defineAppRouter()` call, as a literal array. Do not split it into `Routes`-typed arrays in other files; a widened array produces no typed routes.
-- Load pages lazily with `loadComponent`. A named route, and every route above it, cannot use `loadChildren`. `loadComponent` needs a standalone component.
-- Converting a lazy feature module: move its routes into the router file, replace its `component` entries with `loadComponent`, and move the module's `providers` to the route above its pages. Leave unconverted features on `loadChildren`; they keep working, untyped.
-- Convert one feature or page at a time. Code that still uses `ActivatedRoute` reads the same URL. Calls through Angular's `Router` navigate the same router, so both styles work side by side.
+- Declare every route in the one `defineAppRouter()` call, as a literal array. Don't split routes
+  into `Routes`-typed arrays in other files. An array typed as `Routes` gives no typed routes.
+- Load pages lazily with `loadComponent`, which needs a standalone component. A named route, and
+  every route above it, can't use `loadChildren`.
+- To convert a lazy feature module, move its routes into the router file. Replace its `component`
+  entries with `loadComponent`. Move the module's `providers` to the route above its pages. Leave
+  features you haven't converted on `loadChildren`. They keep working, untyped.
+- Convert one feature or page at a time. Code that still uses `ActivatedRoute` reads the same URL,
+  and calls through Angular's `Router` go to the same router. Both styles work side by side.
 
-## 2. State & Writes
+## 2. Read and write
 
-Interact with the URL exclusively through the typed `RouteNode`.
+Go through the typed route, `AppRouter.routes.NAME`.
 
-- **Read:** Convert RxJS subscriptions into synchronous signal reads (`node.params().query.search`). Read parameters within a `computed()` or template. If the route is inactive, reading it throws—only read active routes.
-- **Guards and resolvers:** Read the destination with `node.paramsFrom(route)`, passing the snapshot Angular gives the guard or resolver. `params()` still describes the previous page there.
-- **Write:** Call `node.patchQuery(patch)`. Provide only the fields that actually changed. Each patch is one navigation built from the committed URL, and a later navigation cancels it, so change fields that go together in one patch.
-- **Build Links:** Call `node.createUrlTree(inputs)` for deterministic link generation that ignores current URL context.
+- **Read:** replace RxJS subscriptions with signal reads, like `route.params().query.search`. Read
+  in a `computed()` or a template. Reading an inactive route throws, so read only routes that are
+  active.
+- **Guards and resolvers:** read the destination with
+  `appRouter.paramsSnapshot(appRouter.routes.NAME, snapshot)`, passing the snapshot Angular gives
+  the guard or resolver. It returns plain values, not a signal. There, `params()` still shows the
+  page being left.
+- **Write:** call `route.patchQuery(patch)` with only the fields that changed. Each patch is one
+  navigation, built from the URL at the moment you call it. A later navigation cancels it. So put
+  fields that change together in one patch.
+- **Links:** call `route.createUrlTree(values)`. The link uses only the values you pass, never the
+  current URL.
 
-**Completion criterion**: All parameter reads are synchronous signals. Every URL update is a `patchQuery` or `navigate` call.
+**Done when** every read is a signal, and every URL change is a `patchQuery()` or `navigate()`
+call.
 
-## 3. Forms and Drafts
+## 3. Forms
 
-There is a fundamental difference between draft state (what the user is typing right now) and committed state (what the URL holds).
+A form holds the draft: what the user is typing right now. The URL holds what's been written.
 
-- **Rule:** Never bind rapid text inputs directly to the URL. Doing so destroys UX and pollutes browser history.
-- **Binding:** Use `createQueryParamsSignalForm(node)` to isolate the draft state. The form holds the user's unfinished edits; the URL holds the committed truth. When the URL changes a field's value, for example after Back, the form takes the new value, unless that field has an edit that hasn't been written yet. A write to one field never touches another field the user is typing in.
+- Don't write every keystroke to the URL. It fills the Back button with half-typed searches.
+- Bind the form with `createQueryParamsSignalForm(route)` or `createQueryParamsFormGroup(route)`.
+  When the URL changes a field, for example after Back, the form takes the new value, unless that
+  field has an edit that hasn't been written yet. A write to one field never touches another field
+  the user is typing in.
+- **Timing and validity:** delay Signal Forms fields with Angular's `debounce()` schema rule. Delay
+  Reactive Forms fields with the binding's `debounce` option. Pass `writeWhen: 'valid'` to hold
+  back invalid input. Put value shaping, like trimming, in the codec.
+- **Fields that depend on others:** reset fields like `page` in the binding's `beforeWrite`:
+  `(patch) => ('search' in patch ? { page: 1, ...patch } : patch)`. Without a form, set them in the
+  same patch: `patchQuery({ search, page: 1 })`.
 
-- **Timing and validity:** Delay Signal Forms fields with Angular's `debounce()` schema rule and Reactive Forms fields with the binding's `debounce` option. Pass `writeWhen: 'valid'` to hold invalid input back. Put value shaping, such as trimming, in the codec.
-- **Dependent fields:** Reset fields such as `page` in the binding's `beforeWrite` (`(patch) => ('search' in patch ? { page: 1, ...patch } : patch)`), or set them in the same `patchQuery()` patch (`patchQuery({ search, page: 1 })`).
+**Done when** text inputs and debounced controls go through a bound form, never straight to
+`patchQuery()`.
 
-**Completion criterion**: Text inputs and debounced controls bind to a draft form, never directly to `patchQuery`.
+## 4. Reference
 
-## 4. Primitives & Reference
+**Codecs** turn a URL string into a value and back.
 
-Consult these primitives when configuring a node in `defineAppRouter`.
+- `stringCodec()`, `numberCodec()`, `booleanCodec()`.
+- `enumCodec(values)` takes a readonly string array, a tuple, or a string record.
+- `listCodec(item, separator)` joins items into one value, like `?a=1,2`. An array field is a
+  `queryParam` with a `listCodec` and `defaultValue: []`.
+- For anything else, like dates or "positive integers only", write a `UrlParamCodec`: `serialize`
+  and `deserialize`, each returning `null` for a value it can't convert. Write one text per value,
+  and don't call `inject()`.
 
-**Codecs**
-Codecs strictly translate between strings and types.
+**Defaults** are plain values. A fallback that needs a service, like the user's locale, goes in the
+page: declare the field without a default and read `query.locale ?? settings.locale()`.
 
-- Primitives: `stringCodec()`, `numberCodec()`, `booleanCodec()`.
-- Enums: `enumCodec(values)` accepts readonly string arrays, tuples, or records.
-- Lists: `listCodec(item, separator)` joins items into one value (`?a=1,2`). Use it with `queryParam` and `defaultValue: []`.
+**Redirects** stay unnamed Angular routes. A `redirectTo` function can return a typed link, such as
+`inject(AppRouter).routes.HOME.createUrlTree()`. Give it a `UrlTree` return type, or TypeScript
+can't infer `AppRouter`.
 
-**Cardinality**
+**Comparison** is by URL text. `params` fires only when a field's text changes, and an unchanged
+field keeps the same value object. A query value that writes the same text as its default leaves
+the URL.
 
-- `queryParam`: A single deterministic value.
-- `repeatedQueryParam`: An array represented as repeated keys (`?a=1&a=2`).
-
-**Persistence**
-
-- `queryParam({ codec, defaultValue, persist: { key, storage: 'local' | 'session', scope? } })` saves the committed value and writes it back into a URL that lacks it. Keys cannot contain `:`. Persisted fields always appear in the URL; repeated fields and fields without a default cannot persist. A named route's trailing placeholders can persist too (`pathParam: { codec, persist }`): the URL without them redirects to the stored values. That shorter URL is always the route's own path minus those placeholders, so choose the path with it in mind (`tv/:showId/s/:seasonNumber` restores at `tv/:showId/s`), and add an ordinary redirect after the route for when nothing is stored. A stored value that fails to decode is removed. A value that decodes but the backend rejects is the app's to handle. `router.clearPersisted()` forgets stored values, for example on a reset button or after such a rejection.
-
-**Comparators (`isEqual`)**
-You can provide a custom `isEqual` function in the node configuration to override how the `params` signal evaluates equality for complex objects.
-
-**Shared Components (`activeRoute`)**
-If a component exists across multiple routes, it cannot depend on a single hardcoded `RouteNode`. Use `activeRoute` to dynamically resolve the deepest active candidate:
+**`ifActive`** is a signal on every route. It holds the route itself while that route or one of
+its children shows, and `null` otherwise. A component that serves several routes asks each one and
+reads through what it returns, never through another route:
 
 ```ts
-const active = router.activeRoute({ A: routes.A, B: routes.B });
-// active() returns { route, node, params, createUrlTree, patchQuery }
+const { MOVIE, EPISODE } = appRouter.routes;
+const id = computed(() => {
+  const episode = EPISODE.ifActive();
+  return episode ? episode.params().path.episodeId : MOVIE.params().path.movieId;
+});
 ```
 
-**Global Queries**
-To read query parameters that exist independently of the active route hierarchy, use `router.globalQueryParams(schema)`. This yields a readonly signal without affecting URL writes.
+In templates: `@if (routes.EPISODE.ifActive(); as episode) { … episode.params() … }`. Read and
+write fields the routes share through their parent route, like `BROWSE.patchQuery()`. Check nested
+routes deepest first, because a parent's `ifActive()` returns the parent too. For a nav bar, bind
+`[class.active]="route.ifActive()"`.
+
+**`globalParams({ path, query })`** reads values on every page: `path` maps placeholder names to
+codecs, and `query` takes query fields. A path value is `null` where no active route has that
+placeholder. It's read-only, and nothing throws. In guards and resolvers, use
+`globalParamsSnapshot(definitions, snapshot)`, which also works on routes without a `routeName`.
+
+**Remembering values** is the app's job. Save path values from `globalParams()` in an `effect()`.
+Give a remembered query field no default, so the URL holds it only when someone set it. Save it from
+`globalParams()` too, and fall back to the saved value where the page reads it:
+`query.pageSize ?? saved() ?? 24`.
