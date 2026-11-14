@@ -60,9 +60,10 @@ A form holds the draft: what the user is typing right now. The URL holds what's 
 
 - Don't write every keystroke to the URL. It fills the Back button with half-typed searches.
 - Bind the form with `createQueryParamsSignalForm(route)` or `createQueryParamsFormGroup(route)`.
-  When the URL changes a field, for example after Back, the form takes the new value, unless that
-  field has an edit that hasn't been written yet. A write to one field never touches another field
-  the user is typing in.
+  When the URL changes a field, for example after Back, the form takes the new value and drops an
+  edit of that field still waiting for its debounce. Other unwritten edits, like one held by
+  `writeWhen: 'valid'`, stay. A write to one field never touches another field the user is typing
+  in.
 - **Timing and validity:** delay Signal Forms fields with Angular's `debounce()` schema rule. Delay
   Reactive Forms fields with the binding's `debounce` option. Pass `writeWhen: 'valid'` to hold
   back invalid input. Put value shaping, like trimming, in the codec.

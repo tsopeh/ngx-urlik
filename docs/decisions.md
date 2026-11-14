@@ -213,7 +213,7 @@ Say the page is on `?page=4`, and two patches start in the same tick: `{ search:
 
 **Cost:** two writes started in the same tick lose the first write's fields. So does a write that
 starts while a slow guard or resolver runs. A debounced form field still writes after the user
-presses Back, if the page is still active. Code that changes several fields together should do it
+presses Back, if Back left that field alone. Code that changes several fields together should do it
 in one patch.
 
 ## Let forms hold drafts, and the URL hold what's written

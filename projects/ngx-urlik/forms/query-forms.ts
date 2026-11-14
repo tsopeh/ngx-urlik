@@ -154,18 +154,18 @@ const bindQueryParams = <Q extends QueryState>(
     const stillPending = () => [...edits].some(([param, edit]) => pending.get(param) === edit);
     // Once the write settles, the URL value counts as taken in, and the form keeps what the user
     // typed. With a trimming codec, 'elm ' stays in the input while the URL gets 'elm'. Fields that
-    // beforeWrite adds aren't edits, so they come back from the URL.
+    // beforeWrite adds aren't edits, so they come back from the URL. A field edited again takes in
+    // the value too, so this write doesn't pass for a navigation from elsewhere.
     const settle = () => {
       countSending(edits.keys(), -1);
       const query = read();
       for (const [param, edit] of edits) {
-        const editedAgain = pending.get(param) !== edit;
-        if (editedAgain) {
-          continue;
-        }
-        pending.delete(param);
         if (query) {
           lastUrl = { ...lastUrl, [param]: query[param] };
+        }
+        const editedAgain = pending.get(param) !== edit;
+        if (!editedAgain) {
+          pending.delete(param);
         }
       }
     };
@@ -209,6 +209,16 @@ const bindQueryParams = <Q extends QueryState>(
     const next = { ...formValue };
     for (const param of fieldsOf(incoming)) {
       const urlChanged = !Object.is(lastUrl[param], incoming[param]);
+      // A navigation from elsewhere, like Back, replaces an edit still waiting for its debounce, as
+      // Signal Forms' debounce() does. While a write of the field runs, the change may be that
+      // write, so the edit stays.
+      const replacesWaitingEdit =
+        urlChanged && timers.has(param) && (sending.get(param) ?? 0) === 0;
+      if (replacesWaitingEdit) {
+        clearTimeout(timers.get(param));
+        timers.delete(param);
+        pending.delete(param);
+      }
       const editing = pending.has(param);
       if (urlChanged && !editing) {
         next[param] = incoming[param];

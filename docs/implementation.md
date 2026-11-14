@@ -69,7 +69,11 @@ that resolves `false` reports a decline only if one of its objects is still pend
 
 `lastUrl` holds the URL values the form last took in. When `params()` changes, a field follows the
 URL only if its URL value differs from `lastUrl` and the field has no pending edit. So a write to
-one field never touches another field the user is typing in.
+one field never touches another field the user is typing in. The one exception is an edit still
+waiting for its debounce. A new URL value for that field, as after Back, drops the edit and its
+timer, unless a write of that field runs. When a write settles, `lastUrl` takes the URL value of
+every field it carried, even one the user edited again. So the form's own write never looks like a
+navigation from elsewhere.
 
 One form change can touch several fields. The fields that write right away share one navigation. A
 Reactive Forms field with a `debounce` entry waits on its own timer. With `writeWhen: 'valid'`, an

@@ -820,8 +820,10 @@ const filters = createQueryParamsFormGroup(results, { debounce: { search: 300 } 
 ```
 
 The user types `elm` and stops. The search writes 300 ms later. Other fields write right away and
-don't disturb the waiting search. A navigation in between doesn't drop it either: it writes on top
-of whatever the URL is when the delay ends. Leaving the page drops it.
+don't disturb the waiting search. A navigation that changes only other fields doesn't drop it
+either: it writes on top of whatever the URL is when the delay ends. A navigation that changes the
+search drops it. Press Back to `?search=oak` while `elm` waits, and the input shows `oak`. Signal
+Forms' `debounce()` does the same. Leaving the page drops it too.
 
 ### Holding back invalid input
 

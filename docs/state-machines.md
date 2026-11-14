@@ -105,28 +105,30 @@ the field ignores URL changes, Back included, until the user edits it again.
 
 ### Transitions
 
-| Event                                           | From             | To        | What else happens                                                   |
-| ----------------------------------------------- | ---------------- | --------- | ------------------------------------------------------------------- |
-| Edit `===` to `formValue`                       | any              | same      | nothing                                                             |
-| Edit, no debounce                               | any              | Sending   | new edit object; one write for all fields changed                   |
-| Edit, with debounce                             | any              | Waiting   | new edit object; timer restarts                                     |
-| Timer fires                                     | Waiting          | Sending   | `writeWhen` and `beforeWrite` run first                             |
-| Write starts, field invalid under `writeWhen`   | Waiting, Sending | Held      | no navigation for that field                                        |
-| Write starts, edit is the URL value, none sends | Waiting, Held    | Synced    | no navigation for that field; `beforeWrite` doesn't see it          |
-| Validity changes                                | Held             | Sending   | only if now valid                                                   |
-| `beforeWrite` throws                            | Sending          | Stranded  | error goes to `ErrorHandler`                                        |
-| Write resolves `true`                           | Sending          | Synced    | `lastUrl` takes the URL value                                       |
-| Write resolves `false`, same edit still pending | Sending          | Synced    | reports `declined`                                                  |
-| Write settles, the field was edited again       | Sending          | unchanged | the newer edit stays pending; a decline isn't reported, an error is |
-| Write rejects                                   | Sending          | Synced    | reports `error`                                                     |
-| URL changes, field Synced, URL value is new     | Synced           | Synced    | the form takes the URL value                                        |
-| URL changes, field has a pending edit           | not Synced       | same      | the form keeps the draft                                            |
-| Route goes inactive                             | any              | same      | reads return nothing, the form keeps its values                     |
-| Injection context destroyed                     | any              | gone      | timers cleared; settling writes are ignored                         |
+| Event                                                    | From             | To        | What else happens                                                                                  |
+| -------------------------------------------------------- | ---------------- | --------- | -------------------------------------------------------------------------------------------------- |
+| Edit `===` to `formValue`                                | any              | same      | nothing                                                                                            |
+| Edit, no debounce                                        | any              | Sending   | new edit object; one write for all fields changed                                                  |
+| Edit, with debounce                                      | any              | Waiting   | new edit object; timer restarts                                                                    |
+| Timer fires                                              | Waiting          | Sending   | `writeWhen` and `beforeWrite` run first                                                            |
+| Write starts, field invalid under `writeWhen`            | Waiting, Sending | Held      | no navigation for that field                                                                       |
+| Write starts, edit is the URL value, none sends          | Waiting, Held    | Synced    | no navigation for that field; `beforeWrite` doesn't see it                                         |
+| Validity changes                                         | Held             | Sending   | only if now valid                                                                                  |
+| `beforeWrite` throws                                     | Sending          | Stranded  | error goes to `ErrorHandler`                                                                       |
+| Write resolves `true`                                    | Sending          | Synced    | `lastUrl` takes the URL value                                                                      |
+| Write resolves `false`, same edit still pending          | Sending          | Synced    | reports `declined`                                                                                 |
+| Write settles, the field was edited again                | Sending          | unchanged | the newer edit stays pending; `lastUrl` takes the URL value; a decline isn't reported, an error is |
+| Write rejects                                            | Sending          | Synced    | reports `error`                                                                                    |
+| URL changes, field Synced, URL value is new              | Synced           | Synced    | the form takes the URL value                                                                       |
+| URL changes, field Waiting, URL value is new, none sends | Waiting          | Synced    | timer cleared; the form takes the URL value                                                        |
+| URL changes, any other pending edit                      | not Synced       | same      | the form keeps the draft                                                                           |
+| Route goes inactive                                      | any              | same      | reads return nothing, the form keeps its values                                                    |
+| Injection context destroyed                              | any              | gone      | timers cleared; settling writes are ignored                                                        |
 
 ### Rules that always hold
 
-1. A field with a pending edit never takes a value from the URL.
+1. A field with a pending edit takes a value from the URL only while the edit waits for its
+   debounce, the URL value is new, and no write of that field runs. The edit is dropped then.
 2. A write clears only the edit objects it sent. A newer edit of the same field survives.
 3. A field is in `held` only while it has a pending edit. A new edit takes it out.
 4. A field has a timer only while it has a pending edit.

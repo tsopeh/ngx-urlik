@@ -288,9 +288,19 @@ asks.
   when a write really failed (`d040827`, then `18dc692`), and don't write an edit that ends at the
   URL's value (`22e6d54`).
 
+- **A waiting debounce gives way to Back** (Nov 14). A Reactive Forms edit waiting for its debounce
+  wrote on top of a navigation that changed the same field. Typing `elm` and pressing Back to
+  `?search=oak` ended at `?search=elm`. Now that navigation drops the edit, as Signal Forms'
+  `debounce()` already did. A settling write also records its own URL value for a field edited
+  again, so the form doesn't mistake that write for Back.
+
 **Open:** the maintainer considered dropping the Reactive Forms `debounce` option for Angular's
 experimental `debounced()`, which delays reading a value instead of writing it. They deferred it on
-Nov 13: "leave out debouncing for now."
+Nov 13: "leave out debouncing for now." On Nov 14 we compared the two again. Delaying reads makes
+every keystroke a navigation, with its router events, analytics, and Safari's limit of 100
+`replaceState()` calls in 30 seconds. A page that delays only the search also reads a mix of two
+URLs, because `beforeWrite` resets the page right away. The Back problem above was the main case
+for delaying reads, and it's fixed. Still open.
 
 ## Remembering values outside the URL
 

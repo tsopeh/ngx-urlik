@@ -8,8 +8,8 @@ import {
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Validators } from '@angular/forms';
-import { minLength } from '@angular/forms/signals';
-import { NavigationStart, Router } from '@angular/router';
+import { debounce, minLength } from '@angular/forms/signals';
+import { NavigationEnd, NavigationStart, Router } from '@angular/router';
 import { createQueryParamsFormGroup, createQueryParamsSignalForm } from 'ngx-urlik/forms';
 import { defineAppRouter } from './app-router';
 import { numberCodec, queryParam, stringCodec, UrlParamCodec } from './params';
@@ -299,7 +299,7 @@ describe('query forms', () => {
     });
   });
 
-  describe('reactive debounce', () => {
+  describe('debounce', () => {
     it('writes a debounced field after its last change without delaying other fields', async () => {
       const { results, router } = await setup();
       const starts: string[] = [];
@@ -321,7 +321,7 @@ describe('query forms', () => {
       expect(starts).toEqual(['/results?page=2', '/results?page=2&search=elm']);
     });
 
-    it('writes a debounced field on top of a navigation that lands during its delay', async () => {
+    it('writes a debounced field on top of a navigation that changes other fields', async () => {
       const { results, router } = await setup();
       const form = TestBed.runInInjectionContext(() =>
         createQueryParamsFormGroup(results, { debounce: { search: 40 } }),
@@ -332,6 +332,66 @@ describe('query forms', () => {
       await vi.waitFor(() => expect(router.url).toBe('/results?page=3&search=stale'));
       expect(form.controls.search.value).toBe('stale');
     });
+
+    it('drops a debounced reactive edit when a navigation changes that field', async () => {
+      const { results, router } = await setup();
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { debounce: { search: 40 } }),
+      );
+
+      // The user types, then presses Back to a URL with another search before the delay ends.
+      form.controls.search.setValue('elm');
+      await router.navigateByUrl('/results?search=oak');
+      TestBed.flushEffects();
+      expect(form.controls.search.value).toBe('oak');
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(router.url).toBe('/results?search=oak');
+    });
+
+    it('drops a debounced signal form edit when a navigation changes that field', async () => {
+      const { results, router } = await setup();
+      const { form } = TestBed.runInInjectionContext(() =>
+        createQueryParamsSignalForm(results, { schema: (fields) => debounce(fields.search, 40) }),
+      );
+
+      // controlValue is what an input bound with [formField] sets on each keystroke.
+      form.search().controlValue.set('elm');
+      await router.navigateByUrl('/results?search=oak');
+      TestBed.flushEffects();
+      expect(form.search().controlValue()).toBe('oak');
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(router.url).toBe('/results?search=oak');
+    });
+
+    it.each(['after', 'before'])(
+      "keeps a debounced edit when that field's earlier write lands, if the form follows the URL %s the write settles",
+      async (order) => {
+        const { results, router } = await setup();
+        const form = TestBed.runInInjectionContext(() =>
+          createQueryParamsFormGroup(results, { debounce: { search: 20 } }),
+        );
+        const starts: string[] = [];
+        router.events.subscribe((event) => {
+          if (event instanceof NavigationStart) {
+            starts.push(event.url);
+            // The user types again while the write of 'el' runs.
+            if (event.url === '/results?search=el') {
+              form.controls.search.setValue('elm');
+            }
+          }
+          if (event instanceof NavigationEnd && order === 'before') {
+            TestBed.flushEffects();
+          }
+        });
+
+        form.controls.search.setValue('el');
+        await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
+        expect(starts).toEqual(['/results?search=el', '/results?search=elm']);
+        expect(form.controls.search.value).toBe('elm');
+      },
+    );
   });
 
   describe('beforeWrite', () => {
