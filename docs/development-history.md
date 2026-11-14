@@ -26,6 +26,7 @@ file gives the path that led there. Commit hashes point at the code for each ste
 | Nov 14, 2026    | The README is checked fact by fact against the code. This file starts               |
 | Nov 14, 2026    | Big route trees type-check 17 times faster. Links build 12 times faster             |
 | Nov 14, 2026    | Type tests move to Vitest. Library coverage reaches 99.5% of lines                  |
+| Nov 14, 2026    | Form bindings compare one set of values with the URL                                |
 
 The package version is `0.2.0`. In conversation we call the design after Nov 13 "API version 3".
 The version number hasn't followed, and whether it should is open. Nothing has been published, so
@@ -268,6 +269,17 @@ asks.
   `?search=oak` ended at `?search=elm`. Now that navigation drops the edit, as Signal Forms'
   `debounce()` already did. A settling write also records its own URL value for a field edited
   again, so the form doesn't mistake that write for Back.
+
+- **Forms compare a model with the URL** (Nov 14, branch `refactor/forms-model`). The binding sent
+  each edit on its own and counted the writes still running, so it could tell its own navigations
+  from Back. Now it keeps a model, the values it compares with the URL, and each write carries
+  every field that differs. Reactive Forms' `debounce` delays the move into the model, as Signal
+  Forms' `debounce()` does. The running-write counts, the per-edit objects, and the special Back
+  rule for debounced edits went away. One bug went with them: on `?search=oak&page=3`, typing
+  `elm` and putting `oak` back before that write finished lost page 3.
+- **Codecs lose nothing** (Nov 14). The maintainer set the rule: compressing is fine, but reading
+  must restore the value. No trimming or shortening. The README had shown a trimming codec, and the
+  form kept the trailing space the codec dropped. Both went.
 
 **Where it stands:** open. The maintainer considered dropping the Reactive Forms `debounce` option
 for Angular's experimental `debounced()`, which delays reading a value instead of writing it. They

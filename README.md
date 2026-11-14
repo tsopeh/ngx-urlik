@@ -357,12 +357,11 @@ A codec follows three rules:
 
 - Write one text for each value. The library compares text to tell whether a value changed, or
   sits at its default.
-- Read back what you wrote: `deserialize(serialize(value))` gives an equal value.
+- Lose nothing: `deserialize(serialize(value))` gives back an equal value. Shorter text is fine,
+  like `t:a` for `{ field: 'title', direction: 'asc' }`, as long as reading it restores the whole
+  value. A codec that trims or shortens the value breaks this rule.
 - Stay pure, and don't call `inject()`. A codec runs wherever a value is read or a link is built,
   often outside an injection context.
-
-A codec can also clean up input, like trimming spaces. Then `' elm'` reads as `'elm'`, and writes
-as `elm`.
 
 ### Arrays
 
@@ -795,8 +794,10 @@ button. Pass `replaceUrl: false` if you want them.
 A field follows the URL only when the URL's value for that field changes. So when `page` changes, a
 half-typed `search` stays put. URL changes never mark fields touched or dirty.
 
-After its own write, the form keeps exactly what the user typed. If the codec trims and the user
-types `'elm '`, the URL gets `?search=elm` and the input keeps its trailing space.
+Each write carries every field where the form differs from the URL. Say the user types `elm`, and
+a link to `/results?page=2` cancels that write before it finishes. The input still shows `elm`.
+When the user then picks page 3, one write sends both, and the URL becomes
+`/results?page=3&search=elm`.
 
 ### Debouncing
 
@@ -872,25 +873,24 @@ form, pass both: `patchQuery({ search, page: 1 })`.
 has the whole form. Whatever you return gets written. A field set to `undefined` keeps its URL
 value.
 
-Use it to change other fields. To shape a field's own value, use its codec, so links and patches
-write it the same way. Fields that `beforeWrite` adds aren't drafts. The form reads them back from
-the URL after the write.
+Use it to change other fields, not the field's own value. Fields that `beforeWrite` adds aren't
+drafts. The form reads them back from the URL after the write.
 
-An edit that ends at the URL's value doesn't write, so `beforeWrite` doesn't run. On
-`/results?search=oak&page=3` with a 300 ms debounce, typing `x` and deleting it keeps page 3. The
-one exception is an edit made while that field's last write still runs. Typing `elm` and going back
-to `oak` before the `elm` write finishes writes `oak`, so the `elm` write is cancelled.
+An edit that ends at the URL's value has nothing to write, so `beforeWrite` doesn't run. On
+`/results?search=oak&page=3`, typing `x` and deleting it keeps page 3. If the `x` write is still
+running, the form navigates to the URL as it is. That cancels the `x` write and its page reset.
 
 ### When a write fails
 
 A guard can decline a write, another navigation can cancel it, or it can throw. In every case the
-form keeps what the user typed until that field's URL value changes. Nothing is retried.
+form keeps what the user typed until that field's URL value changes. Nothing is retried on its
+own, but the form's next write carries the field again.
 
 `onWriteFailure` gets `{ kind: 'declined' }` or `{ kind: 'error', error }`. Without it, errors go to
-Angular's `ErrorHandler`, and declines are silent. Typing `elm ` on `?search=elm` with a trimming
-codec isn't a decline: the URL wouldn't change, so `patchQuery()` resolves `true`. Typing `e` then
-`el` quickly isn't either: the `el` write cancels the `e` write and reports for itself. If
-`beforeWrite` throws, the error goes to `ErrorHandler`, nothing is written, and the drafts stay.
+Angular's `ErrorHandler`, and declines are silent. Picking the sort that's already chosen isn't a
+decline: the URL wouldn't change, so `patchQuery()` resolves `true`. Typing `e` then `el` quickly
+isn't either: the `el` write cancels the `e` write and reports for itself. If `beforeWrite` throws,
+the error goes to `ErrorHandler`, nothing is written, and the drafts stay.
 
 Destroying the form drops edits that haven't been written, and their delays. A navigation that
 already started still runs.

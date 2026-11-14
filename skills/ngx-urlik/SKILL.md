@@ -66,7 +66,8 @@ A form holds the draft: what the user is typing right now. The URL holds what's 
   in.
 - **Timing and validity:** delay Signal Forms fields with Angular's `debounce()` schema rule. Delay
   Reactive Forms fields with the binding's `debounce` option. Pass `writeWhen: 'valid'` to hold
-  back invalid input. Put value shaping, like trimming, in the codec.
+  back invalid input. Keep values as the user typed them. If a request needs a trimmed search,
+  trim it where you build the request.
 - **Fields that depend on others:** reset fields like `page` in the binding's `beforeWrite`:
   `(patch) => ('search' in patch ? { page: 1, ...patch } : patch)`. Without a form, set them in the
   same patch: `patchQuery({ search, page: 1 })`.
@@ -84,7 +85,7 @@ A form holds the draft: what the user is typing right now. The URL holds what's 
   `queryParam` with a `listCodec` and `defaultValue: []`.
 - For anything else, like dates or "positive integers only", write a `UrlParamCodec`: `serialize`
   and `deserialize`, each returning `null` for a value it can't convert. Write one text per value,
-  and don't call `inject()`.
+  lose nothing (reading it gives back an equal value), and don't call `inject()`.
 
 **Defaults** are plain values. A fallback that needs a service, like the user's locale, goes in the
 page: declare the field without a default and read `query.locale ?? settings.locale()`.

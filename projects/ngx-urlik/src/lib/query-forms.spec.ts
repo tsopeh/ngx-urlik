@@ -139,12 +139,28 @@ describe('query forms', () => {
     expect(onWriteFailure).not.toHaveBeenCalled();
   });
 
-  describe('with a normalizing codec', () => {
-    const trimmed: UrlParamCodec<string> = {
-      serialize: (value) => (typeof value === 'string' ? value.trim() : null),
-      deserialize: (raw) => raw.trim(),
+  it('writes a draft that another write cancelled with the next change', async () => {
+    const { results, router } = await setup();
+    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
+    form.controls.search.setValue('first');
+    await results.patchQuery({ page: 2 });
+    TestBed.flushEffects();
+    expect(router.url).toBe('/results?page=2');
+
+    form.controls.page.setValue(3);
+    await vi.waitFor(() => expect(router.url).toBe('/results?page=3&search=first'));
+  });
+
+  describe('with an object field', () => {
+    type Sort = { readonly field: string; readonly direction: 'asc' | 'desc' };
+    const sortCodec: UrlParamCodec<Sort> = {
+      serialize: (value) => `${value.field}:${value.direction}`,
+      deserialize: (raw) => {
+        const [field, direction] = raw.split(':');
+        return direction === 'asc' || direction === 'desc' ? { field, direction } : null;
+      },
     };
-    const trimmedSetup = async () => {
+    const sortSetup = async () => {
       const definition = defineAppRouter(
         { RESULTS: RouteNames.RESULTS },
         {
@@ -152,7 +168,13 @@ describe('query forms', () => {
             {
               path: 'results',
               routeName: RouteNames.RESULTS,
-              queryParams: { search: queryParam({ codec: trimmed, defaultValue: '' }) },
+              queryParams: {
+                sort: queryParam({
+                  codec: sortCodec,
+                  defaultValue: { field: 'title', direction: 'asc' },
+                }),
+                page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
+              },
               component: Page,
             },
           ],
@@ -160,49 +182,32 @@ describe('query forms', () => {
       );
       TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
       const router = TestBed.inject(Router);
-      await router.navigateByUrl('/results');
+      await router.navigateByUrl('/results?sort=year:desc');
       return { results: TestBed.inject(definition.AppRouter).routes.RESULTS, router };
     };
 
-    it('keeps a reactive draft that encodes to the committed value', async () => {
-      const { results, router } = await trimmedSetup();
-      const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
-      form.controls.search.setValue('elm ');
-
-      await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
-      TestBed.tick();
-      expect(form.controls.search.value).toBe('elm ');
-
-      await router.navigateByUrl('/results?search=oak');
-      await vi.waitFor(() => expect(form.controls.search.value).toBe('oak'));
-    });
-
-    it('keeps a signal form draft that encodes to the committed value', async () => {
-      const { results, router } = await trimmedSetup();
-      const binding = TestBed.runInInjectionContext(() => createQueryParamsSignalForm(results));
-      binding.model.set({ search: 'elm ' });
-      TestBed.tick();
-
-      await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
-      TestBed.tick();
-      expect(binding.model().search).toBe('elm ');
-    });
-
-    it("doesn't report a decline when the URL already holds the write", async () => {
-      const { results, router } = await trimmedSetup();
-      await router.navigateByUrl('/results?search=elm');
+    it('takes the URL value back after picking the sort that is already chosen', async () => {
+      const { results, router } = await sortSetup();
       const onWriteFailure = vi.fn();
-      const write = vi.spyOn(results, 'patchQuery');
+      const written: string[][] = [];
       const form = TestBed.runInInjectionContext(() =>
-        createQueryParamsFormGroup(results, { onWriteFailure }),
+        createQueryParamsFormGroup(results, {
+          onWriteFailure,
+          beforeWrite: (patch) => {
+            written.push(Object.keys(patch));
+            return patch;
+          },
+        }),
       );
-      form.controls.search.setValue('elm ');
 
-      // The URL wouldn't change, so patchQuery() doesn't navigate.
-      expect(await write.mock.results[0].value).toBe(true);
-      expect(router.url).toBe('/results?search=elm');
+      // A new object with the same text. The URL wouldn't change, so patchQuery() doesn't navigate.
+      form.controls.sort.setValue({ field: 'year', direction: 'desc' });
+      await vi.waitFor(() => expect(form.controls.sort.value).toBe(results.params().query.sort));
       expect(onWriteFailure).not.toHaveBeenCalled();
-      expect(form.controls.search.value).toBe('elm ');
+
+      form.controls.page.setValue(2);
+      await vi.waitFor(() => expect(router.url).toBe('/results?sort=year:desc&page=2'));
+      expect(written).toEqual([['sort'], ['page']]);
     });
   });
 
@@ -472,18 +477,19 @@ describe('query forms', () => {
       expect(form.getRawValue()).toEqual({ search: '', page: 3 });
     });
 
-    it('still writes a search that goes back to its URL value while its write runs', async () => {
+    it('keeps the page when a search goes back to its URL value while its write runs', async () => {
       const { results, router } = await setup();
       await router.navigateByUrl('/results?search=oak&page=3');
       const form = TestBed.runInInjectionContext(() =>
         createQueryParamsFormGroup(results, { beforeWrite: resetPage }),
       );
 
-      // The first write is still running, so going back to 'oak' must cancel it.
+      // The 'elm' write is still running. Going back to 'oak' navigates to the URL as it is, which
+      // cancels that write, page reset and all.
       form.controls.search.setValue('elm');
       form.controls.search.setValue('oak');
       await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(router.url).toBe('/results?search=oak');
+      expect(router.url).toBe('/results?search=oak&page=3');
       expect(form.controls.search.value).toBe('oak');
     });
 

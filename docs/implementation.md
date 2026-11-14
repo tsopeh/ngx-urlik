@@ -102,8 +102,8 @@ Every field value moves between two states: a value in the app and text in the U
 defaults in `route-params-runtime.ts` do the moving. Writing builds a link, a patch, or a form
 write. Reading is `params()`, `globalParams()`, or a snapshot read.
 
-**Rule:** reading what was written gives back the value, after the codec's own cleanup. With a
-trimming codec, `'elm '` reads back as `'elm'`. The table lists every write and what it reads as.
+**Rule:** reading what was written gives back an equal value. A codec loses nothing. The table
+lists every write and what it reads as.
 
 | Write                                     | URL             | Reads back as          |
 | ----------------------------------------- | --------------- | ---------------------- |
@@ -118,96 +118,85 @@ trimming codec, `'elm '` reads back as `'elm'`. The table lists every write and 
 ## Follow a form edit
 
 `bindQueryParams()` in `projects/ngx-urlik/forms/query-forms.ts` connects both Angular form systems
-to the same binding. The form holds a draft that may be waiting for a debounce or a guard. The URL
-holds what's been written. The binding uses only the public route: `params()` to read and
-`patchQuery()` to write.
+to the same binding. The form holds a draft. The URL holds what's been written. The binding uses
+only the public route: `params()` to read and `patchQuery()` to write.
 
-Its state is spread over a few variables:
+The binding keeps a model: the values it compares with the URL. Signal Forms run `debounce()`
+before their model, so the model is the form's value. In Reactive Forms, a field with a `debounce`
+entry moves into the model when its delay ends. Every other field moves in right away.
 
-| Variable    | Holds                                                                 |
-| ----------- | --------------------------------------------------------------------- |
-| `pending`   | Per field, the newest edit not yet settled. Each edit is a new object |
-| `held`      | Fields `writeWhen: 'valid'` held back                                 |
-| `sending`   | Per field, how many writes that carry it are still running            |
-| `timers`    | Per field, the Reactive Forms debounce timer                          |
-| `lastUrl`   | The URL values the form last took in                                  |
-| `formValue` | What the form showed after the last change the binding saw            |
-| `destroyed` | Whether the injection context was destroyed                           |
+| Variable    | Holds                                                        |
+| ----------- | ------------------------------------------------------------ |
+| `model`     | The values the binding compares with the URL                 |
+| `shown`     | What the form showed after the last change the binding saw   |
+| `lastUrl`   | The URL values the form last took in                         |
+| `held`      | Fields `writeWhen: 'valid'` held back                        |
+| `timers`    | Per field, the Reactive Forms debounce timer                 |
+| `writes`    | How many writes the binding has started                      |
+| `running`   | The newest write and the fields it carries, until it settles |
+| `destroyed` | Whether the injection context was destroyed                  |
 
-Each edit goes into `pending` as its own object, keyed by field. When a write settles, whatever the
-result, the binding removes the objects that write sent. If the user edited the field again in the
-meantime, the newer object stays. Either way, the form keeps showing what the user typed. A write
-that resolves `false` reports a decline only if one of its objects is still pending.
+**Model to URL.** When the model changes, the binding writes every field that differs from the
+URL, except the ones `writeWhen` holds back. The newest navigation wins, so a write that carries all
+of them can't lose one to an older write. If the same write is already running, nothing happens.
+If no field differs but an earlier write is running, the binding writes an empty patch.
+`patchQuery()` then navigates to the URL as it is, and that cancels the earlier write. `beforeWrite`
+runs only for a write with fields.
 
-`lastUrl` holds the URL values the form last took in. When `params()` changes, a field follows the
-URL only if its URL value differs from `lastUrl` and the field has no pending edit. So a write to
-one field never touches another field the user is typing in. The one exception is an edit still
-waiting for its debounce. A new URL value for that field, as after Back, drops the edit and its
-timer, unless a write of that field runs. When a write settles, `lastUrl` takes the URL value of
-every field it carried, even one the user edited again. So the form's own write never looks like a
-navigation from elsewhere.
+**URL to model.** When `params()` changes, a field takes the URL's value if three things hold: the
+URL value changed since `lastUrl`, it differs from the model, and the field isn't held. That also
+clears the field's debounce timer, as Signal Forms' `debounce()` does. A navigation that changes
+other fields leaves a draft alone.
 
-One form change can touch several fields. The fields that write right away share one navigation. A
-Reactive Forms field with a `debounce` entry waits on its own timer. With `writeWhen: 'valid'`, an
-invalid field goes into `held`. The binding tries the held fields again whenever the form's
-validity changes. That's how a field waits for an async validator.
-
-Before a write navigates, the binding drops each edit that equals the URL's value, unless
-`sending` shows a write of that field still running. If nothing is left, nothing writes. Then
-`beforeWrite` can change the fields. Fields it adds aren't pending, so they come back into the form
-from the URL. Destroying the binding clears its timers.
+After a write resolves `true`, each field it carried takes the URL's value, unless the user changed
+it since. So picking the sort that's already chosen, a new object with the same text, stops
+differing from the URL. A write that resolves `false` is a decline only when it's the binding's
+newest write and it carried fields. An older write was replaced by the form itself.
 
 ### States of one field
 
-| State    | `pending` | Other                                  |
-| -------- | --------- | -------------------------------------- |
-| Synced   | no        |                                        |
-| Waiting  | yes       | a timer runs                           |
-| Held     | yes       | in `held`                              |
-| Sending  | yes       | a write that sent this edit is running |
-| Stranded | yes       | no timer, not held, no write running   |
+| State   | The model's value                         |
+| ------- | ----------------------------------------- |
+| Synced  | equals the URL value                      |
+| Held    | differs, and `writeWhen` holds it back    |
+| Sending | differs, and the running write carries it |
+| Unsent  | differs, and no running write carries it  |
 
-Synced doesn't mean the form equals the URL. After a trimmed write, the form shows `'elm '` and the
-URL has `elm`. After a declined write, the form keeps the draft.
+A Reactive Forms field can also be Waiting: its timer runs, and the input shows an edit the model
+hasn't taken yet. Waiting sits before the model, so it combines with any state above.
 
-Stranded happens when `beforeWrite` throws. The README promises the draft stays. The cost is that
-the field ignores URL changes, Back included, until the user edits it again.
+A field is Unsent after a guard declines its write, another navigation cancels it, or `beforeWrite`
+throws. The form keeps the draft, and its next write carries the field again.
 
 ### Transitions
 
-| Event                                                    | From             | To        | What else happens                                                                                  |
-| -------------------------------------------------------- | ---------------- | --------- | -------------------------------------------------------------------------------------------------- |
-| Edit `===` to `formValue`                                | any              | same      | nothing                                                                                            |
-| Edit, no debounce                                        | any              | Sending   | new edit object; one write for all fields changed                                                  |
-| Edit, with debounce                                      | any              | Waiting   | new edit object; timer restarts                                                                    |
-| Timer fires                                              | Waiting          | Sending   | `writeWhen` and `beforeWrite` run first                                                            |
-| Write starts, field invalid under `writeWhen`            | Waiting, Sending | Held      | no navigation for that field                                                                       |
-| Write starts, edit is the URL value, none sends          | Waiting, Held    | Synced    | no navigation for that field; `beforeWrite` doesn't see it                                         |
-| Validity changes                                         | Held             | Sending   | only if now valid                                                                                  |
-| `beforeWrite` throws                                     | Sending          | Stranded  | error goes to `ErrorHandler`                                                                       |
-| Write resolves `true`                                    | Sending          | Synced    | `lastUrl` takes the URL value                                                                      |
-| Write resolves `false`, same edit still pending          | Sending          | Synced    | reports `declined`                                                                                 |
-| Write settles, the field was edited again                | Sending          | unchanged | the newer edit stays pending; `lastUrl` takes the URL value; a decline isn't reported, an error is |
-| Write rejects                                            | Sending          | Synced    | reports `error`                                                                                    |
-| URL changes, field Synced, URL value is new              | Synced           | Synced    | the form takes the URL value                                                                       |
-| URL changes, field Waiting, URL value is new, none sends | Waiting          | Synced    | timer cleared; the form takes the URL value                                                        |
-| URL changes, any other pending edit                      | not Synced       | same      | the form keeps the draft                                                                           |
-| Route goes inactive                                      | any              | same      | reads return nothing, the form keeps its values                                                    |
-| Injection context destroyed                              | any              | gone      | timers cleared; settling writes are ignored                                                        |
+| Event                         | From     | To                       | What else happens                                    |
+| ----------------------------- | -------- | ------------------------ | ---------------------------------------------------- |
+| Edit, no debounce             | any      | Synced, Sending, or Held | one write carries every field that differs           |
+| Edit, with debounce           | any      | Waiting                  | timer restarts                                       |
+| Timer fires                   | Waiting  | Synced, Sending, or Held | the model takes the edit                             |
+| A held field becomes valid    | Held     | Sending                  |                                                      |
+| Write resolves `true`         | Sending  | Synced                   | fields the user didn't change take the URL value     |
+| Newest write resolves `false` | Sending  | Unsent                   | reports `declined`                                   |
+| Older write settles           | Sending  | Sending                  | the newer write carries the field and reports itself |
+| Write rejects                 | Sending  | Unsent                   | reports `error`                                      |
+| `beforeWrite` throws          | any      | Unsent                   | error goes to `ErrorHandler`                         |
+| URL changes the field         | not Held | Synced                   | timer cleared; the form shows the URL value          |
+| URL changes the field         | Held     | Held                     | the form keeps the draft                             |
+| URL changes other fields      | any      | same                     |                                                      |
+| Route goes inactive           | any      | same                     | reads return nothing; the form keeps its values      |
+| Injection context destroyed   | any      | gone                     | timers cleared; settling writes are ignored          |
 
 ### Rules that always hold
 
-1. A field with a pending edit takes a value from the URL only while the edit waits for its
-   debounce, the URL value is new, and no write of that field runs. The edit is dropped then.
-2. A write clears only the edit objects it sent. A newer edit of the same field survives.
-3. A field is in `held` only while it has a pending edit. A new edit takes it out.
-4. A field has a timer only while it has a pending edit.
-5. `onWriteFailure` gets `declined` only when the write resolved `false` and an edit it sent is
-   still pending. A write the URL already holds resolves `true`.
-6. After destroy, nothing touches the form.
-7. An edit equal to its field's URL value writes only to cancel a running write of that field. So
-   typing `x` and deleting it on `?search=oak&page=3` keeps page 3, even with a `beforeWrite` that
-   resets the page.
+1. Each write carries every field whose model value differs from the URL, except held ones.
+2. A field takes a value from the URL only when its URL value changes and the field isn't held.
+3. `onWriteFailure` gets `declined` only for the binding's newest write, when it carried fields and
+   resolved `false`. A write the URL already holds resolves `true`.
+4. An edit that ends at the URL's value never runs `beforeWrite`. If an earlier write still runs,
+   the binding navigates to the URL as it is. So typing `x` and deleting it on
+   `?search=oak&page=3` keeps page 3, however fast the user is.
+5. After destroy, nothing touches the form.
 
 ## Check a change
 

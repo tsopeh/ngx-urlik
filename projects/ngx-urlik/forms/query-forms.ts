@@ -51,7 +51,8 @@ export interface QueryParamsFormGroupOptions<
 
 type BindingAdapter<Q extends QueryState> = {
   reset(query: Q): void;
-  write(query: Q): void;
+  /** Sets these fields in the form, without reporting them as a change. */
+  write(changes: Changes<Q>): void;
   /** Whether a field's validators pass, with no async validator still running. */
   valid(param: keyof Q): boolean;
   changes(emit: (query: Q) => void): () => void;
@@ -59,6 +60,12 @@ type BindingAdapter<Q extends QueryState> = {
 };
 
 const fieldsOf = <Q extends QueryState>(query: Q) => Object.keys(query) as (keyof Q)[];
+
+type Changes<Q extends QueryState> = { -readonly [K in keyof Q]?: Q[K] };
+
+const sameFields = <Q extends QueryState>(a: Changes<Q>, b: Changes<Q>) =>
+  Object.keys(a).length === Object.keys(b).length &&
+  fieldsOf(a).every((param) => param in b && Object.is(a[param], b[param]));
 
 const bindQueryParams = <Q extends QueryState>(
   route: QueryRoute<Q>,
@@ -75,22 +82,22 @@ const bindQueryParams = <Q extends QueryState>(
       return undefined;
     }
   };
-  // params() keeps a field's value while its URL text stays the same, and form controls keep a
-  // value until the user edits it. So `Object.is` tells which fields changed.
-  let formValue = route.params().query;
+  // The values the binding compares with the URL. A Reactive Forms field with a debounce moves
+  // into the model when its delay ends. Signal Forms run debounce() before their model.
+  let model = route.params().query;
+  // What the form showed after the last change the binding saw.
+  let shown = model;
   // The URL values the form last took in. A field follows the URL only when its URL value changes,
-  // so a write from elsewhere leaves a field the user is typing in alone.
-  let lastUrl = formValue;
-  // Each edit is its own object. A write clears only the edits it sent, so a newer edit stays.
-  type Edit = { value: Q[keyof Q] };
-  const pending = new Map<keyof Q, Edit>();
+  // so a navigation that changes other fields leaves a draft alone.
+  let lastUrl = model;
   // Fields that writeWhen held back. They try again when the form's validity changes.
   const held = new Set<keyof Q>();
-  // How many writes that carry each field are still running.
-  const sending = new Map<keyof Q, number>();
   const timers = new Map<keyof Q, ReturnType<typeof setTimeout>>();
+  // Each write gets the next number. `running` is the newest write, until it settles.
+  let writes = 0;
+  let running: { readonly id: number; readonly fields: Changes<Q> } | null = null;
   let destroyed = false;
-  adapter.reset(formValue);
+  adapter.reset(model);
 
   const reportFailure = (failure: QueryWriteFailure) => {
     if (options.onWriteFailure) {
@@ -100,84 +107,61 @@ const bindQueryParams = <Q extends QueryState>(
     }
   };
 
-  const countSending = (params: Iterable<keyof Q>, change: 1 | -1) => {
-    for (const param of params) {
-      sending.set(param, (sending.get(param) ?? 0) + change);
+  const show = (changes: Changes<Q>) => {
+    model = { ...model, ...changes };
+    shown = { ...shown, ...changes };
+    adapter.write(changes);
+  };
+
+  // A field the user hasn't touched since the write takes the URL's value. So a value that writes
+  // the same text, like a sort picked again, stops differing from the URL.
+  const takeWrittenValues = (fields: Changes<Q>) => {
+    const url = read();
+    if (!url) {
+      return;
+    }
+    const changes: Changes<Q> = {};
+    for (const param of fieldsOf(fields)) {
+      const untouched =
+        Object.is(model[param], fields[param]) && Object.is(shown[param], fields[param]);
+      if (untouched && !Object.is(url[param], fields[param])) {
+        changes[param] = url[param];
+      }
+    }
+    if (fieldsOf(changes).length) {
+      show(changes);
     }
   };
 
-  /** The pending edits of these fields that should write now. */
-  const editsToWrite = (params: Iterable<keyof Q>) => {
-    const edits = new Map<keyof Q, Edit>();
-    for (const param of params) {
-      const edit = pending.get(param);
-      if (!edit) {
-        continue;
-      }
-      const holdBack = options.writeWhen === 'valid' && !adapter.valid(param);
-      if (holdBack) {
-        held.add(param);
-      } else {
-        held.delete(param);
-        edits.set(param, edit);
-      }
-    }
-    // An edit back to the URL's value, like typing 'x' and deleting it, has nothing to write. It
-    // writes anyway while another write of that field runs, so it can cancel that one.
-    const current = read();
-    for (const [param, edit] of edits) {
-      const backAtUrlValue = current !== undefined && Object.is(current[param], edit.value);
-      const writing = (sending.get(param) ?? 0) > 0;
-      if (backAtUrlValue && !writing) {
-        edits.delete(param);
-        pending.delete(param);
-        lastUrl = { ...lastUrl, [param]: current[param] };
-      }
-    }
-    return edits;
-  };
-
-  const send = (edits: ReadonlyMap<keyof Q, Edit>) => {
-    let patch = Object.fromEntries(
-      [...edits].map(([param, edit]) => [param, edit.value]),
-    ) as Partial<Q>;
-    if (options.beforeWrite) {
+  const send = (fields: Changes<Q>) => {
+    let patch: Partial<Q> = fields;
+    const hasFields = fieldsOf(fields).length > 0;
+    if (options.beforeWrite && hasFields) {
       try {
-        patch = options.beforeWrite(patch, formValue);
+        patch = options.beforeWrite(fields, shown);
       } catch (error) {
-        // The edits stay pending, so the form keeps the draft and a later change can write it.
+        // Nothing is written, so the form keeps the draft and a later change can write it.
         errorHandler.handleError(error);
         return;
       }
     }
-    // A field the user edited again has a newer write, which reports its own failure.
-    const stillPending = () => [...edits].some(([param, edit]) => pending.get(param) === edit);
-    // Once the write settles, the URL value counts as taken in, and the form keeps what the user
-    // typed. With a trimming codec, 'elm ' stays in the input while the URL gets 'elm'. Fields that
-    // beforeWrite adds aren't edits, so they come back from the URL. A field edited again takes in
-    // the value too, so this write doesn't pass for a navigation from elsewhere.
+    const id = ++writes;
+    running = { id, fields };
     const settle = () => {
-      countSending(edits.keys(), -1);
-      const query = read();
-      for (const [param, edit] of edits) {
-        if (query) {
-          lastUrl = { ...lastUrl, [param]: query[param] };
-        }
-        const editedAgain = pending.get(param) !== edit;
-        if (!editedAgain) {
-          pending.delete(param);
-        }
+      if (running?.id === id) {
+        running = null;
       }
     };
-    countSending(edits.keys(), 1);
     void route.patchQuery(patch, { replaceUrl: options.replaceUrl ?? true }).then(
       (result) => {
         if (destroyed) {
           return;
         }
-        const declined = !result && stillPending();
         settle();
-        if (declined) {
+        if (result) {
+          takeWrittenValues(fields);
+        } else if (id === writes && hasFields) {
+          // An older write was replaced by a newer one from this form, so it isn't a decline.
           reportFailure({ kind: 'declined' });
         }
       },
@@ -191,13 +175,39 @@ const bindQueryParams = <Q extends QueryState>(
     );
   };
 
-  const writeFields = (params: Iterable<keyof Q>) => {
+  // Writes every field whose model value differs from the URL, unless writeWhen holds it back.
+  // The newest navigation wins, so each write carries all of them.
+  const writeDraft = () => {
     if (destroyed) {
       return;
     }
-    const edits = editsToWrite(params);
-    if (edits.size) {
-      send(edits);
+    const url = read() ?? lastUrl;
+    const fields: Changes<Q> = {};
+    for (const param of fieldsOf(model)) {
+      const differs = !Object.is(model[param], url[param]);
+      const holdBack = differs && options.writeWhen === 'valid' && !adapter.valid(param);
+      if (holdBack) {
+        held.add(param);
+      } else {
+        held.delete(param);
+      }
+      if (differs && !holdBack) {
+        fields[param] = model[param];
+      }
+    }
+    // The same write again would change nothing. With no fields, a write still navigates to the
+    // URL, so it cancels the form's earlier write, like typing 'x' and deleting it.
+    const nothingNew = running ? sameFields(running.fields, fields) : !fieldsOf(fields).length;
+    if (!nothingNew) {
+      send(fields);
+    }
+  };
+
+  const updateModel = (changes: Changes<Q>) => {
+    const changed = fieldsOf(changes).some((param) => !Object.is(model[param], changes[param]));
+    if (changed) {
+      model = { ...model, ...changes };
+      writeDraft();
     }
   };
 
@@ -206,44 +216,32 @@ const bindQueryParams = <Q extends QueryState>(
     if (!incoming) {
       return;
     }
-    const next = { ...formValue };
+    const changes: Changes<Q> = {};
     for (const param of fieldsOf(incoming)) {
       const urlChanged = !Object.is(lastUrl[param], incoming[param]);
-      // A navigation from elsewhere, like Back, replaces an edit still waiting for its debounce, as
-      // Signal Forms' debounce() does. While a write of the field runs, the change may be that
-      // write, so the edit stays.
-      const replacesWaitingEdit =
-        urlChanged && timers.has(param) && (sending.get(param) ?? 0) === 0;
-      if (replacesWaitingEdit) {
+      const differs = !Object.is(model[param], incoming[param]);
+      if (urlChanged && differs && !held.has(param)) {
+        // A new URL value replaces an edit still waiting for its debounce, as in Signal Forms.
         clearTimeout(timers.get(param));
         timers.delete(param);
-        pending.delete(param);
-      }
-      const editing = pending.has(param);
-      if (urlChanged && !editing) {
-        next[param] = incoming[param];
+        changes[param] = incoming[param];
       }
     }
     lastUrl = incoming;
-    const formChanges = fieldsOf(next).some((param) => !Object.is(next[param], formValue[param]));
-    if (formChanges) {
-      formValue = next;
-      adapter.write(next);
+    if (fieldsOf(changes).length) {
+      show(changes);
     }
   };
 
   const stopFormChanges = adapter.changes((next) => {
-    const immediate: (keyof Q)[] = [];
+    const changes: Changes<Q> = {};
     for (const param of fieldsOf(next)) {
-      const unchanged = Object.is(formValue[param], next[param]);
-      if (unchanged) {
+      if (Object.is(shown[param], next[param])) {
         continue;
       }
-      pending.set(param, { value: next[param] });
-      held.delete(param);
       const delay = options.debounce?.[param];
       if (delay === undefined) {
-        immediate.push(param);
+        changes[param] = next[param];
         continue;
       }
       clearTimeout(timers.get(param));
@@ -251,18 +249,19 @@ const bindQueryParams = <Q extends QueryState>(
         param,
         setTimeout(() => {
           timers.delete(param);
-          writeFields([param]);
+          updateModel({ [param]: shown[param] } as Changes<Q>);
         }, delay),
       );
     }
-    formValue = next;
+    shown = next;
     // Fields that changed together, and have no delay, go out in one navigation.
-    writeFields(immediate);
+    updateModel(changes);
   });
 
   const stopValidityChanges = adapter.validityChanges(() => {
-    if (held.size) {
-      writeFields([...held]);
+    const released = [...held].some((param) => adapter.valid(param));
+    if (released) {
+      writeDraft();
     }
   });
 
@@ -288,7 +287,7 @@ export function bindQueryParamsToFormGroup<Q extends QueryState>(
     route,
     {
       reset: (query) => form.reset(query as never, { emitEvent: false }),
-      write: (query) => form.setValue(query as never, { emitEvent: false }),
+      write: (changes) => form.patchValue(changes as never, { emitEvent: false }),
       valid: (param) => form.controls[param].valid,
       changes: (emit) => {
         const subscription = form.valueChanges.subscribe(() => emit(form.getRawValue() as Q));
@@ -332,7 +331,7 @@ export function bindQueryParamsToSignalForm<Q extends QueryState>(
     route,
     {
       reset: (query) => form().reset(query as never),
-      write: (query) => form().value.set(query as never),
+      write: (changes) => form().value.set({ ...form().value(), ...changes } as never),
       valid: (param) => untracked(() => field(param).valid()),
       changes: (emit) => {
         const watcher = effect(() => {

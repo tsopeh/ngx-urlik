@@ -107,10 +107,12 @@ Take `?from=2026-11-01` read through a `PlainDate` codec. A deep comparison of t
 objects sees no keys, because the class keeps its state in private fields. So it would call every
 two dates equal. Comparing the text `2026-11-01` needs no help from the app.
 
-**Cost:** a codec must write one text for each value. Values from `params()` are shared between
-reads, so code must not change them in place. A form edit that builds a new object equal to the old
-one, like picking the sort that's already chosen, counts as an edit. Its write leaves the URL as it
-is, but `beforeWrite` still runs and can add fields like `page: 1`.
+**Cost:** a codec must write one text for each value, and lose nothing: reading the text gives back
+an equal value. Shorter text is fine. A trimmed value isn't, because the form would take the trimmed
+value back while the user types. Values from `params()` are shared between reads, so code must not
+change them in place. A form edit that builds a new object equal to the old one, like picking the
+sort that's already chosen, counts as an edit. Its write leaves the URL as it is, but `beforeWrite`
+still runs and can add fields like `page: 1`.
 
 ## Build links only from the values you pass
 
@@ -234,6 +236,12 @@ to see from the component whose edit set it off.
 An RxJS stream of field changes could express any timing rule. But the common case would need a
 `groupBy`/`mergeMap` pipeline, it would duplicate Signal Forms' debounce, and it couldn't reset
 another field, like the page.
+
+The binding compares the form's values with the URL, and each write carries every field that
+differs. The newest navigation wins, so a write that carries all of them can't lose a field to an
+older write, and the binding never has to tell its own navigations from Back. A Reactive Forms
+`debounce` delays a field's move into those values, as Signal Forms' `debounce()` does. So Back
+drops a waiting edit in both form systems.
 
 A field follows the URL only when the URL's value for that field changes. So a write to another
 field never replaces what the user is typing. The binding uses only the public route: `params()` to
