@@ -10,7 +10,7 @@ To ask for this style, say **“Use Plainspoken Engineering.”**
 - Say it the way you'd say it out loud. If you wouldn't say a sentence to a friend across the
   table, rewrite it.
 - Write short sentences, with one idea each.
-- Walk through one concrete example with real values: `page=4`, not “a numeric parameter”.
+- Walk through one concrete example with real values: `minRating=4`, not “a numeric parameter”.
 - Say what happens. Then say why.
 - No hype and no hedging. Cut “simply”, “powerful”, “seamless”, “might”, and “generally”.
 - No summary at the end. Stop when you're done.
@@ -25,8 +25,8 @@ Instead of:
 
 Write:
 
-> `form.patchValue({ search: 'elm', page: 1 })` changes both fields in one navigation. If search
-> is debounced by 300 ms, the page writes first and the search writes 300 ms later.
+> `form.patchValue({ search: 'elm', minRating: 0 })` changes both fields in one navigation. If
+> search is debounced by 300 ms, the rating writes first and the search writes 300 ms later.
 
 The second version gives the reader something to try and a result to check.
 

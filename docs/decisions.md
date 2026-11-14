@@ -1,7 +1,7 @@
 # Design decisions
 
-Each entry gives a problem, the choice, and what it costs. The [README](../README.md) has the exact
-rules. Before you reopen a decision, read the alternatives it rejects.
+Each entry gives a problem, the choice, and what it costs. The [README](../README.md) and the
+[agent skill](../skills/ngx-urlik/SKILL.md) have the exact rules. Before you reopen a decision, read the alternatives it rejects.
 [Development history](development-history.md) shows how each choice was reached.
 
 ## Take Angular's route array, and name routes one at a time
@@ -126,7 +126,7 @@ an equal value. Shorter text is fine. A trimmed value isn't, because the form wo
 value back while the user types. Values from `params()` are shared between reads, so code must not
 change them in place. A form edit that builds a new object equal to the old one, like picking the
 sort that's already chosen, counts as an edit. Its write leaves the URL as it is, but `beforeWrite`
-still runs and can add fields like `page: 1`.
+still runs and can add fields like `minRating: 0`.
 
 ## Build links only from the values you pass
 
@@ -223,10 +223,10 @@ writes overlap, the later one cancels the earlier one, as with two `router.navig
 who knows Angular's router already knows the rules. A patch, a link, and the Back button all behave
 the same way.
 
-Say the page is on `?page=4`, and two patches start in the same tick: `{ search: 'elm' }`, then
-`{ page: 2 }`. Both read `?page=4`. The second navigation cancels the first, so the URL ends at
-`?page=2`, without `search`. Write `{ search: 'elm', page: 2 }` as one patch, and both reach the
-URL.
+Say the page is on `?minRating=4`, and two patches start in the same tick: `{ search: 'elm' }`,
+then `{ minRating: 2 }`. Both read `?minRating=4`. The second navigation cancels the first, so the
+URL ends at `?minRating=2`, without `search`. Write `{ search: 'elm', minRating: 2 }` as one patch,
+and both reach the URL.
 
 **Cost:** two writes started in the same tick lose the first write's fields. So does a write that
 starts while a slow guard or resolver runs. A debounced form field still writes after the user
@@ -243,7 +243,7 @@ Signal Forms use Angular's `debounce()` rule. Reactive Forms have no such rule, 
 a `debounce` option.
 
 The page decides which fields reset when another one changes. It does that in the binding's
-`beforeWrite`, for example setting `page: 1` whenever the search writes. Code that calls
+`beforeWrite`, for example setting `minRating: 0` whenever the search writes. Code that calls
 `patchQuery()` sets the same fields in its patch. A reset rule on the route's query fields would
 apply to every writer on the route. But resets differ from page to page, and the rule would be hard
 to see from the component whose edit set it off.
@@ -279,13 +279,13 @@ use case is worth.
 An app does it with the public API. It saves path values from `globalParams()`, because a path
 value is always in the URL. A remembered query field gets no default, so the URL holds it only when
 someone set it. The app saves it from `globalParams()` too, and the page falls back to the saved
-value where it reads the field: `query.pageSize ?? saved ?? 24`. Its redirect at `/` picks the
+value where it reads the field: `query.view ?? saved ?? 'grid'`. Its redirect at `/` picks the
 workspace. TasteTrack's `preferences.ts` does this for the page size and each show's last season.
 
-Why the query field has no default: with `defaultValue: 24`, the URL `/movies` can't say whether
-the user chose 24 or never picked a size. The app would have to save the size in every control that
-changes it and pass it into every link. Without a default, a missing key means "not chosen", and
-the fallback stays in the page, like a locale fallback.
+Why the query field has no default: with `defaultValue: 'grid'`, the URL `/movies` can't say whether
+the user chose the grid or never picked a view. The app would have to save the view in every control
+that changes it and pass it into every link. Without a default, a missing key means "not chosen",
+and the fallback stays in the page, like a locale fallback.
 
 Rejected alternatives:
 

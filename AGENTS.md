@@ -1,8 +1,10 @@
 # Documentation
 
-User-facing documentation lives in `README.md` only. `projects/ngx-urlik/README.md` is a symlink
-to it, so the package ships the same file. `docs/` holds contributor notes: design decisions,
-state machines, a guide to the code, and the development history.
+User-facing documentation lives in `README.md`. `projects/ngx-urlik/README.md` is a symlink to it,
+so the package ships the same file. The README stays short: it covers what most apps need. Rules
+that are easy to miss go in the agent skill, `skills/ngx-urlik/SKILL.md`, which also ships with the
+package. `docs/` holds contributor notes: design decisions, state machines, a guide to the code, and
+the development history.
 
 Docs, comments, and messages describe the library as it is. Don't tell the story of how it got
 there: no “before”, “used to”, “was removed”, or “replaced X”. A reader should never need to know

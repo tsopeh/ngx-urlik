@@ -1,7 +1,5 @@
----
-name: ngx-urlik
-description: Use for any task involving Angular routing, URL state, or moving pages off ActivatedRoute.
----
+--- name: ngx-urlik description: Use for any task involving Angular routing, URL state, or moving
+pages off ActivatedRoute. ---
 
 # ngx-urlik
 
@@ -71,9 +69,9 @@ A form holds the draft: what the user is typing right now. The URL holds what's 
   Reactive Forms fields with the binding's `debounce` option. Pass `writeWhen: 'valid'` to hold
   back invalid input. Keep values as the user typed them. If a request needs a trimmed search,
   trim it where you build the request.
-- **Fields that depend on others:** reset fields like `page` in the binding's `beforeWrite`:
-  `(patch) => ('search' in patch ? { page: 1, ...patch } : patch)`. Without a form, set them in the
-  same patch: `patchQuery({ search, page: 1 })`.
+- **Fields that depend on others:** reset fields like `minRating` in the binding's
+  `beforeWrite`: `(patch) => ('search' in patch ? { minRating: 0, ...patch } : patch)`. Without a
+  form, set them in the same patch: `patchQuery({ search, minRating: 0 })`.
 
 **Done when** text inputs and debounced controls go through a bound form, never straight to
 `patchQuery()`.
@@ -126,4 +124,98 @@ placeholder. It's read-only, and nothing throws. In guards and resolvers, use
 **Remembering values** is the app's job. Save path values from `globalParams()` in an `effect()`.
 Give a remembered query field no default, so the URL holds it only when someone set it. Save it from
 `globalParams()` too, and fall back to the saved value where the page reads it:
-`query.pageSize ?? saved() ?? 24`.
+`query.view ?? saved() ?? 'grid'`.
+
+## 5. Details that are easy to miss
+
+**Routes**
+
+- A route inherits the path and query fields of every route above it, named or not.
+- An empty-path child builds the same URL as its parent. At that URL, both are active.
+- A path codec decides whether the route matches. `/seasons/abc` with `numberCodec()` doesn't
+  match, so Angular tries the next route. This check runs before the route's own `canMatch` guards.
+- An NgModule component still works in `component`, but it loads with the app.
+- Putting named routes in front of a `Routes` array, as in `[...named, ...routes]`, compiles. But
+  TypeScript can't check those routes, so mistakes show up only when `defineAppRouter()` runs.
+- Don't call `Router.resetConfig()`. Typed routes would keep building URLs for routes Angular no
+  longer has.
+
+**Codecs and fields**
+
+- `enumCodec()` throws when it's created if a value isn't a string. Numeric TypeScript enums fail,
+  because their reverse mapping adds numbers.
+- `listCodec()` throws when it's created if the separator is empty or holds a backslash. `[]` writes
+  as `?tags=`. Items can't be empty, so `?tags=a,,b` fails and `['']` can't be written. A backslash
+  escapes the separator and itself. A backslash before anything else fails.
+- A query value leaves the URL when its text matches the default's text.
+- Every declared field is always in `params().query`. A field without a default reads as `null`.
+- A path value can't write as `''`, `.`, or `..`.
+
+**Links**
+
+- `createUrlTree()` throws, and `navigate()` rejects, when a path codec throws or returns a
+  non-string, `''`, `.`, or `..`. Check IDs that come from data before you build links with them.
+- A query value that won't serialize is dropped with a diagnostic. The rest of the link is built.
+- Parent query fields come first, in declared order.
+- The fragment is a string or `null`, with no codec. It can't be read back.
+- `navigate()` and `patchQuery()` reject `browserUrl`. For relative navigation or URLs outside the
+  typed routes, use `appRouter.escapeHatch`.
+
+**Reading**
+
+- Reordering keys doesn't fire `params`. Values keep their identity while their text stays the
+  same, so never change them in place.
+- `paramsSnapshot()` throws if the snapshot doesn't contain the route. Any snapshot from the same
+  navigation works, so a child's guard can read its parent.
+- `ifActive()` notifies only when its answer changes, not on every query change.
+- In a component that serves several routes, reading the last route directly throws if the
+  component ever shows on a route it doesn't handle.
+- `globalParams()` gives `null` for a path value that doesn't decode. Before the first navigation
+  finishes, it reads the current snapshot. `required` does nothing there. Two services that read
+  one name with different codecs can disagree, so share the definitions. It needs no cleanup. Its
+  diagnostics name the route `globalParams` or `globalParamsSnapshot`.
+
+**Writing**
+
+- A field passed as `undefined` stays as it is. So do fields owned by child routes.
+- Every patch rewrites all the route's declared fields, so `?minRating=abc` and `?minRating=0`
+  disappear.
+- `patchQuery()` takes the same options as `navigate()`, like `replaceUrl` and `state`.
+- A patch that wouldn't change the URL resolves `true` without navigating. If another navigation is
+  running, it navigates anyway, to cancel that one. So `false` means a guard said no or another
+  navigation won.
+- Patches collide more often when guards or resolvers run on query changes, as with
+  `runGuardsAndResolvers: 'paramsOrQueryParamsChange'`.
+
+**Forms**
+
+- Forms are flat. List fields get array-valued controls. Nested groups and `FormArray` aren't
+  supported.
+- Signal Forms read the model in an effect, so updates made before it runs go out as one write.
+- URL changes never mark fields touched or dirty.
+- Signal Forms' `debounce()` delays input through `[formField]`, not a direct `model.update()`.
+- A waiting debounced field survives navigations that change only other fields. It writes on top of
+  the URL as it is when the delay ends. Leaving the page drops it.
+- With `writeWhen: 'valid'`, a field waiting on an async validator writes once it passes. A held
+  field keeps its draft until it's valid, the user edits it, or the form is destroyed. In Reactive
+  Forms, the validators go on the controls.
+- Fields that `beforeWrite` adds aren't drafts. The form reads them back from the URL after the
+  write. An edit that ends at the URL's value writes nothing, so `beforeWrite` doesn't run.
+- Without `onWriteFailure`, declines are silent. Picking the value that's already chosen isn't a
+  decline. A write cancelled by the form's own next write isn't reported, because the next write
+  reports for itself.
+- If `beforeWrite` throws, the error goes to `ErrorHandler`, nothing is written, and the drafts
+  stay.
+- Destroying the form drops unwritten edits and their delays. A navigation that already started
+  still runs.
+
+**Diagnostics and the router**
+
+- A diagnostic's `route` is the route that declares the field, which can be a parent. Unnamed
+  parents are named by position, like `routes[0].children[1]`.
+- `escapeHatch.isActive(url, matchOptions?)` returns a `Signal<boolean>`. The escape hatch leaves
+  out `routerState`, the route config, lifecycle controls, and Angular's deprecated mutable
+  properties.
+- The ESLint rule in the README warns only on `Router` and `ActivatedRoute`. `RouterLink`,
+  `RouterOutlet`, `ResolveFn`, and `ActivatedRouteSnapshot` stay allowed.
+- In server rendering, code that touches `localStorage` needs a browser check.

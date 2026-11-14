@@ -195,7 +195,7 @@ throws. The form keeps the draft, and its next write carries the field again.
    resolved `false`. A write the URL already holds resolves `true`.
 4. An edit that ends at the URL's value never runs `beforeWrite`. If an earlier write still runs,
    the binding navigates to the URL as it is. So typing `x` and deleting it on
-   `?search=oak&page=3` keeps page 3, however fast the user is.
+   `?search=oak&minRating=3` keeps rating 3, however fast the user is.
 5. After destroy, nothing touches the form.
 
 ## Check a change

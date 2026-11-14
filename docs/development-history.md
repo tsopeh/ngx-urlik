@@ -27,6 +27,7 @@ file gives the path that led there. Commit hashes point at the code for each ste
 | Nov 14, 2026    | Big route trees type-check 17 times faster. Links build 12 times faster             |
 | Nov 14, 2026    | Type tests move to Vitest. Library coverage reaches 99.5% of lines                  |
 | Nov 14, 2026    | Form bindings compare one set of values with the URL                                |
+| Nov 14, 2026    | The README is rewritten at 60% of its length. Finer rules move to the agent skill   |
 
 The package version is `0.2.0`. In conversation we call the design after Nov 13 "API version 3".
 The version number hasn't followed, and whether it should is open. Nothing has been published, so
@@ -531,6 +532,11 @@ Three more could happen but weren't fixed that day. We fixed them on Nov 13:
   comment, and message to describe only the present. This file is where the past goes instead.
 - On Nov 14 the state-machine tables moved from `state-machines.md` into `implementation.md`, next
   to the prose about the same code. Each change to the form binding had touched both files.
+- On Nov 14 the maintainer asked for a README that's a lot shorter, pleasant to read, and very
+  useful. It was rewritten from scratch, from 7,100 words to about 4,300, with a section on the
+  idea behind the library. Rules that are easy to miss moved to a new section of the agent skill.
+  Examples stopped using a `page` field, because a reader can't tell a `page` parameter from a web
+  page. They use `search` and `minRating` instead.
 - ESLint with braces on every body (`3011517`, `d117a48`). Fix style with `npm run lint:fix`, not by
   hand.
 
