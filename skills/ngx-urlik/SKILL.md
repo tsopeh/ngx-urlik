@@ -160,8 +160,8 @@ Give a remembered query field no default, so the URL holds it only when someone 
 - A query value that won't serialize is dropped with a diagnostic. The rest of the link is built.
 - Parent query fields come first, in declared order.
 - The fragment is a string or `null`, with no codec. It can't be read back.
-- `navigate()` and `patchQuery()` reject `browserUrl`. For relative navigation or URLs outside the
-  typed routes, use `appRouter.escapeHatch`.
+- `navigate()` and `patchQuery()` don't take `browserUrl`. Passing it is a type error. For relative
+  navigation, or URLs outside the typed routes, use `appRouter.escapeHatch`.
 
 **Reading**
 

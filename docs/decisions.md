@@ -186,7 +186,7 @@ a declared route. Code that needs any URL, relative commands, or outlets uses
 `AppRouter.escapeHatch`. It passes through a chosen set of Angular's own methods, with Angular's
 types. It leaves out config changes, raw router state, and lifecycle controls.
 
-Typed `navigate()` and `patchQuery()` reject `browserUrl`, because it could show an address the
+Typed `navigate()` and `patchQuery()` don't take `browserUrl`, because it could show an address the
 typed route didn't build. There's no custom link directive: a typed `UrlTree` goes to Angular's
 `RouterLink`. Router options go through Angular's `withRouterConfig()`, passed to
 `provideAppRouter()`. Typed routes read parent values themselves, so they work with any

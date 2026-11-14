@@ -226,7 +226,7 @@ Three questions came up:
   check up front that its codecs' texts don't overlap. `stringCodec()` overlaps everything. We
   stopped at fixed sets of values. Open unions stay with custom codecs.
 
-**Where it stands:** built on `feat/enum-literals`.
+**Where it stands:** decided, and merged to master.
 
 ## Lists and arrays
 

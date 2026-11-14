@@ -293,9 +293,8 @@ await season.navigate({ path: { showId: 'tv_1', season: 2 } }, { replaceUrl: tru
 `link` is `/shows/tv_1/seasons/2#episodes`. Give it to `routerLink`. `routerLinkActive` works too.
 
 You get exactly what you pass. The current query is never copied, whatever Angular's
-`defaultQueryParamsHandling` says. Every path value is required, the
-parents' too. Query fields are optional unless `required`, and `undefined` ones are left out.
-There's no relative navigation.
+`defaultQueryParamsHandling` says. Every path value is required, the parents' too. Query fields are
+optional unless `required`, and `undefined` ones are left out. There's no relative navigation.
 
 `navigate()` takes values first and Angular's options second. When nothing is required, write
 `navigate({}, { replaceUrl: true })`. Every option works except `browserUrl`, because it could show
@@ -404,9 +403,9 @@ const current = appRouter.globalParams({
 | `/settings`                         | `{ path: { workspaceId: null }, query: { source: null } }`           |
 
 A path value comes from whichever active route has that placeholder, named or not, or is `null`.
-Query fields work as on routes. Nothing throws.
-It's read-only, and it works outside an injection context. In a guard, use
-`globalParamsSnapshot(definitions, route)`. It works on routes without a name too.
+Query fields work as on routes. Nothing throws. It's read-only, and it works outside an injection
+context. In a guard, use `globalParamsSnapshot(definitions, route)`. It works on routes without a
+name too.
 
 ### Remember values yourself
 
@@ -583,8 +582,7 @@ value. Use it to change other fields, not the field's own value.
 
 A guard can decline a write, or something can throw. Either way the form keeps what the user typed,
 until that field's URL value changes. Nothing retries on its own, but the form's next write carries
-the field again. `onWriteFailure` gets `{ kind: 'declined' }` or
-`{ kind: 'error', error }`.
+the field again. `onWriteFailure` gets `{ kind: 'declined' }` or `{ kind: 'error', error }`.
 
 ## Diagnostics and errors
 
@@ -612,10 +610,11 @@ When the app starts, `defineAppRouter()` checks every named route, every route a
 route with `pathParam` or `queryParams`. It throws one error that lists every problem:
 
 - Repeated or empty route names.
-- A member of your route names enum that no route uses.
+- A `routeName` that isn't in your route names enum, or a member that no route uses.
 - Names on redirects, wildcards, or matchers.
 - `loadChildren` on or above a named route.
-- Paths that aren't known up front, or have empty segments or reserved characters.
+- Paths that aren't plain strings in the primary outlet, or have empty segments or reserved
+  characters.
 - `pathParam` maps that don't match the placeholders.
 - `queryParams` values that `queryParam()` didn't make.
 - `queryParams` on a route with no named route at or below it, because nothing reads them.
