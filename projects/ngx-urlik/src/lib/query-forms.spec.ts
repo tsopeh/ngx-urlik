@@ -535,7 +535,9 @@ describe('query forms', () => {
       form.controls.search.setValue('lost');
       await vi.waitFor(() => expect(handleError).toHaveBeenCalledTimes(1));
       expect(handleError.mock.calls[0][0]).toEqual(
-        new Error("RESULTS: route 'results' isn't active, so it has no params to read"),
+        new Error(
+          "RESULTS: route 'results' isn't active, so it has no params to read. Check ifActive() first.",
+        ),
       );
     });
 

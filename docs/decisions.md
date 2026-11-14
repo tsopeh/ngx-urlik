@@ -211,7 +211,8 @@ the same way.
 
 Say the page is on `?page=4`, and two patches start in the same tick: `{ search: 'elm' }`, then
 `{ page: 2 }`. Both read `?page=4`. The second navigation cancels the first, so the URL ends at
-`?page=2`, without `search`. Write `{ search: 'elm', page: 2 }` as one patch and both land.
+`?page=2`, without `search`. Write `{ search: 'elm', page: 2 }` as one patch, and both reach the
+URL.
 
 **Cost:** two writes started in the same tick lose the first write's fields. So does a write that
 starts while a slow guard or resolver runs. A debounced form field still writes after the user
@@ -238,8 +239,8 @@ An RxJS stream of field changes could express any timing rule. But the common ca
 another field, like the page.
 
 The binding compares the form's values with the URL, and each write carries every field that
-differs. The newest navigation wins, so a write that carries all of them can't lose a field to an
-older write, and the binding never has to tell its own navigations from Back. A Reactive Forms
+differs. The newest navigation wins. A write that carries every changed field can't lose one to an
+older write. So the binding never has to tell its own navigations from Back. A Reactive Forms
 `debounce` delays a field's move into those values, as Signal Forms' `debounce()` does. So Back
 drops a waiting edit in both form systems.
 
@@ -297,9 +298,9 @@ its children shows, and `null` otherwise. The node then answers all three questi
 it showing, what are its values, and change its query. Pages find all three in the same place,
 `appRouter.routes.NAME`, and a page on one route needs nothing extra.
 
-Reading is an assertion. `params()` throws when the route isn't showing, because a page on one
-route knows it's showing, and an optional read would make it handle a `null` that never comes.
-Asking is the optional step. A page on several routes reads through the node `ifActive()` returned,
+Reading is an assertion. `params()` throws when the route isn't showing. A page on one route
+knows it's showing, so an optional read would only make it handle a `null` that never comes. Asking
+is the optional step. A page on several routes reads through the node `ifActive()` returned,
 as in `EPISODE.ifActive()?.params()`, so the read goes to the route it checked. In a template,
 `@if (EPISODE.ifActive(); as episode)` does the same.
 

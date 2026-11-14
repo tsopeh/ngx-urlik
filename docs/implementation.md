@@ -237,7 +237,7 @@ route trees cost more than they should.
 
 ## TasteTrack's states
 
-The demo has a few small machines of its own.
+The demo has a few small state machines of its own.
 
 ### The journal database
 
@@ -317,9 +317,9 @@ doesn't change the list.
 
 ## Checked, and fine
 
-- **A Signal Forms edit landing between `NavigationEnd` and the binding's URL effect.** The binding
-  could overwrite the edit with the old value. A test that edits the model inside a
-  `NavigationEnd` handler keeps the edit.
+- **A Signal Forms edit made between `NavigationEnd` and the binding's URL effect.** The binding
+  could overwrite the edit with the old value. A test edits the model inside a `NavigationEnd`
+  handler, and the edit stays.
 - **Two form writes one macrotask apart, with no guards or resolvers.** They don't overlap: a
   query-only navigation finishes first.
 - **A computed that read a value Angular later took back.** During the Lagging state, a computed
@@ -330,5 +330,5 @@ doesn't change the list.
 - **Path values with `/`, `?`, `#`, `;`, `(`, `%`, or spaces.** Angular encodes them in one
   segment, like `/items/a%2Fb`, and they read back unchanged.
 - **Out-of-order `reload()` results in the demo.** IndexedDB runs read transactions in the order
-  they start, so an older snapshot can't land after a newer one. Not tested, because the unit tests
-  have no IndexedDB.
+  they start, so an older snapshot can't arrive after a newer one. There's no test, because the
+  unit tests have no IndexedDB.

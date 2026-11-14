@@ -7,8 +7,8 @@ string `'4'`, or `null` when it's missing. So you parse it and pick a default. W
 "next page", you have to keep `search` in the URL yourself. Then you do it all again on the next
 page with filters.
 
-With ngx-urlik you describe `page` once, on the route: it's a number, and it defaults to 1. Then
-you read `4` as a number, change it with one call, and build links that TypeScript checks. Angular
+With ngx-urlik, you describe `page` once, on the route. It's a number, and it defaults to 1. You
+read it as the number `4`, change it with one call, and build links that TypeScript checks. Angular
 Router still does the routing. ngx-urlik sits between your code and the URL.
 
 - [Get started](#get-started)
@@ -134,8 +134,8 @@ route above it, named or not. So `routes.SEASON`, under `shows/:showId`, has bot
 `season`.
 
 A route without `routeName` is a plain Angular route. Redirects, wildcards, matchers, named outlets,
-and `loadChildren` all work there. Angular gets a copy of every route with its Angular fields.
-ngx-urlik adds one thing: a `canMatch` check on routes whose `pathParam` has codecs.
+and `loadChildren` all work there. Angular gets a copy of each route, without the ngx-urlik fields.
+ngx-urlik adds one thing: a `canMatch` check on each route whose `pathParam` has codecs.
 
 ### What named routes can't do
 
@@ -163,7 +163,7 @@ Here's how common lazy-loading setups fit:
 | `providers` from a lazy feature module     | Move them to the route above the feature's pages. Angular still creates them on first visit |
 | `loadComponent` with an NgModule component | Angular refuses. Make the component standalone (`ng generate @angular/core:standalone`)     |
 
-An NgModule component still works in `component`. It just loads with the app.
+An NgModule component still works in `component`. It loads with the app instead.
 
 ### One file for the whole app
 
@@ -324,8 +324,10 @@ const route = {
 | `listCodec(item, separator)` | `item` values joined by `separator`. `''` is the empty list. Throws when created if the separator is empty or has a backslash            |
 
 Numeric TypeScript enums don't work with `enumCodec`, because their reverse mapping adds numbers to
-the values. A path segment can't be `''`, `.`, or `..`, so building a URL where a path value becomes
-one of those fails. Browsers drop `.` and `..` segments, so `/items/..` would reload as `/`.
+the values.
+
+A path value can't write as `''`, `.`, or `..`. Building that URL fails. A path segment can't be
+empty, and browsers drop `.` and `..` segments, so `/items/..` would reload as `/`.
 
 ### Write your own codec
 
@@ -439,10 +441,13 @@ because it could show an address other than the typed one.
 
 The fragment is a string or `null`. It has no codec, and `params()` doesn't return it.
 
-Path values have no fallback. If a path codec throws, returns a non-string, or returns `''`, `.`,
-or `..`, `createUrlTree()` throws and `navigate()` rejects before Angular sees it. The error names
-the route and placeholder, with the codec's error in `cause`. A query value that won't serialize is
-less serious. It's dropped and reported, and the rest of the URL is built anyway.
+Path values have no fallback. Say `showId` writes as `''`. Then `createUrlTree()` throws, and
+`navigate()` rejects before Angular sees it. The same happens when a path codec throws, returns a
+non-string, or returns `.` or `..`. The error names the route and placeholder. When the codec threw,
+its error is in `cause`.
+
+A query value that won't serialize is less serious. It's dropped and reported, and the rest of the
+URL is built anyway.
 
 ## Read the URL
 
@@ -670,8 +675,8 @@ A field whose text changed is decoded again, and `params` fires. Codecs, dates, 
 nothing extra, because only the text is compared. A write that would leave the URL as it is
 doesn't navigate, so nothing fires.
 
-Patches always merge into the latest URL, never into an old signal value. Forms follow the
-signal.
+Patches always merge into the latest URL, never into an old signal value. Form bindings read
+this same signal.
 
 ## Write the query
 
@@ -737,9 +742,11 @@ running, the patch still navigates, so it cancels that one.
 
 A form holds what the user is typing. The URL holds what's been written. ngx-urlik keeps the two in
 step, for both Reactive Forms and Signal Forms. Forms cover the active route's query fields, not its
-path. Create or bind a form in an injection context while the route is active. It cleans up when
-it's destroyed. If the route stops showing while the form still exists, the form keeps its values.
-An edit made then fails as an error, because there's no active route to write to.
+path.
+
+Create or bind a form in an injection context while the route is active. It cleans up when it's
+destroyed. If the route stops showing while the form still exists, the form keeps its values. An
+edit made then fails as an error, because there's no active route to write to.
 
 Both form systems take these options:
 
@@ -1085,13 +1092,13 @@ Where to look for each feature:
 
 Shared pages check their route with `ifActive()`. `paginationParams()` shares field definitions
 between pages. The form pages reset the page number in `beforeWrite`. The catalog does it in the
-same `patchQuery()` call. Sort field and direction are one codec value, so they always travel
-together.
+same `patchQuery()` call. Sort field and direction are one codec value, so a write always changes
+both.
 
 The fake backend is in `projects/taste-track/src/app/backend/`. `BackendApi` answers every query and
 change. Each query returns an `Observable`, which pages turn into a signal with `toObservable`,
 `switchMap`, and `toSignal`. `TasteTrackRepository` keeps the IndexedDB tables in signals through
-Dexie. After a change it reloads them and bumps `dataVersion`, so open queries emit again.
+Dexie. After a change it reloads them and adds one to `dataVersion`, so open queries emit again.
 
 A fixed seed fills the database on first run and on reset: 30 movies, 30 shows, 66 seasons, 394
 episodes, 8 people, and 4 studios. The catalog is read-only. Ratings, statuses, favorites, counts,

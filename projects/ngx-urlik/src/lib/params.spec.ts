@@ -52,7 +52,7 @@ describe('parameter codecs and definitions', () => {
     expect(codec.deserialize('Open')).toBeNull();
     expect(codec.serialize('closed')).toBe('closed');
     expect(() => enumCodec({ String: 'ok', Numeric: 1 } as never)).toThrow(
-      'enum codec values must all be strings',
+      'enumCodec(): every value must be a string. Use a string enum or an array of strings.',
     );
 
     const arrayCodec = enumCodec(['open', 'closed'] as const);
@@ -60,7 +60,7 @@ describe('parameter codecs and definitions', () => {
     expect(arrayCodec.deserialize('Open')).toBeNull();
     expect(arrayCodec.serialize('closed')).toBe('closed');
     expect(arrayCodec.serialize('other' as never)).toBeNull();
-    expect(() => enumCodec(['ok', 1] as never)).toThrow('enum codec values must all be strings');
+    expect(() => enumCodec(['ok', 1] as never)).toThrow('every value must be a string');
   });
 
   it('keeps query defaults outside codecs', () => {
@@ -84,8 +84,8 @@ describe('parameter codecs and definitions', () => {
     const text = listCodec(stringCodec(), '|');
     expect(text.serialize(['a,b', 'c'])).toBe('a,b|c');
     expect(text.serialize([''])).toBeNull();
-    expect(() => listCodec(stringCodec(), '')).toThrow('list codec separator');
-    expect(() => listCodec(stringCodec(), '\\')).toThrow('list codec separator');
+    expect(() => listCodec(stringCodec(), '')).toThrow("the separator can't be empty");
+    expect(() => listCodec(stringCodec(), '\\')).toThrow("the separator can't be empty");
   });
 
   it('escapes the separator and backslashes inside items', () => {

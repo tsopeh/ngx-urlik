@@ -235,7 +235,9 @@ describe('paramsSnapshot()', () => {
 
     await TestBed.inject(Router).navigateByUrl('/');
     expect(error).toEqual(
-      new Error("paramsSnapshot(): the snapshot doesn't contain route ITEM ('items/:id')"),
+      new Error(
+        "paramsSnapshot(): the snapshot doesn't contain route ITEM ('items/:id'). Pass the snapshot of a guard or resolver on that route or a route below it.",
+      ),
     );
   });
 
@@ -246,7 +248,7 @@ describe('paramsSnapshot()', () => {
     await TestBed.inject(Router).navigateByUrl('/items/1');
     const root = TestBed.inject(Router).routerState.snapshot.root;
     expect(() => appRouter.paramsSnapshot({ ...appRouter.routes.ITEM }, root)).toThrow(
-      "paramsSnapshot(): that isn't a route from AppRouter.routes",
+      "paramsSnapshot(): that isn't a route from AppRouter.routes. Pass appRouter.routes.NAME.",
     );
   });
 });

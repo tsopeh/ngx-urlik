@@ -86,7 +86,9 @@ export function enumCodec<const Values extends readonly string[] | StringRecord>
 ): UrlParamCodec<EnumValue<Values>> {
   const list = Array.isArray(values) ? values : Object.values(values);
   if (list.some((value) => typeof value !== 'string')) {
-    throw new Error('enum codec values must all be strings');
+    throw new Error(
+      'enumCodec(): every value must be a string. Use a string enum or an array of strings.',
+    );
   }
   const allowed = new Set(list);
   return {
@@ -107,7 +109,9 @@ export function listCodec<T>(
   const usableSeparator =
     typeof separator === 'string' && separator !== '' && !separator.includes('\\');
   if (!usableSeparator) {
-    throw new Error('list codec separator must be a non-empty string without a backslash');
+    throw new Error(
+      "listCodec(): the separator can't be empty or hold a backslash. Use a character like ','.",
+    );
   }
   return {
     serialize(values) {

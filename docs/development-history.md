@@ -1,7 +1,7 @@
 # Development history
 
-This file is for the people building ngx-urlik. It records what we explored, what we settled on,
-why, and where each topic stands. Read it before you reopen a question, so you start from where we
+This file is for the people building ngx-urlik. It records what we explored, what we chose, why,
+and where each topic stands. Read it before you reopen a question, so you start from where we
 stopped.
 
 It's the one file that talks about the past. The README and the other files in `docs/` describe the
@@ -22,7 +22,7 @@ file gives the path that led there. Commit hashes point at the code for each ste
 | Oct 30, 2026    | One route file, original demo data, all user docs in the README, the agent skill    |
 | Nov 10–11, 2026 | The write queue goes. Persistence goes. `globalParams()` and snapshot reads arrive  |
 | Nov 12, 2026    | Stricter startup checks. Comparison by URL text. Lists use `listCodec` only         |
-| Nov 13, 2026    | Pages on several routes settle on `ifActive`. Docs describe only the present        |
+| Nov 13, 2026    | Pages on several routes use `ifActive`. Docs describe only the present              |
 | Nov 14, 2026    | The README is checked fact by fact against the code. This file starts               |
 | Nov 14, 2026    | Big route trees type-check 17 times faster. Links build 12 times faster             |
 | Nov 14, 2026    | Type tests move to Vitest. Library coverage reaches 99.5% of lines                  |
@@ -69,8 +69,8 @@ Each feature came with an ADR: a shared query-write queue (`0f08b77`), `globalQu
 (`a3c50cb`), and `params` signals with `patchQuery()` (`d928ecf`). The docs took on Plainspoken
 Engineering (`e897331`), and TasteTrack shrank to movies and TV (`785f876`).
 
-On Sep 26–27 the route model switched to Angular's own array (`54aa1f8`, `3ec28c7`), and the ADRs
-went with the old model. See [The route model](#the-route-model-angulars-array-plus-routename).
+On Sep 26–27 the route model switched to Angular's own array (`54aa1f8`, `3ec28c7`). The ADRs
+described the old model, so we dropped them. See [The route model](#the-route-model-angulars-array-plus-routename).
 The route names enum (`8408394`) and the first agent skill (`3424356`) followed.
 
 What we kept: `params` signals, `patchQuery()`, and one write per form change.
@@ -102,7 +102,7 @@ The August design listed what it wouldn't do compared with Angular. Most of it i
 | ------------------------------------------------------- | ----------------------------------------------------------- |
 | One root, children as named object properties           | Angular's route array, any number of top-level routes       |
 | One static segment and one separate parameter per route | Any Angular path with `:name` placeholders                  |
-| Empty paths only at the root                            | Empty-path children hold landing content                    |
+| Empty paths only at the root                            | An empty-path child shows the page at its parent's URL      |
 | No named outlets, matchers, or `loadChildren`           | All allowed on unnamed routes                               |
 | Redirects only as typed functions                       | Plain Angular redirects; a function can return a typed link |
 | Wildcards through `fallbackRoute()`                     | Plain `**` routes                                           |
@@ -148,8 +148,8 @@ discussions.
 
 **What we chose.** On Sep 26–27, 2026 (`54aa1f8`, `3ec28c7`) the library started taking Angular's
 route array as it is. A route with a name gets a flat entry in `AppRouter.routes`. Proposal ADR 0015
-called the name `identifier`. It became `routeName`. An empty-path child holds landing content,
-which replaced `exactMatch`. Redirects became plain unnamed Angular routes. Reads and writes became
+called the name `identifier`. It became `routeName`. An empty-path child shows the page at its
+parent's URL, which replaced `exactMatch`. Redirects became plain unnamed Angular routes. Reads and writes became
 `params` and `patchQuery()` (`d928ecf`).
 
 **Why.** An app should get typed routing without rewriting its routes, and should be able to name
@@ -263,13 +263,11 @@ asks.
 - Fixes along the way: keep a draft that encodes to the URL value (`30dc17f`), report a decline only
   when a write really failed (`d040827`, then `18dc692`), and don't write an edit that ends at the
   URL's value (`22e6d54`).
-
 - **A waiting debounce gives way to Back** (Nov 14). A Reactive Forms edit waiting for its debounce
   wrote on top of a navigation that changed the same field. Typing `elm` and pressing Back to
   `?search=oak` ended at `?search=elm`. Now that navigation drops the edit, as Signal Forms'
   `debounce()` already did. A settling write also records its own URL value for a field edited
   again, so the form doesn't mistake that write for Back.
-
 - **Forms compare a model with the URL** (Nov 14, branch `refactor/forms-model`). The binding sent
   each edit on its own and counted the writes still running, so it could tell its own navigations
   from Back. Now it keeps a model, the values it compares with the URL, and each write carries
@@ -315,8 +313,8 @@ Angular's matcher.
 **Design 2: fill values into typed links** (Nov 11, `d5c9bf4`, branch `prototype/route-memory`). The
 core had one hook, `RouteMemory { remember, recall }`, that an app could plug storage into.
 `ngx-urlik/memory` kept values in `sessionStorage`, then `localStorage`. A URL meant what it said.
-But a hand-typed URL got nothing, links built once in a class field went stale, and a missing field
-couldn't say "never chosen".
+But a hand-typed URL got nothing, links built once in a class field went out of date, and a missing
+field couldn't say "never chosen".
 
 **What we chose.** `561de2b` (Nov 11) removed both. Apps remember values with `globalParams()`. The
 prototype's simplifications stayed: `pathParam` entries are plain codecs, a map may skip

@@ -146,7 +146,7 @@ export function createAppRouter(
     const active = findActiveRoute(router.routerState.snapshot.root, info);
     if (!active) {
       throw new Error(
-        `${info.label}: route '${info.pattern}' isn't active, so it has no params to read`,
+        `${info.label}: route '${info.pattern}' isn't active, so it has no params to read. Check ifActive() first.`,
       );
     }
     return readActiveState(info, active, values);
@@ -239,12 +239,14 @@ export function createAppRouter(
     paramsSnapshot: (node: object, snapshot: ActivatedRouteSnapshot) => {
       const info = infoOf(node);
       if (!info) {
-        throw new Error("paramsSnapshot(): that isn't a route from AppRouter.routes");
+        throw new Error(
+          "paramsSnapshot(): that isn't a route from AppRouter.routes. Pass appRouter.routes.NAME.",
+        );
       }
       const active = findActiveRoute(snapshot.root, info);
       if (!active) {
         throw new Error(
-          `paramsSnapshot(): the snapshot doesn't contain route ${info.label} ('${info.pattern}')`,
+          `paramsSnapshot(): the snapshot doesn't contain route ${info.label} ('${info.pattern}'). Pass the snapshot of a guard or resolver on that route or a route below it.`,
         );
       }
       return readActiveState(info, active);
