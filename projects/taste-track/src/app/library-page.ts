@@ -4,12 +4,12 @@ import { debounce, FormField, minLength } from '@angular/forms/signals';
 import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
+import { Preferences } from './preferences';
 import { CatalogLinks } from './catalog-links';
-import { experienceCountCodec } from './codecs';
+import { experienceCountCodec, type PageSize } from './codecs';
 import {
   BackendApi,
   type CatalogItem,
-  type LibraryItemCard,
   type LibraryQuery,
   type LibraryStatus,
   type MediaKind,
@@ -48,12 +48,9 @@ import { MediaCard } from './media-card';
         >
         <label
           ><span>Page size</span
-          ><select
-            [value]="binding.model().pageSize"
-            (change)="setPageSize($any($event.target).value)"
-          >
+          ><select [value]="pageSize()" (change)="setPageSize($any($event.target).value)">
             @for (size of pageSizes; track size) {
-              <option [value]="size" [selected]="binding.model().pageSize === size">
+              <option [value]="size" [selected]="pageSize() === size">
                 {{ size }}
               </option>
             }
@@ -116,19 +113,27 @@ import { MediaCard } from './media-card';
       <div class="section-heading">
         <div>
           <p class="eyebrow">Your titles</p>
-          <h2>{{ response().total }} collected titles</h2>
+          <h2>
+            @if (response(); as loaded) {
+              {{ loaded.total }} collected titles
+            } @else {
+              Collected titles
+            }
+          </h2>
         </div>
       </div>
-      <div id="favorites" class="media-grid">
-        @for (card of response().items; track card.item.id) {
-          <app-media-card
-            [item]="card.item"
-            [state]="card.state"
-            [url]="links.item(card.item)"
-            (favorite)="toggleFavorite(card.item.id)"
-          />
-        } @empty {
-          <p class="empty">No library items match these filters.</p>
+      <div id="favorites" class="media-grid" [attr.aria-busy]="!response()">
+        @if (response(); as loaded) {
+          @for (card of loaded.items; track card.item.id) {
+            <app-media-card
+              [item]="card.item"
+              [state]="card.state"
+              [url]="links.item(card.item)"
+              (favorite)="toggleFavorite(card.item.id)"
+            />
+          } @empty {
+            <p class="empty">No library items match these filters.</p>
+          }
         }
       </div>
       <nav class="anchor-links" aria-label="Pagination">
@@ -141,7 +146,7 @@ import { MediaCard } from './media-card';
         ><span>Page {{ binding.model().page }}</span
         ><button
           class="button"
-          [disabled]="binding.model().page * binding.model().pageSize >= response().total"
+          [disabled]="binding.model().page * pageSize() >= (response()?.total ?? 0)"
           (click)="setPage(binding.model().page + 1)"
         >
           Next
@@ -154,31 +159,35 @@ export class LibraryPage {
   protected readonly links = inject(CatalogLinks);
   protected readonly kinds: readonly MediaKind[] = ['movie', 'show', 'episode'];
   protected readonly statuses: readonly LibraryStatus[] = ['saved', 'in-progress', 'completed'];
-  protected readonly routes = inject(AppRouter);
+  private readonly routes = inject(AppRouter).routes;
   private readonly backendApi = inject(BackendApi);
-  protected readonly binding = createQueryParamsSignalForm(this.routes.routes.LIBRARY, {
+  private readonly preferences = inject(Preferences);
+  protected readonly binding = createQueryParamsSignalForm(this.routes.LIBRARY, {
     schema: (fields) => {
       debounce(fields.search, 300);
       minLength(fields.search, 3);
     },
     writeWhen: 'valid',
     // Any change other than the page itself starts from the first page, in the same navigation.
-    beforeWrite: (patch) =>
-      Object.keys(patch).some((field) => field !== 'page') ? { page: 1, ...patch } : patch,
+    beforeWrite: (patch) => {
+      const changesMoreThanPage = Object.keys(patch).some((field) => field !== 'page');
+      return changesMoreThanPage ? { page: 1, ...patch } : patch;
+    },
   });
   protected readonly ratings = [6, 7, 8, 9, 10];
   protected readonly pageSizes = [12, 24, 48] as const;
 
-  private readonly request = computed<LibraryQuery>(() => this.binding.model());
+  protected readonly pageSize = computed(() =>
+    this.preferences.pageSize(this.binding.model().pageSize),
+  );
+  // The list shows what's in the URL. The model also holds drafts, like a search too short to write.
+  private readonly request = computed<LibraryQuery>(() => {
+    const query = this.routes.LIBRARY.params().query;
+    return { ...query, pageSize: this.preferences.pageSize(query.pageSize) };
+  });
 
   protected readonly response = toSignal(
     toObservable(this.request).pipe(switchMap((req) => this.backendApi.getLibrary(req))),
-    {
-      initialValue: {
-        items: [] as readonly LibraryItemCard[],
-        total: 0,
-      },
-    },
   );
 
   protected countValue() {
@@ -186,52 +195,40 @@ export class LibraryPage {
     return count ? experienceCountCodec().serialize(count) : '';
   }
   protected setCount(value: string) {
-    this.binding.model.update((query) => ({
-      ...query,
-      replayCount: experienceCountCodec().deserialize(value),
-    }));
+    this.edit({ replayCount: experienceCountCodec().deserialize(value) });
   }
   protected setSort(field: 'title' | 'rating') {
-    this.binding.model.update((query) => ({ ...query, sort: { ...query.sort, field } }));
+    this.edit({ sort: { ...this.binding.model().sort, field } });
   }
   protected setDirection(direction: 'asc' | 'desc') {
-    this.binding.model.update((query) => ({
-      ...query,
-      sort: { ...query.sort, direction },
-    }));
+    this.edit({ sort: { ...this.binding.model().sort, direction } });
   }
   protected setPage(page: number) {
-    this.binding.model.update((query) => ({ ...query, page }));
+    this.edit({ page });
   }
   protected toggleMedia(kind: MediaKind) {
-    this.binding.model.update((query) => ({
-      ...query,
-      media: query.media.includes(kind)
-        ? query.media.filter((value) => value !== kind)
-        : [...query.media, kind],
-    }));
+    this.edit({ media: toggled(this.binding.model().media, kind) });
   }
   protected toggleStatus(status: LibraryStatus) {
-    this.binding.model.update((query) => ({
-      ...query,
-      statuses: query.statuses.includes(status)
-        ? query.statuses.filter((value) => value !== status)
-        : [...query.statuses, status],
-    }));
+    this.edit({ statuses: toggled(this.binding.model().statuses, status) });
   }
   protected setRating(value: string) {
-    this.binding.model.update((query) => ({
-      ...query,
-      minRating: value ? Number(value) : null,
-    }));
+    this.edit({ minRating: value ? Number(value) : null });
   }
   protected setPageSize(value: string) {
-    this.binding.model.update((query) => ({
-      ...query,
-      pageSize: Number(value) as 12 | 24 | 48,
-    }));
+    this.edit({ pageSize: Number(value) as PageSize });
   }
   protected toggleFavorite(id: CatalogItem['id']) {
     void this.backendApi.toggleFavorite(id);
   }
+
+  // Every control changes the model, and the binding decides when the URL follows.
+  private edit(change: Partial<ReturnType<typeof this.binding.model>>) {
+    this.binding.model.update((query) => ({ ...query, ...change }));
+  }
+}
+
+/** The list with `item` added, or removed if it's already there. */
+function toggled<T>(list: readonly T[], item: T): readonly T[] {
+  return list.includes(item) ? list.filter((value) => value !== item) : [...list, item];
 }

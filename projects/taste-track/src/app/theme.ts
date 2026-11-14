@@ -20,11 +20,15 @@ export class ThemeService {
 
   private readPreference(): ThemePreference {
     const stored = localStorage.getItem('taste-track:theme');
-    return stored === 'light' || stored === 'dark' ? stored : 'system';
+    const chosen = stored === 'light' || stored === 'dark';
+    return chosen ? stored : 'system';
   }
 
   private apply(preference: ThemePreference): void {
-    if (preference === 'system') this.document.documentElement.removeAttribute('data-theme');
-    else this.document.documentElement.dataset['theme'] = preference;
+    if (preference === 'system') {
+      this.document.documentElement.removeAttribute('data-theme');
+    } else {
+      this.document.documentElement.dataset['theme'] = preference;
+    }
   }
 }

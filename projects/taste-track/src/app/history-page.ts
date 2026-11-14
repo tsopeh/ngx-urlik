@@ -5,9 +5,11 @@ import { ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
 import { switchMap } from 'rxjs';
-import { BackendApi, type HistoryEntry, type HistoryQuery } from './backend';
+import { BackendApi, type HistoryQuery } from './backend';
 import { AppRouter } from './app-router';
+import { Preferences } from './preferences';
 import { CatalogLinks } from './catalog-links';
+import type { PageSize } from './codecs';
 
 @Component({
   imports: [DatePipe, ReactiveFormsModule, RouterLink],
@@ -29,10 +31,10 @@ import { CatalogLinks } from './catalog-links';
         <label><span>To</span><input type="date" formControlName="to" /></label>
         <label
           ><span>Page size</span
-          ><select formControlName="pageSize">
-            <option [ngValue]="12">12</option>
-            <option [ngValue]="24">24</option>
-            <option [ngValue]="48">48</option>
+          ><select [value]="pageSize()" (change)="setPageSize($any($event.target).value)">
+            <option>12</option>
+            <option>24</option>
+            <option>48</option>
           </select></label
         >
         <label
@@ -47,28 +49,30 @@ import { CatalogLinks } from './catalog-links';
           </select></label
         >
       </form>
-      <section class="history-list" aria-label="Journal entries">
-        @for (entry of response().entries; track entry.event.id) {
-          <article>
-            <time [attr.datetime]="entry.event.occurredAt">{{
-              entry.event.occurredAt | date: 'mediumDate'
-            }}</time
-            ><span class="history-icon">▶</span>
-            <div>
-              <p class="eyebrow">{{ entry.event.kind }}</p>
-              <h3>
-                @if (entry.item; as item) {
-                  <a [routerLink]="links.item(item)">{{ item.title }}</a>
-                }
-              </h3>
-              <p>{{ entry.item?.subtitle }}</p>
-            </div>
-            @if (entry.event.rating) {
-              <strong>★ {{ entry.event.rating }}</strong>
-            }
-          </article>
-        } @empty {
-          <p>No viewings match these filters.</p>
+      <section class="history-list" aria-label="Journal entries" [attr.aria-busy]="!response()">
+        @if (response(); as loaded) {
+          @for (entry of loaded.entries; track entry.event.id) {
+            <article>
+              <time [attr.datetime]="entry.event.occurredAt">{{
+                entry.event.occurredAt | date: 'mediumDate'
+              }}</time
+              ><span class="history-icon">▶</span>
+              <div>
+                <p class="eyebrow">{{ entry.event.kind }}</p>
+                <h3>
+                  @if (entry.item; as item) {
+                    <a [routerLink]="links.item(item)">{{ item.title }}</a>
+                  }
+                </h3>
+                <p>{{ entry.item?.subtitle }}</p>
+              </div>
+              @if (entry.event.rating) {
+                <strong>★ {{ entry.event.rating }}</strong>
+              }
+            </article>
+          } @empty {
+            <p>No viewings match these filters.</p>
+          }
         }
       </section>
       <nav class="anchor-links" aria-label="Pagination">
@@ -77,7 +81,7 @@ import { CatalogLinks } from './catalog-links';
         ><span>Page {{ query().page }}</span
         ><button
           class="button"
-          [disabled]="query().page * query().pageSize >= response().total"
+          [disabled]="query().page * pageSize() >= (response()?.total ?? 0)"
           (click)="setPage(query().page + 1)"
         >
           Next
@@ -88,35 +92,38 @@ import { CatalogLinks } from './catalog-links';
 })
 export class HistoryPage {
   protected readonly links = inject(CatalogLinks);
-  private readonly routes = inject(AppRouter);
+  private readonly routes = inject(AppRouter).routes;
   private readonly backendApi = inject(BackendApi);
-  protected readonly form = createQueryParamsFormGroup(this.routes.routes.HISTORY, {
+  private readonly preferences = inject(Preferences);
+  protected readonly form = createQueryParamsFormGroup(this.routes.HISTORY, {
     debounce: { search: 250 },
     writeWhen: 'valid',
     // A new filter or order starts from the first page, in the same navigation.
-    beforeWrite: (patch) =>
-      (['search', 'from', 'to', 'sort', 'pageSize'] as const).some((field) => field in patch)
-        ? { page: 1, ...patch }
-        : patch,
+    beforeWrite: (patch) => {
+      const filters = ['search', 'from', 'to', 'sort', 'pageSize'] as const;
+      const changesFilter = filters.some((field) => field in patch);
+      return changesFilter ? { page: 1, ...patch } : patch;
+    },
   });
-  protected readonly query = computed(() => this.routes.routes.HISTORY.params().query);
+  protected readonly query = computed(() => this.routes.HISTORY.params().query);
+  protected readonly pageSize = computed(() => this.preferences.pageSize(this.query().pageSize));
 
-  private readonly request = computed<HistoryQuery>(() => this.query());
+  private readonly request = computed<HistoryQuery>(() => ({
+    ...this.query(),
+    pageSize: this.pageSize(),
+  }));
 
   protected readonly response = toSignal(
     toObservable(this.request).pipe(switchMap((req) => this.backendApi.getHistory(req))),
-    {
-      initialValue: {
-        entries: [] as readonly HistoryEntry[],
-        total: 0,
-      },
-    },
   );
 
   constructor() {
     this.form.controls.search.addValidators(Validators.minLength(3));
   }
 
+  protected setPageSize(value: string) {
+    this.form.controls.pageSize.setValue(Number(value) as PageSize);
+  }
   protected setPage(page: number) {
     this.form.controls.page.setValue(page);
   }

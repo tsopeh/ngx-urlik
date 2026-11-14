@@ -25,7 +25,7 @@ describe('TasteTrack route helpers', () => {
   });
 
   it('composes exact page and page-size definitions', () => {
-    const params = paginationParams({ defaultPageSize: 24, pageSizes: [12, 24, 48] });
+    const params = paginationParams({ pageSizes: [12, 24, 48] });
     expect(params.page.codec.deserialize('2')).toBe(2);
     expect(params.pageSize.codec.deserialize('24')).toBe(24);
     expect(params.pageSize.codec.deserialize('25')).toBeNull();

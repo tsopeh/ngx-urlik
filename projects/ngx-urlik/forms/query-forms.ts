@@ -10,11 +10,10 @@ import {
 } from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
 import { FieldTree, form as signalForm, SchemaOrSchemaFn } from '@angular/forms/signals';
-import { isEqual } from 'ngx-urlik';
 
 type QueryState = Readonly<Record<string, unknown>>;
 type QueryRoute<Q extends QueryState> = {
-  readonly params: Signal<{ readonly query: Q }>;
+  readonly params: Signal<{ readonly path: unknown; readonly query: Q }>;
   patchQuery(patch: Partial<Q>, options?: { replaceUrl?: boolean }): Promise<boolean>;
 };
 
@@ -33,8 +32,8 @@ export interface QueryParamsBindingOptions<Q extends QueryState> {
    */
   readonly writeWhen?: 'always' | 'valid';
   /**
-   * Adjusts a write right before it navigates. Receives the fields about to be written and the
-   * whole draft, and returns the fields to write, such as the same patch with `page: 1`.
+   * Changes a write right before it navigates. Gets the fields about to be written and the whole
+   * draft. Returns the fields to write, such as the same patch plus `page: 1`.
    */
   readonly beforeWrite?: (patch: Partial<Q>, draft: Q) => Partial<Q>;
   readonly onWriteFailure?: (failure: QueryWriteFailure) => void;
@@ -53,11 +52,13 @@ export interface QueryParamsFormGroupOptions<
 type BindingAdapter<Q extends QueryState> = {
   reset(query: Q): void;
   write(query: Q): void;
-  /** Whether a field's validators pass and none is pending. */
+  /** Whether a field's validators pass, with no async validator still running. */
   valid(param: keyof Q): boolean;
   changes(emit: (query: Q) => void): () => void;
   validityChanges(notify: () => void): () => void;
 };
+
+const fieldsOf = <Q extends QueryState>(query: Q) => Object.keys(query) as (keyof Q)[];
 
 const bindQueryParams = <Q extends QueryState>(
   route: QueryRoute<Q>,
@@ -74,93 +75,161 @@ const bindQueryParams = <Q extends QueryState>(
       return undefined;
     }
   };
-  let observed = route.params().query;
+  // params() keeps a field's value while its URL text stays the same, and form controls keep a
+  // value until the user edits it. So `Object.is` tells which fields changed.
+  let formValue = route.params().query;
   // The URL values the form last took in. A field follows the URL only when its URL value changes,
   // so a write from elsewhere leaves a field the user is typing in alone.
-  let committed = observed;
-  // Each edit identifies the draft that a write may acknowledge. Newer edits remain pending.
+  let lastUrl = formValue;
+  // Each edit is its own object. A write clears only the edits it sent, so a newer edit stays.
   type Edit = { value: Q[keyof Q] };
-  const staged = new Map<keyof Q, Edit>();
-  // Fields that writeWhen kept back; they write when the form's validity changes.
+  const pending = new Map<keyof Q, Edit>();
+  // Fields that writeWhen held back. They try again when the form's validity changes.
   const held = new Set<keyof Q>();
+  // How many writes that carry each field are still running.
+  const sending = new Map<keyof Q, number>();
   const timers = new Map<keyof Q, ReturnType<typeof setTimeout>>();
   let destroyed = false;
-  adapter.reset(observed);
+  adapter.reset(formValue);
 
   const reportFailure = (failure: QueryWriteFailure) => {
-    if (options.onWriteFailure) options.onWriteFailure(failure);
-    else if (failure.kind === 'error') errorHandler.handleError(failure.error);
+    if (options.onWriteFailure) {
+      options.onWriteFailure(failure);
+    } else if (failure.kind === 'error') {
+      errorHandler.handleError(failure.error);
+    }
   };
 
-  const submit = (params: Iterable<keyof Q>) => {
-    if (destroyed) return;
+  const countSending = (params: Iterable<keyof Q>, change: 1 | -1) => {
+    for (const param of params) {
+      sending.set(param, (sending.get(param) ?? 0) + change);
+    }
+  };
+
+  /** The pending edits of these fields that should write now. */
+  const editsToWrite = (params: Iterable<keyof Q>) => {
     const edits = new Map<keyof Q, Edit>();
     for (const param of params) {
-      const edit = staged.get(param);
-      if (!edit) continue;
-      if (options.writeWhen === 'valid' && !adapter.valid(param)) held.add(param);
-      else {
+      const edit = pending.get(param);
+      if (!edit) {
+        continue;
+      }
+      const holdBack = options.writeWhen === 'valid' && !adapter.valid(param);
+      if (holdBack) {
+        held.add(param);
+      } else {
         held.delete(param);
         edits.set(param, edit);
       }
     }
-    if (!edits.size) return;
+    // An edit back to the URL's value, like typing 'x' and deleting it, has nothing to write. It
+    // writes anyway while another write of that field runs, so it can cancel that one.
+    const current = read();
+    for (const [param, edit] of edits) {
+      const backAtUrlValue = current !== undefined && Object.is(current[param], edit.value);
+      const writing = (sending.get(param) ?? 0) > 0;
+      if (backAtUrlValue && !writing) {
+        edits.delete(param);
+        pending.delete(param);
+        lastUrl = { ...lastUrl, [param]: current[param] };
+      }
+    }
+    return edits;
+  };
+
+  const send = (edits: ReadonlyMap<keyof Q, Edit>) => {
     let patch = Object.fromEntries(
       [...edits].map(([param, edit]) => [param, edit.value]),
     ) as Partial<Q>;
     if (options.beforeWrite) {
       try {
-        patch = options.beforeWrite(patch, observed);
+        patch = options.beforeWrite(patch, formValue);
       } catch (error) {
-        // The edits stay staged, so the form keeps the draft and a later change can write it.
+        // The edits stay pending, so the form keeps the draft and a later change can write it.
         errorHandler.handleError(error);
         return;
       }
     }
+    // A field the user edited again has a newer write, which reports its own failure.
+    const stillPending = () => [...edits].some(([param, edit]) => pending.get(param) === edit);
     // Once the write settles, the URL value counts as taken in, and the form keeps what the user
     // typed. With a trimming codec, 'elm ' stays in the input while the URL gets 'elm'. Fields that
     // beforeWrite adds aren't edits, so they come back from the URL.
     const settle = () => {
+      countSending(edits.keys(), -1);
       const query = read();
       for (const [param, edit] of edits) {
-        if (staged.get(param) !== edit) continue;
-        staged.delete(param);
-        if (query) committed = { ...committed, [param]: query[param] };
+        const editedAgain = pending.get(param) !== edit;
+        if (editedAgain) {
+          continue;
+        }
+        pending.delete(param);
+        if (query) {
+          lastUrl = { ...lastUrl, [param]: query[param] };
+        }
       }
     };
+    countSending(edits.keys(), 1);
     void route.patchQuery(patch, { replaceUrl: options.replaceUrl ?? true }).then(
       (result) => {
-        if (destroyed) return;
+        if (destroyed) {
+          return;
+        }
+        const declined = !result && stillPending();
         settle();
-        if (!result) reportFailure({ kind: 'declined' });
+        if (declined) {
+          reportFailure({ kind: 'declined' });
+        }
       },
       (error: unknown) => {
-        if (destroyed) return;
+        if (destroyed) {
+          return;
+        }
         settle();
         reportFailure({ kind: 'error', error });
       },
     );
   };
 
-  const synchronize = () => {
+  const writeFields = (params: Iterable<keyof Q>) => {
+    if (destroyed) {
+      return;
+    }
+    const edits = editsToWrite(params);
+    if (edits.size) {
+      send(edits);
+    }
+  };
+
+  const followUrl = () => {
     const incoming = read();
-    if (!incoming) return;
-    const next = { ...observed };
-    for (const param of Object.keys(incoming) as (keyof Q)[])
-      if (!staged.has(param) && !isEqual(committed[param], incoming[param]))
+    if (!incoming) {
+      return;
+    }
+    const next = { ...formValue };
+    for (const param of fieldsOf(incoming)) {
+      const urlChanged = !Object.is(lastUrl[param], incoming[param]);
+      const editing = pending.has(param);
+      if (urlChanged && !editing) {
         next[param] = incoming[param];
-    committed = incoming;
-    if (!isEqual(next, observed)) {
-      observed = next;
+      }
+    }
+    lastUrl = incoming;
+    const formChanges = fieldsOf(next).some((param) => !Object.is(next[param], formValue[param]));
+    if (formChanges) {
+      formValue = next;
       adapter.write(next);
     }
   };
 
   const stopFormChanges = adapter.changes((next) => {
     const immediate: (keyof Q)[] = [];
-    for (const param of Object.keys(next) as (keyof Q)[]) {
-      if (isEqual(observed[param], next[param])) continue;
-      staged.set(param, { value: next[param] });
+    for (const param of fieldsOf(next)) {
+      const unchanged = Object.is(formValue[param], next[param]);
+      if (unchanged) {
+        continue;
+      }
+      pending.set(param, { value: next[param] });
       held.delete(param);
       const delay = options.debounce?.[param];
       if (delay === undefined) {
@@ -172,24 +241,28 @@ const bindQueryParams = <Q extends QueryState>(
         param,
         setTimeout(() => {
           timers.delete(param);
-          submit([param]);
+          writeFields([param]);
         }, delay),
       );
     }
-    observed = next;
-    // Immediate fields from one form notification share one navigation.
-    submit(immediate);
+    formValue = next;
+    // Fields that changed together, and have no delay, go out in one navigation.
+    writeFields(immediate);
   });
 
   const stopValidityChanges = adapter.validityChanges(() => {
-    if (held.size) submit([...held]);
+    if (held.size) {
+      writeFields([...held]);
+    }
   });
 
-  // Defaults can change through injection without a navigation, so observe them as well.
-  const urlEffect = effect(() => synchronize());
+  // Follow params() in an effect, so the form takes in each committed navigation.
+  const urlEffect = effect(() => followUrl());
   destroyRef.onDestroy(() => {
     destroyed = true;
-    for (const timer of timers.values()) clearTimeout(timer);
+    for (const timer of timers.values()) {
+      clearTimeout(timer);
+    }
     stopFormChanges();
     stopValidityChanges();
     urlEffect.destroy();
@@ -260,7 +333,9 @@ export function bindQueryParamsToSignalForm<Q extends QueryState>(
       },
       validityChanges: (notify) => {
         const watcher = effect(() => {
-          for (const param of Object.keys(form().value())) field(param).valid();
+          for (const param of Object.keys(form().value())) {
+            field(param).valid();
+          }
           untracked(notify);
         });
         return () => watcher.destroy();

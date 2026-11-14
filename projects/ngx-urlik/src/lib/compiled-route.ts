@@ -2,208 +2,124 @@ import {
   ActivatedRouteSnapshot,
   convertToParamMap,
   ParamMap,
-  PRIMARY_OUTLET,
   Route,
   Routes,
   UrlSegment,
 } from '@angular/router';
-import { isEqual } from './is-equal';
 import type { AnyQueryParamDefinition, UrlParamCodec } from './params';
-import { stringCodec } from './params';
-import {
-  PathRestoreReader,
-  PersistenceToken,
-  persistOf,
-  restorePathMatcher,
-  restoreQueryCheck,
-} from './persistence';
-import { parseRoutePath, resolvePathParamDefinitions, RouteDefinition } from './route-definition';
-import { routeConfigBrand } from './route-symbols';
+import { isConverted, stringCodec } from './params';
+import { parseRoutePath, RouteDefinition } from './route-definition';
+import { compiledRouteKey } from './route-symbols';
 
-export interface RuntimeParam {
+interface CompiledParamBase {
   readonly name: string;
-  readonly definition: { readonly codec: UrlParamCodec<unknown> } | AnyQueryParamDefinition;
-  readonly owner: Pick<CompiledRoute, 'fullIdentity'>;
-  readonly placement: 'path' | 'query';
+  readonly codec: UrlParamCodec<unknown>;
+  readonly owner: Pick<CompiledRoute, 'label'>;
 }
+export interface CompiledPathParam extends CompiledParamBase {
+  readonly placement: 'path';
+}
+export interface CompiledQueryParam extends CompiledParamBase {
+  readonly placement: 'query';
+  readonly definition: AnyQueryParamDefinition;
+}
+export type CompiledParam = CompiledPathParam | CompiledQueryParam;
+
+export const compileQueryParam = (
+  name: string,
+  definition: AnyQueryParamDefinition,
+  owner: Pick<CompiledRoute, 'label'>,
+): CompiledQueryParam => ({ name, codec: definition.codec, definition, owner, placement: 'query' });
 
 export interface CompiledRoute {
   readonly routeName?: string;
-  readonly identity: string;
-  readonly fullIdentity: string;
-  readonly definition: RouteDefinition;
-  readonly angular: Route;
-  readonly parent?: CompiledRoute;
-  readonly pathParams: RuntimeParam[];
-  readonly queryParams: RuntimeParam[];
-  readonly segments: readonly (
-    { kind: 'static'; value: string } | { kind: 'param'; name: string }
-  )[];
+  // What errors call this route: its routeName, or its position, such as `routes[0].children[1]`.
+  readonly label: string;
+  readonly pathParams: readonly CompiledPathParam[];
+  readonly queryParams: readonly CompiledQueryParam[];
   readonly fullSegments: readonly (
-    { kind: 'static'; value: string } | { kind: 'param'; name: string; param: RuntimeParam }
+    { kind: 'static'; value: string } | { kind: 'param'; name: string; param: CompiledPathParam }
   )[];
   readonly pattern: string;
-  readonly comparator: (a: unknown, b: unknown) => boolean;
 }
 
 const defaultPathCodec = stringCodec();
 
-export function compileRoutes(
-  definitions: readonly RouteDefinition[],
-  persistence: PersistenceToken,
-  readStoredPath: PathRestoreReader,
-): {
+export function compileRoutes(definitions: readonly RouteDefinition[]): {
   readonly routes: Routes;
-  readonly catalog: ReadonlyMap<string, CompiledRoute>;
-  /** Every `persist` key the routes declare. */
-  readonly persistKeys: ReadonlySet<string>;
+  readonly namedRoutes: ReadonlyMap<string, CompiledRoute>;
 } {
-  const catalog = new Map<string, CompiledRoute>();
-  const persistKeys = new Set<string>();
-  const hasLibraryFields = (routes: readonly RouteDefinition[]): boolean =>
-    routes.some(
-      (route) =>
-        'routeName' in route ||
-        'pathParam' in route ||
-        'queryParams' in route ||
-        'isEqual' in route ||
-        (route.children ? hasLibraryFields(route.children) : false),
-    );
-  if (!hasLibraryFields(definitions))
-    return { routes: definitions as Routes, catalog, persistKeys };
-
-  // Routes that carry the query-restore check, so their ancestors carry it too.
-  const checked = new Set<Route>();
+  const namedRoutes = new Map<string, CompiledRoute>();
   const compile = (
     definitions: readonly RouteDefinition[],
     parent?: CompiledRoute,
     location = 'routes',
-    depth = 0,
   ): Routes =>
-    definitions.flatMap((definition, index) => {
-      const at = `${location}[${index}]`;
-      const {
-        routeName,
-        pathParam,
-        queryParams,
-        isEqual: comparator,
-        children,
-        ...angularFields
-      } = definition;
-      const angular: Route = { ...angularFields };
+    definitions.map((definition, index) => {
+      const { routeName, pathParam, queryParams, children, ...angularFields } = definition;
+      const angularRoute: Route = { ...angularFields };
       const parsed = parseRoutePath(definition.path ?? '');
-      const configured = resolvePathParamDefinitions(definition);
-      const pattern = [parent?.pattern, definition.path].filter(Boolean).join('/');
+      const at = `${location}[${index}]`;
+      const owner = { label: routeName ?? at };
+      const ownPath = parsed.placeholders.map((name): CompiledPathParam => ({
+        name,
+        codec: pathParam?.[name] ?? defaultPathCodec,
+        owner,
+        placement: 'path',
+      }));
+      const localSegments = parsed.segments.map((segment) =>
+        segment.kind === 'static'
+          ? segment
+          : { ...segment, param: ownPath.find((param) => param.name === segment.name)! },
+      );
       const info: CompiledRoute = {
         routeName,
-        identity: routeName ?? at,
-        fullIdentity: routeName ?? at,
-        definition,
-        angular,
-        parent,
-        pathParams: [...(parent?.pathParams ?? [])],
-        queryParams: [...(parent?.queryParams ?? [])],
-        segments: parsed.segments,
-        fullSegments: [], // Populated below
-        pattern,
-        comparator: comparator ?? parent?.comparator ?? isEqual,
+        label: owner.label,
+        pathParams: [...(parent?.pathParams ?? []), ...ownPath],
+        queryParams: [
+          ...(parent?.queryParams ?? []),
+          ...Object.entries(queryParams ?? {}).map(([name, definition]) =>
+            compileQueryParam(name, definition, owner),
+          ),
+        ],
+        fullSegments: [...(parent?.fullSegments ?? []), ...localSegments],
+        pattern: [parent?.pattern, definition.path].filter(Boolean).join('/'),
       };
-      for (const name of parsed.placeholders) {
-        info.pathParams.push({
-          name,
-          definition: {
-            codec: configured[name]?.codec ?? defaultPathCodec,
-            ...(routeName && configured[name]?.persist
-              ? { persist: configured[name].persist }
-              : {}),
-          },
-          owner: info,
-          placement: 'path',
-        });
-      }
-      for (const [name, definition] of Object.entries(queryParams ?? {})) {
-        info.queryParams.push({ name, definition, owner: info, placement: 'query' });
-      }
-      const localSegments = parsed.segments.map((segment) => {
-        if (segment.kind === 'static') return segment;
-        return {
-          kind: 'param' as const,
-          name: segment.name,
-          param: info.pathParams.find((p) => p.name === segment.name && p.owner === info)!,
-        };
-      });
-      (info as any).fullSegments = [...(parent?.fullSegments ?? []), ...localSegments];
 
       const codecs = parsed.segments.map((segment) =>
-        segment.kind === 'param' ? configured[segment.name]?.codec : undefined,
+        segment.kind === 'param' ? pathParam?.[segment.name] : undefined,
       );
-      const codecsMatch = matchPathCodecs(codecs);
-      if (codecs.some(Boolean)) angular.canMatch = [codecsMatch, ...(angular.canMatch ?? [])];
-
-      for (const param of [...info.pathParams, ...info.queryParams])
-        if (param.owner === info) {
-          const persist = persistOf(param);
-          if (persist) persistKeys.add(persist.key);
-        }
-      (angular as Record<PropertyKey, unknown>)[routeConfigBrand] = info;
-      if (routeName) catalog.set(routeName, info);
-      if (children) angular.children = compile(children, info, `${at}.children`, depth + 1);
-      const restores = info.queryParams.some((param) => persistOf(param));
-      if (
-        (restores || angular.children?.some((child) => checked.has(child))) &&
-        angular.redirectTo === undefined
-      ) {
-        checked.add(angular);
-        const endsMatch = !children?.some(
-          (child) =>
-            (child.outlet ?? PRIMARY_OUTLET) === PRIMARY_OUTLET &&
-            (child.path === '' || child.path === '**'),
-        );
-        angular.canMatch = [
-          ...(angular.canMatch ?? []),
-          restoreQueryCheck(persistence, info, {
-            depth,
-            endsMatch,
-            restores,
-            codecsMatch: (segments) => codecsMatch(angular, segments),
-          }),
-        ];
+      if (codecs.some(Boolean)) {
+        angularRoute.canMatch = [matchPathCodecs(codecs), ...(angularRoute.canMatch ?? [])];
       }
-      return [angular, ...restoreRoutes(info, readStoredPath)];
+      (angularRoute as Record<PropertyKey, unknown>)[compiledRouteKey] = info;
+      if (routeName) {
+        namedRoutes.set(routeName, info);
+      }
+      if (children) {
+        angularRoute.children = compile(children, info, `${at}.children`);
+      }
+      return angularRoute;
     });
 
-  return { routes: compile(definitions), catalog, persistKeys };
+  return { routes: compile(definitions), namedRoutes };
 }
 
-/**
- * For each count of persisted trailing placeholders that a URL can lack, a route that matches the
- * shorter path when every missing value is stored and redirects to the full path.
- */
-function restoreRoutes(info: CompiledRoute, read: PathRestoreReader): Route[] {
-  const own = info.pathParams.filter((param) => param.owner === info);
-  const persisted: RuntimeParam[] = [];
-  for (let i = own.length - 1; i >= 0 && persistOf(own[i]); i--) persisted.unshift(own[i]);
-  const redirectTo = info.segments
-    .map((s) => (s.kind === 'static' ? s.value : `:${s.name}`))
-    .join('/');
-  return persisted.map((_, index) => ({
-    matcher: restorePathMatcher(info, persisted.slice(index), read),
-    redirectTo,
-  }));
-}
-
-/** Rejects a match whose path values fail their codecs, so Angular tries the next route. */
+/** Rejects a match whose path values don't decode, so Angular tries the next route. */
 function matchPathCodecs(
   codecs: readonly (UrlParamCodec<unknown> | undefined)[],
 ): (_route: unknown, segments: readonly UrlSegment[]) => boolean {
   return (_route, segments) =>
     codecs.every((codec, index) => {
-      if (!codec) return true;
+      if (!codec) {
+        return true;
+      }
       const segment = segments[index];
-      if (!segment) return false;
+      if (!segment) {
+        return false;
+      }
       try {
-        const value = codec.deserialize(segment.path);
-        return value !== null && value !== undefined;
+        return isConverted(codec.deserialize(segment.path));
       } catch {
         return false;
       }
@@ -214,15 +130,17 @@ export function findActiveRoute(
   root: ActivatedRouteSnapshot,
   target: CompiledRoute,
 ): ActivatedRouteSnapshot | null {
-  if (
-    root.routeConfig === target.angular ||
-    (root.routeConfig as Record<PropertyKey, unknown> | null)?.[routeConfigBrand] === target
-  )
+  if (compiledRouteOf(root) === target) {
     return root;
+  }
   for (const child of root.children) {
-    if (child.outlet !== 'primary') continue;
+    if (child.outlet !== 'primary') {
+      continue;
+    }
     const found = findActiveRoute(child, target);
-    if (found) return found;
+    if (found) {
+      return found;
+    }
   }
   return null;
 }
@@ -232,12 +150,19 @@ export function getPrimaryActiveChain(root: ActivatedRouteSnapshot): ActivatedRo
   let current = root;
   while (current.children.length) {
     const primary = current.children.find((c) => c.outlet === 'primary');
-    if (!primary) break;
+    if (!primary) {
+      break;
+    }
     current = primary;
     chain.push(current);
   }
   return chain;
 }
+
+/** The compiled route an Angular snapshot came from, if ngx-urlik compiled it. */
+const compiledRouteOf = (snapshot: ActivatedRouteSnapshot): CompiledRoute | undefined =>
+  (snapshot.routeConfig as Record<PropertyKey, unknown> | null)?.[compiledRouteKey] as
+    CompiledRoute | undefined;
 
 export function findLastResult<T, R>(
   items: readonly T[],
@@ -245,7 +170,10 @@ export function findLastResult<T, R>(
 ): R | undefined {
   for (let i = items.length - 1; i >= 0; i--) {
     const result = mapper(items[i]);
-    if (result !== null && result !== undefined) return result;
+    const found = result !== null && result !== undefined;
+    if (found) {
+      return result;
+    }
   }
   return undefined;
 }

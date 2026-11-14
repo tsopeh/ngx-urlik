@@ -41,19 +41,22 @@ class NoReuse extends BaseRouteReuseStrategy {
 }
 
 const itemRouter = (resolve?: ResolveFn<unknown>) =>
-  defineAppRouter(RouteNames, {
-    routes: [
-      { path: '', routeName: RouteNames.HOME, component: Home },
-      {
-        path: 'items/:id',
-        routeName: RouteNames.ITEM,
-        pathParam: { codec: numberCodec() },
-        queryParams: { tab: queryParam({ codec: stringCodec(), defaultValue: 'info' }) },
-        component: Item,
-        ...(resolve ? { resolve: { probe: resolve } } : {}),
-      },
-    ],
-  });
+  defineAppRouter(
+    { HOME: RouteNames.HOME, ITEM: RouteNames.ITEM },
+    {
+      routes: [
+        { path: '', routeName: RouteNames.HOME, component: Home },
+        {
+          path: 'items/:id',
+          routeName: RouteNames.ITEM,
+          pathParam: { id: numberCodec() },
+          queryParams: { tab: queryParam({ codec: stringCodec(), defaultValue: 'info' }) },
+          component: Item,
+          ...(resolve ? { resolve: { probe: resolve } } : {}),
+        },
+      ],
+    },
+  );
 
 beforeEach(() => {
   seen.length = 0;
@@ -111,7 +114,7 @@ describe('reads during navigation', () => {
     expect(harness.routeNativeElement?.textContent).toBe('2');
   });
 
-  it('gives activeRoute() and global observers the committed state during activation', async () => {
+  it('gives ifActive() and global observers the committed state during activation', async () => {
     const definition = itemRouter();
     TestBed.configureTestingModule({
       providers: [
@@ -121,11 +124,13 @@ describe('reads during navigation', () => {
           provide: Reader,
           useFactory: () => {
             const appRouter = inject(definition.AppRouter);
-            const active = appRouter.activeRoute({ item: appRouter.routes.ITEM });
-            const global = appRouter.globalQueryParams({
-              tab: queryParam({ codec: stringCodec() }),
+            const global = appRouter.globalParams({
+              query: { tab: queryParam({ codec: stringCodec() }) },
             });
-            return () => `${active().params.path.id}:${global().tab}`;
+            return () => {
+              const id = appRouter.routes.ITEM.ifActive()?.params().path.id ?? null;
+              return `${id}:${global().query.tab}`;
+            };
           },
         },
       ],
@@ -146,40 +151,45 @@ describe('reads during navigation', () => {
   });
 });
 
-describe('paramsFrom()', () => {
+describe('paramsSnapshot()', () => {
   it('decodes the destination in a resolver and a guard', async () => {
     const reads: unknown[] = [];
-    const definition = defineAppRouter(RouteNames, {
-      routes: [
-        { path: '', routeName: RouteNames.HOME, component: Home },
-        {
-          path: 'shows/:showId',
-          routeName: RouteNames.SHOW,
-          pathParam: { codec: numberCodec() },
-          queryParams: { sort: queryParam({ codec: stringCodec(), defaultValue: 'new' }) },
-          children: [
-            {
-              path: 'seasons/:season',
-              routeName: RouteNames.SEASON,
-              pathParam: { codec: numberCodec() },
-              component: Home,
-              canActivate: [
-                (route) => {
-                  reads.push(inject(definition.AppRouter).routes.SHOW.paramsFrom(route));
-                  return true;
-                },
-              ],
-              resolve: {
-                probe: (route: ActivatedRouteSnapshot) => {
-                  reads.push(inject(definition.AppRouter).routes.SEASON.paramsFrom(route));
-                  return true;
+    const definition = defineAppRouter(
+      { HOME: RouteNames.HOME, SHOW: RouteNames.SHOW, SEASON: RouteNames.SEASON },
+      {
+        routes: [
+          { path: '', routeName: RouteNames.HOME, component: Home },
+          {
+            path: 'shows/:showId',
+            routeName: RouteNames.SHOW,
+            pathParam: { showId: numberCodec() },
+            queryParams: { sort: queryParam({ codec: stringCodec(), defaultValue: 'new' }) },
+            children: [
+              {
+                path: 'seasons/:season',
+                routeName: RouteNames.SEASON,
+                pathParam: { season: numberCodec() },
+                component: Home,
+                canActivate: [
+                  (route) => {
+                    const appRouter = inject(definition.AppRouter);
+                    reads.push(appRouter.paramsSnapshot(appRouter.routes.SHOW, route));
+                    return true;
+                  },
+                ],
+                resolve: {
+                  probe: (route: ActivatedRouteSnapshot) => {
+                    const appRouter = inject(definition.AppRouter);
+                    reads.push(appRouter.paramsSnapshot(appRouter.routes.SEASON, route));
+                    return true;
+                  },
                 },
               },
-            },
-          ],
-        },
-      ],
-    });
+            ],
+          },
+        ],
+      },
+    );
     TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
     const router = TestBed.inject(Router);
 
@@ -192,34 +202,51 @@ describe('paramsFrom()', () => {
 
   it('throws when the snapshot does not contain the route', async () => {
     let error: unknown;
-    const definition = defineAppRouter(RouteNames, {
-      routes: [
-        {
-          path: '',
-          routeName: RouteNames.HOME,
-          component: Home,
-          canActivate: [
-            (route) => {
-              try {
-                inject(definition.AppRouter).routes.ITEM.paramsFrom(route);
-              } catch (caught) {
-                error = caught;
-              }
-              return true;
-            },
-          ],
-        },
-        {
-          path: 'items/:id',
-          routeName: RouteNames.ITEM,
-          pathParam: { codec: numberCodec() },
-          component: Home,
-        },
-      ],
-    });
+    const definition = defineAppRouter(
+      { HOME: RouteNames.HOME, ITEM: RouteNames.ITEM },
+      {
+        routes: [
+          {
+            path: '',
+            routeName: RouteNames.HOME,
+            component: Home,
+            canActivate: [
+              (route) => {
+                try {
+                  const appRouter = inject(definition.AppRouter);
+                  appRouter.paramsSnapshot(appRouter.routes.ITEM, route);
+                } catch (caught) {
+                  error = caught;
+                }
+                return true;
+              },
+            ],
+          },
+          {
+            path: 'items/:id',
+            routeName: RouteNames.ITEM,
+            pathParam: { id: numberCodec() },
+            component: Home,
+          },
+        ],
+      },
+    );
     TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
 
     await TestBed.inject(Router).navigateByUrl('/');
-    expect(error).toEqual(new Error("ITEM: the snapshot does not contain route 'items/:id'"));
+    expect(error).toEqual(
+      new Error("paramsSnapshot(): the snapshot doesn't contain route ITEM ('items/:id')"),
+    );
+  });
+
+  it('rejects an object that is not a route from AppRouter.routes', async () => {
+    const definition = itemRouter();
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const appRouter = TestBed.inject(definition.AppRouter);
+    await TestBed.inject(Router).navigateByUrl('/items/1');
+    const root = TestBed.inject(Router).routerState.snapshot.root;
+    expect(() => appRouter.paramsSnapshot({ ...appRouter.routes.ITEM }, root)).toThrow(
+      "paramsSnapshot(): that isn't a route from AppRouter.routes",
+    );
   });
 });

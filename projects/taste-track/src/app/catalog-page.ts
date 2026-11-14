@@ -3,10 +3,13 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import type { RouteQueryPatch } from 'ngx-urlik';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import { BackendApi, type CatalogItem, type CatalogItemCard, type CatalogQuery } from './backend';
+import { Preferences } from './preferences';
+import { BackendApi, type CatalogItem, type CatalogQuery } from './backend';
 import { CatalogLinks } from './catalog-links';
 import type { PageSize } from './codecs';
 import { MediaCard } from './media-card';
+
+const headings = { episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' } as const;
 
 @Component({
   imports: [MediaCard],
@@ -15,7 +18,13 @@ import { MediaCard } from './media-card';
       <div class="section-heading">
         <div>
           <h2>{{ heading() }}</h2>
-          <p>{{ response().total }} titles</p>
+          <p>
+            @if (response(); as loaded) {
+              {{ loaded.total }} titles
+            } @else {
+              &nbsp;
+            }
+          </p>
         </div>
       </div>
       <div class="filter-panel">
@@ -42,10 +51,7 @@ import { MediaCard } from './media-card';
           </select></label
         >
         <label
-          >Page size<select
-            [value]="query().pageSize"
-            (change)="pageSize($any($event.target).value)"
-          >
+          >Page size<select [value]="pageSize()" (change)="setPageSize($any($event.target).value)">
             <option>12</option>
             <option>24</option>
             <option>48</option>
@@ -64,16 +70,18 @@ import { MediaCard } from './media-card';
           </button>
         }
       </div>
-      <div class="media-grid">
-        @for (card of response().items; track card.item.id) {
-          <app-media-card
-            [item]="card.item"
-            [state]="card.state"
-            [url]="links.item(card.item)"
-            (favorite)="toggleFavorite(card.item.id)"
-          />
-        } @empty {
-          <p class="empty">No titles match these filters.</p>
+      <div class="media-grid" [attr.aria-busy]="!response()">
+        @if (response(); as loaded) {
+          @for (card of loaded.items; track card.item.id) {
+            <app-media-card
+              [item]="card.item"
+              [state]="card.state"
+              [url]="links.item(card.item)"
+              (favorite)="toggleFavorite(card.item.id)"
+            />
+          } @empty {
+            <p class="empty">No titles match these filters.</p>
+          }
         }
       </div>
       <nav class="anchor-links" aria-label="Pagination">
@@ -87,7 +95,7 @@ import { MediaCard } from './media-card';
         <span>Page {{ query().page }}</span>
         <button
           class="button"
-          [disabled]="query().page * query().pageSize >= response().total"
+          [disabled]="query().page * pageSize() >= (response()?.total ?? 0)"
           (click)="update({ page: query().page + 1 })"
         >
           Next
@@ -97,39 +105,34 @@ import { MediaCard } from './media-card';
   `,
 })
 export class CatalogPage {
-  private readonly routes = inject(AppRouter);
+  private readonly routes = inject(AppRouter).routes;
   private readonly backendApi = inject(BackendApi);
+  private readonly preferences = inject(Preferences);
   protected readonly links = inject(CatalogLinks);
-  private readonly route = this.routes.routes.BROWSE;
-  private readonly active = this.routes.activeRoute({
-    episodes: this.routes.routes.EPISODES,
-    movies: this.routes.routes.MOVIES,
-    shows: this.routes.routes.SHOWS,
+  private readonly route = this.routes.BROWSE;
+  private readonly catalog = computed(() => {
+    const episodes = this.routes.EPISODES.ifActive();
+    if (episodes) {
+      const { showId, seasonNumber } = episodes.params().path;
+      return { route: 'episodes', showId, seasonNumber } as const;
+    }
+    return { route: this.routes.SHOWS.ifActive() ? 'shows' : 'movies' } as const;
   });
   protected readonly genres = ['Drama', 'Comedy', 'Science fiction', 'Mystery'];
   protected readonly query = computed(() => this.route.params().query);
-  protected readonly heading = computed(
-    () => ({ episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' })[this.active().route],
-  );
+  protected readonly pageSize = computed(() => this.preferences.pageSize(this.query().pageSize));
+  protected readonly heading = computed(() => headings[this.catalog().route]);
 
   private readonly request = computed<CatalogQuery>(() => {
-    const active = this.active();
     return {
-      route: active.route,
-      showId: active.route === 'episodes' ? active.params.path.showId : undefined,
-      seasonNumber: active.route === 'episodes' ? active.params.path.seasonNumber : undefined,
+      ...this.catalog(),
       ...this.query(),
+      pageSize: this.pageSize(),
     };
   });
 
   protected readonly response = toSignal(
     toObservable(this.request).pipe(switchMap((req) => this.backendApi.getCatalog(req))),
-    {
-      initialValue: {
-        items: [] as readonly CatalogItemCard[],
-        total: 0,
-      },
-    },
   );
 
   protected update(patch: RouteQueryPatch<typeof this.route>) {
@@ -141,7 +144,7 @@ export class CatalogPage {
   protected direction(direction: 'asc' | 'desc') {
     this.update({ sort: { ...this.query().sort, direction }, page: 1 });
   }
-  protected pageSize(value: string) {
+  protected setPageSize(value: string) {
     this.update({ pageSize: Number(value) as PageSize, page: 1 });
   }
   protected toggleGenre(genre: string) {

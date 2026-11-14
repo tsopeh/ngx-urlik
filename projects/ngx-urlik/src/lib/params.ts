@@ -3,100 +3,48 @@ export interface UrlParamCodec<T> {
   deserialize(raw: string): T | null;
 }
 
-export type DefaultValue<T> = T | (() => T);
-
 type NonNullish<T> = null extends T ? never : undefined extends T ? never : unknown;
 
-/**
- * Remembers a URL value in browser storage. `key` names the stored value; fields that use the same
- * key share it. `scope` names path parameters whose values narrow the key, such as one stored
- * season per show.
- */
-export interface PersistOptions<Scope extends string = string> {
-  /** Must not contain `:`, which separates the key from its scope values. */
-  readonly key: string;
-  readonly storage: 'local' | 'session';
-  readonly scope?: readonly Scope[];
-}
+/** Whether a codec gave a value. `null` and `undefined` both mean it couldn't convert. */
+export const isConverted = <T>(value: T | null | undefined): value is T =>
+  value !== null && value !== undefined;
 
 export interface QueryParamDefinition<
   T,
   Required extends boolean = false,
+  // Only types read it, through `infer`: it records whether the field has a default.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   Defaulted extends boolean = false,
-  Scope extends string = string,
 > {
   readonly kind: 'query';
-  readonly mode: 'scalar';
   readonly codec: UrlParamCodec<T>;
   readonly required: Required;
-  readonly defaultValue?: DefaultValue<T>;
-  readonly persist?: PersistOptions<Scope>;
+  readonly defaultValue?: T;
 }
 
-export interface ArrayQueryParamDefinition<T, Required extends boolean = false> {
-  readonly kind: 'query';
-  readonly mode: 'repeated';
-  readonly codec: UrlParamCodec<T>;
-  readonly required: Required;
-  readonly defaultValue?: DefaultValue<readonly T[]>;
-}
-
-export type AnyQueryParamDefinition =
-  QueryParamDefinition<unknown, boolean, boolean> | ArrayQueryParamDefinition<unknown, boolean>;
+export type AnyQueryParamDefinition = QueryParamDefinition<unknown, boolean, boolean>;
 
 type QueryOptions<T, Required extends boolean> = {
   codec: UrlParamCodec<T>;
   required?: Required;
-  defaultValue?: DefaultValue<T>;
+  defaultValue?: T;
 };
 
-/** A literal persist key that contains `:` becomes `never`, so TypeScript rejects it. */
-export type PersistKeyCheck<Key extends string> = Key extends `${string}:${string}` ? never : Key;
-
-// Only a field with a default can persist: the URL always holds its value, and `null` has no URL text.
-export function queryParam<
-  T,
-  const Required extends boolean = false,
-  const Scope extends string = never,
-  const Key extends string = string,
->(
-  options: QueryOptions<T, Required> & {
-    defaultValue: DefaultValue<T>;
-    persist?: PersistOptions<Scope> & { readonly key: Key & PersistKeyCheck<Key> };
-  } & NonNullish<T>,
-): QueryParamDefinition<T, Required, true, Scope>;
+export function queryParam<T, const Required extends boolean = false>(
+  options: QueryOptions<T, Required> & { defaultValue: T } & NonNullish<T>,
+): QueryParamDefinition<T, Required, true>;
 export function queryParam<T, const Required extends boolean = false>(
   options: QueryOptions<T, Required> & NonNullish<T>,
 ): QueryParamDefinition<T, Required, false>;
 export function queryParam<T, const Required extends boolean = false>(
-  options: QueryOptions<T, Required> & { persist?: PersistOptions } & NonNullish<T>,
+  options: QueryOptions<T, Required> & NonNullish<T>,
 ): QueryParamDefinition<T, Required, boolean> {
   return {
     kind: 'query',
-    mode: 'scalar',
     codec: options.codec,
     required: options.required ?? false,
     defaultValue: options.defaultValue,
-    ...(options.persist ? { persist: options.persist } : {}),
   } as QueryParamDefinition<T, Required, boolean>;
-}
-
-type ArrayQueryOptions<T, Required extends boolean> = {
-  codec: UrlParamCodec<T>;
-  required?: Required;
-  defaultValue?: DefaultValue<readonly T[]>;
-};
-
-export function repeatedQueryParam<T, const Required extends boolean = false>(
-  options: ArrayQueryOptions<T, Required> & NonNullish<T>,
-): ArrayQueryParamDefinition<T, Required> {
-  return {
-    kind: 'query',
-    mode: 'repeated',
-    codec: options.codec,
-    required: options.required ?? false,
-    defaultValue: options.defaultValue,
-  } as ArrayQueryParamDefinition<T, Required>;
 }
 
 const numberPattern = /^[+-]?(?:Infinity|(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?)$/;
@@ -110,10 +58,14 @@ export function stringCodec(): UrlParamCodec<string> {
 
 export function numberCodec(): UrlParamCodec<number> {
   return {
-    serialize: (value) =>
-      typeof value === 'number' && !Number.isNaN(value) ? String(value) : null,
+    serialize: (value) => {
+      const isNumber = typeof value === 'number' && !Number.isNaN(value);
+      return isNumber ? String(value) : null;
+    },
     deserialize(raw) {
-      if (!numberPattern.test(raw)) return null;
+      if (!numberPattern.test(raw)) {
+        return null;
+      }
       const value = Number(raw);
       return Number.isNaN(value) ? null : value;
     },
@@ -138,8 +90,9 @@ export function enumCodec<const Values extends readonly string[] | StringRecord>
   values: Values,
 ): UrlParamCodec<EnumValue<Values>> {
   const list = Array.isArray(values) ? values : Object.values(values);
-  if (list.some((value) => typeof value !== 'string'))
+  if (list.some((value) => typeof value !== 'string')) {
     throw new Error('enum codec values must all be strings');
+  }
   const allowed = new Set(list);
   return {
     serialize: (value) => (allowed.has(value as string) ? (value as string) : null),
@@ -148,33 +101,69 @@ export function enumCodec<const Values extends readonly string[] | StringRecord>
 }
 
 /**
- * Joins item values with `separator` into one string, such as `a,b`. The empty string is the
- * empty list. Empty items and items whose output contains the separator fail conversion.
+ * Joins items with `separator` into one string, such as `a,b`. `''` is the empty list. Inside an
+ * item, a backslash escapes the separator and itself: `['red, green', 'blue']` writes
+ * `red\, green,blue`. An empty item fails to convert.
  */
 export function listCodec<T>(
   item: UrlParamCodec<T>,
   separator: string,
 ): UrlParamCodec<readonly T[]> {
-  if (typeof separator !== 'string' || separator === '')
-    throw new Error('list codec separator must be a non-empty string');
+  const usableSeparator =
+    typeof separator === 'string' && separator !== '' && !separator.includes('\\');
+  if (!usableSeparator) {
+    throw new Error('list codec separator must be a non-empty string without a backslash');
+  }
   return {
     serialize(values) {
-      if (!Array.isArray(values)) return null;
+      if (!Array.isArray(values)) {
+        return null;
+      }
       const items: string[] = [];
       for (const value of values) {
         const output = item.serialize(value);
-        if (typeof output !== 'string' || output === '' || output.includes(separator)) return null;
-        items.push(output);
+        const writable = typeof output === 'string' && output !== '';
+        if (!writable) {
+          return null;
+        }
+        items.push(output.replaceAll('\\', '\\\\').replaceAll(separator, `\\${separator}`));
       }
       return items.join(separator);
     },
     deserialize(raw) {
-      if (raw === '') return [];
+      if (raw === '') {
+        return [];
+      }
+      const parts: string[] = [];
+      let part = '';
+      for (let i = 0; i < raw.length;) {
+        if (raw[i] === '\\') {
+          const escaped = raw.startsWith(separator, i + 1) ? separator : raw[i + 1];
+          const knownEscape = escaped === separator || escaped === '\\';
+          if (!knownEscape) {
+            return null;
+          }
+          part += escaped;
+          i += 1 + escaped.length;
+        } else if (raw.startsWith(separator, i)) {
+          parts.push(part);
+          part = '';
+          i += separator.length;
+        } else {
+          part += raw[i];
+          i += 1;
+        }
+      }
+      parts.push(part);
       const values: T[] = [];
-      for (const part of raw.split(separator)) {
-        if (part === '') return null;
-        const value = item.deserialize(part);
-        if (value === null || value === undefined) return null;
+      for (const text of parts) {
+        if (text === '') {
+          return null;
+        }
+        const value = item.deserialize(text);
+        if (!isConverted(value)) {
+          return null;
+        }
         values.push(value);
       }
       return values;

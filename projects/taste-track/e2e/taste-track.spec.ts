@@ -52,7 +52,40 @@ test('navigates show → season → episode and reloads the exact episode', asyn
   await page.getByRole('link', { name: 'Quarrybell Studios', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Quarrybell Studios' })).toBeVisible();
   await page.getByRole('link', { name: 'Brambleworth Manor', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${showUrl}\\?pageSize=24$`));
+  await expect(page).toHaveURL(new RegExp(`${showUrl}$`));
+});
+
+test('keeps Browse highlighted on movie and TV pages', async ({ page }) => {
+  const browse = page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: /Browse/ });
+  await page.goto('/movies');
+  await expect(browse).toHaveAttribute('aria-current', 'page');
+  await page.goto(`${showUrl}/s/2/e`);
+  await expect(browse).toHaveAttribute('aria-current', 'page');
+  await page.goto('/library');
+  await expect(browse).not.toHaveAttribute('aria-current');
+});
+
+test('switching catalogs never shows a false empty result', async ({ page }) => {
+  // Record every empty-state message the page ever renders, even for one frame.
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    Object.assign(window, { seenEmpty: seen });
+    new MutationObserver(() => {
+      for (const empty of document.querySelectorAll('.empty')) {
+        seen.push(empty.textContent ?? '');
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.goto('/movies');
+  await expect(page.locator('app-media-card').first()).toBeVisible();
+  await page.getByRole('link', { name: 'TV shows', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'TV shows', exact: true })).toBeVisible();
+  await expect(page.locator('app-media-card').first()).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as unknown as { seenEmpty: string[] }).seenEmpty),
+  ).toEqual([]);
 });
 
 test('people profiles show actual credits and link to movies', async ({ page }) => {
@@ -60,7 +93,7 @@ test('people profiles show actual credits and link to movies', async ({ page }) 
   await page.getByRole('link', { name: 'Wendell Marchbank', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Filmography' })).toBeVisible();
   await page.getByRole('link', { name: "Quillon's Last Inference", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${movieUrl}\\?pageSize=24$`));
+  await expect(page).toHaveURL(new RegExp(`${movieUrl}$`));
 });
 
 test('restores Signal Forms and writes array and structured query values', async ({ page }) => {
@@ -160,7 +193,7 @@ test('leaving the page with Back drops a pending debounced search', async ({ pag
     element.dispatchEvent(new Event('input', { bubbles: true }));
     history.back();
   });
-  await expect(page).toHaveURL(/\/library\?pageSize=24$/);
+  await expect(page).toHaveURL(/\/library$/);
   await expect(page.getByRole('searchbox', { name: 'Search library' })).toBeVisible();
   await page.goForward();
   await expect(search).toHaveValue('');
@@ -184,9 +217,16 @@ test('holds short library searches and resets the page when the search writes', 
   await page.goto('/library?pageSize=12&page=2');
   const search = page.getByRole('searchbox', { name: 'Search library' });
 
+  const total = page.getByRole('heading', { name: /collected titles$/ });
+  const cards = page.locator('app-media-card');
+  await expect(cards).not.toHaveCount(0);
+  const before = { total: await total.textContent(), cards: await cards.count() };
+
   await search.pressSequentially('al');
   await page.waitForTimeout(500);
   await expect(page).toHaveURL(/\/library\?pageSize=12&page=2$/);
+  // The list shows the URL, not the held draft.
+  expect({ total: await total.textContent(), cards: await cards.count() }).toEqual(before);
 
   await search.pressSequentially('g');
   await expect(page).toHaveURL(/\/library\?pageSize=12&search=alg$/);
@@ -196,46 +236,105 @@ test('holds short library searches and resets the page when the search writes', 
   await expect(page).toHaveURL(/\/library\?pageSize=12$/);
 });
 
-test('remembers the page size across lists and reloads', async ({ page }) => {
+test('keeps the library page when a held search is deleted', async ({ page }) => {
+  await page.goto('/library?pageSize=12&page=2');
+  const search = page.getByRole('searchbox', { name: 'Search library' });
+  await expect(page.locator('app-media-card')).not.toHaveCount(0);
+
+  await search.pressSequentially('a');
+  await page.waitForTimeout(500);
+  await search.fill('');
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(/\/library\?pageSize=12&page=2$/);
+  await expect(page.getByText('Page 2', { exact: true })).toBeVisible();
+});
+
+test('shows only the error when the journal fails to open', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(window, 'indexedDB', { value: undefined }));
+  await page.goto('/movies');
+
+  await expect(page.getByRole('alert')).toHaveText(/Could not open your journal/);
+  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(0);
+});
+
+test('section links keep the catalog filters', async ({ page }) => {
+  await page.goto('/movies/quillons-last-inference?genres=Drama');
+  await page.getByRole('link', { name: 'Credits', exact: true }).click();
+  await expect(page).toHaveURL(/\/movies\/quillons-last-inference\?genres=Drama#credits$/);
+});
+
+test('a double-clicked favorite ends where it started', async ({ page }) => {
+  await page.goto('/movies?pageSize=12');
+  const favorite = () =>
+    page
+      .locator('app-media-card')
+      .first()
+      .getByRole('button', { name: /favorite$/ });
+  await expect(favorite()).toHaveAccessibleName('Add favorite');
+
+  await favorite().dblclick();
+  await page.waitForTimeout(300);
+  await page.reload();
+  await expect(favorite()).toHaveAccessibleName('Add favorite');
+});
+
+test("rejects a viewing date the journal can't store", async ({ page }) => {
+  await page.goto(movieUrl);
+  const viewings = page.getByRole('heading', { name: /recorded viewings$/ });
+  await expect(viewings).toHaveText('2 recorded viewings');
+  const date = page.getByLabel('Viewing date');
+  // A date input accepts years past 9999. Typing one more digit in the year gives this value.
+  await date.evaluate((input: HTMLInputElement) => {
+    input.value = '20261-11-11';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(date).toHaveValue('20261-11-11');
+
+  await page.getByRole('button', { name: 'Log viewing' }).click();
+  await expect(page.getByRole('alert')).toHaveText('Enter a date like 2026-11-11.');
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(viewings).toHaveText('2 recorded viewings');
+});
+
+test('opens lists at the page size picked last, also in a new tab', async ({ page, context }) => {
   const nav = page.getByRole('navigation', { name: 'Primary navigation' });
-  await page.goto('/settings');
-  await nav.getByRole('link', { name: /Browse/ }).click();
-  await expect(page).toHaveURL(/\/movies\?pageSize=24$/);
-  await page.getByRole('combobox', { name: 'Page size', exact: true }).selectOption('12');
+  const pageSize = page.getByRole('combobox', { name: 'Page size', exact: true });
+  await page.goto('/movies');
+  await pageSize.selectOption('12');
   await expect(page).toHaveURL(/pageSize=12/);
   await nav.getByRole('link', { name: /Library/ }).click();
-  await expect(page).toHaveURL(/\/library\?pageSize=12$/);
-  await nav.getByRole('link', { name: /Browse/ }).click();
-  await expect(page).toHaveURL(/\/movies\?pageSize=12$/);
-  // The restoring redirect adds no history entry of its own.
-  await page.goBack();
-  await expect(page).toHaveURL(/\/library\?pageSize=12$/);
-  await page.goto('/movies');
-  await expect(page).toHaveURL(/\/movies\?pageSize=12$/);
-  await expect(page.locator('app-media-card')).toHaveCount(12);
+  await expect(page).toHaveURL(/\/library$/);
+  await expect(pageSize).toHaveValue('12');
+  const tab = await context.newPage();
+  await tab.goto('/');
+  await expect(tab).toHaveURL(/\/movies$/);
+  await expect(tab.locator('app-media-card')).toHaveCount(12);
+  // A size in the URL wins, and becomes the one picked last.
+  await page.goto('/history?pageSize=48');
+  await expect(pageSize).toHaveValue('48');
+  await page.goto('/library');
+  await expect(pageSize).toHaveValue('48');
 });
 
-test('opens the last season of a show from a URL without the season', async ({ page }) => {
-  const seasons = page.getByRole('navigation', { name: 'Seasons' });
-  // With no season stored for this show, the URL falls back to the show page.
-  await page.goto(`${showUrl}/s`);
-  await expect(page).toHaveURL(new RegExp(`${showUrl}\\?pageSize=24$`));
-  await seasons.getByRole('link', { name: 'Season 2', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${showUrl}/s/2\\?pageSize=24$`));
-  await expect(page.getByRole('heading', { name: 'Brambleworth Manor · Season 2' })).toBeVisible();
-  await page.goto(`${showUrl}/s?pageSize=12#episodes`);
-  await expect(page).toHaveURL(new RegExp(`${showUrl}/s/2\\?pageSize=12#episodes$`));
-  await expect(page.getByRole('heading', { name: 'Brambleworth Manor · Season 2' })).toBeVisible();
-  // Each show remembers its own season.
-  await page.goto('/tv/wirefern/s');
-  await expect(page).toHaveURL(/\/tv\/wirefern\?pageSize=12$/);
+test('continues a show at the season it was last opened at', async ({ page }) => {
+  const resume = page.getByRole('link', { name: /^Continue with Season/ });
+  await page.goto(showUrl);
+  await expect(resume).toHaveCount(0);
+  await page
+    .getByRole('navigation', { name: 'Seasons' })
+    .getByRole('link', { name: 'Season 2', exact: true })
+    .click();
+  await page.getByRole('link', { name: 'Back to show', exact: true }).click();
+  await resume.click();
+  await expect(page).toHaveURL(new RegExp(`${showUrl}/s/2$`));
+  await page.goto('/tv/wirefern');
+  await expect(resume).toHaveCount(0);
 });
 
-test('resetting TasteTrack forgets the remembered page size', async ({ page }) => {
-  await page.goto('/movies?pageSize=12');
-  await expect(page.locator('app-media-card')).toHaveCount(12);
+test('resetting TasteTrack returns to the movie catalog', async ({ page }) => {
   await page.goto('/settings');
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Reset TasteTrack' }).click();
-  await expect(page).toHaveURL(/\/movies\?pageSize=24$/);
+  await expect(page).toHaveURL(/\/movies$/);
 });

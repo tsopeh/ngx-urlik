@@ -1,35 +1,26 @@
 import { Route } from '@angular/router';
-import { AnyQueryParamDefinition, PersistOptions, UrlParamCodec } from './params';
+import { AnyQueryParamDefinition, UrlParamCodec } from './params';
 
 export type QueryDefinitions = Readonly<Record<string, AnyQueryParamDefinition>>;
 
-/** A codec attached to a placeholder already declared by an Angular route path. */
-export interface PathParamCodecDefinition<T = unknown> {
-  readonly codec: UrlParamCodec<T>;
-  /** Remembers the value. Allowed on the trailing placeholders of a named route's own path. */
-  readonly persist?: PersistOptions;
-}
+/** A codec for each placeholder that the route's `path` names. */
+export type PathParamOptions = Readonly<Record<string, UrlParamCodec<unknown>>>;
 
-export type PathParamOptions =
-  PathParamCodecDefinition | Readonly<Record<string, PathParamCodecDefinition>>;
-
-/** An Angular route with optional fields for typed URLs and URL state. */
+/** An Angular route, plus optional ngx-urlik fields. */
 export interface RouteDefinition extends Omit<Route, 'children'> {
   /**
-   * Adds this route to `AppRouter.routes` using the assigned string.
-   * Names must be unique across the route array. `defineAppRouter()` throws if one is repeated.
+   * Adds this route to `AppRouter.routes` under this name. Each name must be unique, or
+   * `defineAppRouter()` throws.
    */
   readonly routeName?: string;
   /**
-   * Codecs for placeholders in this route's `path`. A lone placeholder accepts `{ codec }`;
-   * several placeholders need one map entry per name. Without a codec, a placeholder is a string.
+   * A codec for each placeholder in this route's `path`, such as `{ showId: numberCodec() }`.
+   * Without `pathParam`, every placeholder is a string.
    */
   readonly pathParam?: PathParamOptions;
-  /** Query fields this route adds to the state inherited by named descendants. */
+  /** Query fields this route owns. Named routes below it inherit them. */
   readonly queryParams?: QueryDefinitions;
   readonly children?: readonly RouteDefinition[];
-  /** Compares decoded state for this route's `params` signal. Descendants inherit it. */
-  readonly isEqual?: (a: unknown, b: unknown) => boolean;
 }
 
 export type RouteDefinitions = readonly RouteDefinition[];
@@ -43,28 +34,33 @@ export interface ParsedRoutePath {
   readonly errors: readonly string[];
 }
 
-/** Parse the ordinary primary-outlet path syntax used for typed URL construction. */
+/** Splits a path like `shows/:showId` into fixed segments and placeholders. */
 export function parseRoutePath(path: string): ParsedRoutePath {
-  if (typeof path !== 'string')
+  if (typeof path !== 'string') {
     return { segments: [], placeholders: [], errors: ['path must be a string'] };
-  if (path === '') return { segments: [], placeholders: [], errors: [] };
+  }
+  if (path === '') {
+    return { segments: [], placeholders: [], errors: [] };
+  }
   const segments: ParsedRoutePathSegment[] = [];
   const placeholders: string[] = [];
   const errors: string[] = [];
   for (const part of path.split('/')) {
     if (part === '') {
-      errors.push('path must not contain an empty segment');
+      errors.push("path has an empty segment, from a leading, trailing, or doubled '/'");
     } else if (part === '**') {
-      errors.push("wildcard path '**' cannot be used for a named route");
+      errors.push("a named route can't use the '**' wildcard");
     } else if (part.startsWith(':')) {
       const name = part.slice(1);
-      if (!name || /[:?#;()\s]/.test(name)) errors.push(`invalid path placeholder '${part}'`);
-      else {
+      const usableName = name !== '' && !/[:?#;()\s]/.test(name);
+      if (!usableName) {
+        errors.push(`placeholder '${part}' needs a name without spaces or : ? # ; ( )`);
+      } else {
         segments.push({ kind: 'param', name });
         placeholders.push(name);
       }
     } else if (/[:?#;()]/.test(part)) {
-      errors.push(`invalid static path segment '${part}'`);
+      errors.push(`path segment '${part}' can't contain : ? # ; ( )`);
     } else {
       segments.push({ kind: 'static', value: part });
     }
@@ -72,245 +68,190 @@ export function parseRoutePath(path: string): ParsedRoutePath {
   return { segments, placeholders, errors };
 }
 
-function isCodecDefinition(value: unknown): value is PathParamCodecDefinition {
-  if (!value || typeof value !== 'object') return false;
-  if (Object.keys(value).some((key) => key !== 'codec' && key !== 'persist')) return false;
-  const codec = (value as Partial<PathParamCodecDefinition>).codec;
-  return (
-    !!codec &&
-    typeof codec === 'object' &&
-    typeof codec.serialize === 'function' &&
-    typeof codec.deserialize === 'function'
-  );
-}
+const isCodec = (value: unknown): value is UrlParamCodec<unknown> =>
+  !!value &&
+  typeof value === 'object' &&
+  typeof (value as UrlParamCodec<unknown>).serialize === 'function' &&
+  typeof (value as UrlParamCodec<unknown>).deserialize === 'function';
 
-/** Return explicitly configured codecs, keyed by names parsed from path. */
-export function resolvePathParamDefinitions(
-  route: Pick<RouteDefinition, 'path' | 'pathParam'>,
-): Readonly<Record<string, PathParamCodecDefinition>> {
-  const option = route.pathParam;
-  if (!option) return {};
-  if (isCodecDefinition(option)) {
-    const name = parseRoutePath(route.path ?? '').placeholders[0];
-    return name ? { [name]: option } : {};
-  }
-  return typeof option === 'object' && !Array.isArray(option)
-    ? (option as Readonly<Record<string, PathParamCodecDefinition>>)
-    : {};
-}
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
 
-/** The persisted placeholders at the end of a path, with no other segment after them. */
-function persistedTrailingPlaceholders(
-  segments: readonly ParsedRoutePathSegment[],
-  definitions: Readonly<Record<string, PathParamCodecDefinition>>,
-): string[] {
-  const names: string[] = [];
-  for (let i = segments.length - 1; i >= 0; i--) {
-    const segment = segments[i];
-    if (segment.kind !== 'param' || !definitions[segment.name]?.persist) break;
-    names.unshift(segment.name);
-  }
-  return names;
-}
+const isQueryDefinition = (value: unknown): boolean =>
+  isRecord(value) && value['kind'] === 'query' && isCodec(value['codec']);
 
-/** Problems with a `persist` option. `scopeNames` are the path parameters its scope may name. */
-function persistProblems(persist: unknown, scopeNames: readonly string[]): string[] {
-  if (!persist || typeof persist !== 'object') return ['persist must be an object'];
-  const { key, storage, scope } = persist as Partial<PersistOptions>;
-  const problems: string[] = [];
-  if (typeof key !== 'string' || key === '')
-    problems.push('persist key must be a non-empty string');
-  else if (key.includes(':'))
-    problems.push(
-      `persist key '${key}' must not contain ':', which separates the key from its scope values`,
-    );
-  if (storage !== 'local' && storage !== 'session')
-    problems.push("persist storage must be 'local' or 'session'");
-  if (scope !== undefined && !Array.isArray(scope)) problems.push('persist scope must be an array');
-  else
-    for (const name of scope ?? [])
-      if (!scopeNames.includes(name))
-        problems.push(
-          `persist scope names '${name}', which is not a path parameter before it in the route chain`,
-        );
-  return problems;
-}
+const isRoute = (value: unknown): value is RouteDefinition => isRecord(value);
 
-/** Validate ordered Angular routes and the statically known chains of named routes. */
+const someRoute = (route: RouteDefinition, test: (route: RouteDefinition) => boolean): boolean =>
+  test(route) ||
+  (Array.isArray(route.children) &&
+    route.children.some((child) => isRoute(child) && someRoute(child, test)));
+
+const hasNamedRoute = (route: RouteDefinition): boolean =>
+  someRoute(route, (candidate) => 'routeName' in candidate);
+
+const usesLibraryFields = (route: RouteDefinition): boolean =>
+  someRoute(route, (candidate) => 'pathParam' in candidate || 'queryParams' in candidate);
+
+/**
+ * Checks every named route, every route above one, and every route that uses `pathParam` or
+ * `queryParams`, and returns every problem it finds. Other routes are Angular's to check. Also
+ * checks that each route name has a route.
+ */
 export function validateRouteDefinitions(
   routes: RouteDefinitions,
   routeNames: Readonly<Record<string, string>>,
 ): string[] {
-  if (!routeNames || typeof routeNames !== 'object')
-    return ['routeNames: pass the route names enum or object as the first argument'];
-  if (!Array.isArray(routes)) return ['routes: route collection must be an array'];
+  if (!isRecord(routeNames)) {
+    return ['pass your route names enum as the first argument'];
+  }
+  if (!Array.isArray(routes)) {
+    return ['routes must be an array'];
+  }
   const declaredNames = new Set(Object.values(routeNames));
-  const errors: string[] = [];
-  const reported = new Set<string>();
   const usedNames = new Map<string, string>();
-  const report = (message: string) => {
-    if (!reported.has(message)) {
-      errors.push(message);
-      reported.add(message);
-    }
-  };
+  const errors: string[] = [];
+
+  // `pathOwners` and `queryOwners` map each name the routes above declare to the path that does.
   const visit = (
     siblings: RouteDefinitions,
-    ancestors: readonly RouteDefinition[],
     location: string,
-  ) => {
+    pathOwners: ReadonlyMap<string, string>,
+    queryOwners: ReadonlyMap<string, string>,
+  ) =>
     siblings.forEach((route, index) => {
       const at = `${location}[${index}]`;
-      if (!route || typeof route !== 'object' || Array.isArray(route)) {
-        report(`${at}: route definition must be a non-null object`);
+      if (!isRoute(route)) {
+        errors.push(`${at} must be a route object`);
         return;
       }
-      const chain = [...ancestors, route];
-      if ('routeName' in route) {
+      // A route with no named route below it only matters if it uses ngx-urlik fields.
+      const readByName = hasNamedRoute(route);
+      const nothingToCheck = !readByName && !usesLibraryFields(route);
+      if (nothingToCheck) {
+        return;
+      }
+      const named = 'routeName' in route;
+      const hasUsableName = named && typeof route.routeName === 'string';
+      const label = hasUsableName ? route.routeName : at;
+      const report = (message: string) => errors.push(`${label}: ${message}`);
+
+      if (named) {
         const routeName = route.routeName;
-        if (typeof routeName !== 'string' || !routeName.trim()) {
-          report(`${at}: routeName must be a non-empty string`);
+        const usableName = typeof routeName === 'string' && routeName.trim() !== '';
+        if (!usableName) {
+          errors.push(`${at}: routeName must be a non-empty string`);
+          return;
+        }
+        const previous = usedNames.get(routeName);
+        if (previous) {
+          errors.push(
+            `routeName '${routeName}' is used by both ${previous} and ${at}. Give each route its own routeName.`,
+          );
         } else {
-          const previous = usedNames.get(routeName);
-          if (previous)
-            report(
-              `routeName '${routeName}' is used by both ${previous} and ${at}. Give each named route a different routeName.`,
-            );
-          else usedNames.set(routeName, at);
-          if (!declaredNames.has(routeName))
-            report(
-              `routeName '${routeName}' at ${at} is not a value of the route names passed to defineAppRouter(). Add it to the route names.`,
-            );
-          if (route.redirectTo !== undefined || route.path === '**' || route.matcher)
-            report(`${routeName}: only ordinary path routes can have a routeName`);
-          if (route.loadChildren) report(`${routeName}: named routes cannot use loadChildren`);
-          const pathOwners = new Map<string, string>();
-          const queryOwners = new Map<string, string>();
-          for (const [depth, member] of chain.entries()) {
-            const owner = depth === chain.length - 1 ? routeName : `ancestor ${depth + 1}`;
-            const knownPath = !(
-              member.matcher ||
-              member.path === undefined ||
-              member.redirectTo !== undefined ||
-              member.path === '**' ||
-              (member.outlet && member.outlet !== 'primary')
-            );
-            if (!knownPath)
-              report(`${routeName}: ${owner} must have a statically known primary path`);
-            if (depth < chain.length - 1 && member.loadChildren)
-              report(`${routeName}: ${owner} cannot use loadChildren before a named descendant`);
-            const parsed = parseRoutePath(member.path === '**' ? '' : (member.path ?? ''));
-            if (knownPath)
-              for (const error of parsed.errors) report(`${routeName}: ${owner}: ${error}`);
-            const codecOptions = member.pathParam;
-            if (codecOptions !== undefined) {
-              const definitions = resolvePathParamDefinitions(member);
-              const shorthand = isCodecDefinition(codecOptions);
-              if (
-                !shorthand &&
-                codecOptions &&
-                typeof codecOptions === 'object' &&
-                'codec' in codecOptions &&
-                codecOptions['codec'] &&
-                typeof codecOptions['codec'] === 'object' &&
-                'serialize' in codecOptions['codec'] &&
-                'deserialize' in codecOptions['codec']
-              )
-                report(
-                  `${routeName}: ${owner}: pathParam shorthand supports only 'codec' and 'persist'`,
-                );
-              if (shorthand && parsed.placeholders.length !== 1)
-                report(
-                  `${routeName}: ${owner}: pathParam shorthand requires exactly one path placeholder`,
-                );
-              if (
-                !shorthand &&
-                (!codecOptions || typeof codecOptions !== 'object' || Array.isArray(codecOptions))
-              )
-                report(`${routeName}: ${owner}: pathParam must be a codec or a keyed codec map`);
-              for (const name of Object.keys(definitions)) {
-                if (!parsed.placeholders.includes(name))
-                  report(`${routeName}: ${owner}: pathParam '${name}' has no path placeholder`);
-                if (!isCodecDefinition(definitions[name]))
-                  report(`${routeName}: ${owner}: pathParam '${name}' must contain a codec`);
-              }
-              if (
-                !shorthand &&
-                Object.keys(definitions).length !== new Set(parsed.placeholders).size
-              )
-                report(
-                  `${routeName}: ${owner}: pathParam map must define exactly the path placeholders`,
-                );
-              const trailing = persistedTrailingPlaceholders(parsed.segments, definitions);
-              for (const [name, definition] of Object.entries(definitions)) {
-                const persist = (definition as { persist?: unknown } | undefined)?.persist;
-                if (persist === undefined) continue;
-                if (member.routeName === undefined)
-                  report(
-                    `${routeName}: ${owner}: pathParam '${name}' can persist only on a named route`,
-                  );
-                else if (depth === chain.length - 1) {
-                  if (!trailing.includes(name))
-                    report(
-                      `${routeName}: pathParam '${name}' can persist only in the trailing placeholders of the route's path, after which every placeholder persists`,
-                    );
-                  const before = parsed.placeholders.slice(0, parsed.placeholders.indexOf(name));
-                  for (const problem of persistProblems(persist, [...pathOwners.keys(), ...before]))
-                    report(`${routeName}: pathParam '${name}' ${problem}`);
-                }
-              }
+          usedNames.set(routeName, at);
+        }
+        if (!declaredNames.has(routeName)) {
+          errors.push(
+            `routeName '${routeName}' at ${at} isn't in the route names passed to defineAppRouter(). Add it to the enum.`,
+          );
+        }
+        const redirectWildcardOrMatcher =
+          route.redirectTo !== undefined || route.path === '**' || Boolean(route.matcher);
+        if (redirectWildcardOrMatcher) {
+          report("redirects, wildcards, and matchers can't have a routeName");
+        }
+      }
+      const loadsChildrenLazily = Boolean(route.loadChildren);
+      if (loadsChildrenLazily && readByName) {
+        report(
+          named
+            ? "a named route can't use loadChildren"
+            : "it's above a named route, so it can't use loadChildren",
+        );
+      }
+      const plainPath = !(
+        route.matcher ||
+        route.path === undefined ||
+        route.redirectTo !== undefined ||
+        route.path === '**' ||
+        (route.outlet && route.outlet !== 'primary')
+      );
+      const needsPlainPath = readByName || route.pathParam !== undefined;
+      if (needsPlainPath && !plainPath) {
+        report('needs a plain path in the primary outlet');
+      }
+      const parsed = parseRoutePath(plainPath ? (route.path as string) : '');
+      for (const error of parsed.errors) {
+        report(error);
+      }
+
+      if (route.pathParam !== undefined) {
+        if (!isRecord(route.pathParam)) {
+          report('pathParam must map each placeholder name to its codec');
+        } else {
+          for (const [name, codec] of Object.entries(route.pathParam)) {
+            if (!parsed.placeholders.includes(name)) {
+              report(`pathParam '${name}' isn't a placeholder in the path`);
             }
-            for (const name of parsed.placeholders) {
-              const previous = pathOwners.get(name);
-              if (previous)
-                report(
-                  `${routeName}: path parameter '${name}' appears in both '${previous}' and '${member.path}'. Rename one so params().path can hold both values.`,
-                );
-              else pathOwners.set(name, member.path ?? '');
+            if (!isCodec(codec)) {
+              report(`pathParam '${name}' must be a codec`);
             }
-            if (member.queryParams !== undefined) {
-              if (
-                !member.queryParams ||
-                typeof member.queryParams !== 'object' ||
-                Array.isArray(member.queryParams)
-              ) {
-                report(`${routeName}: ${owner}: queryParams must be a non-null object`);
-              } else
-                for (const name of Object.keys(member.queryParams)) {
-                  const previous = queryOwners.get(name);
-                  if (previous)
-                    report(
-                      `${routeName}: query parameter '${name}' is defined in both '${previous}' and '${member.path}'`,
-                    );
-                  else queryOwners.set(name, member.path ?? '');
-                  const definition = member.queryParams[name] as
-                    (AnyQueryParamDefinition & { persist?: unknown }) | undefined;
-                  if (definition?.persist !== undefined) {
-                    if (definition.mode === 'repeated')
-                      report(
-                        `${routeName}: query parameter '${name}' cannot persist, because an empty repeated field has no URL key. Use queryParam({ codec: listCodec(...), defaultValue: [] }) instead.`,
-                      );
-                    else if (definition.defaultValue === undefined)
-                      report(
-                        `${routeName}: query parameter '${name}' persists, so it needs a defaultValue`,
-                      );
-                    for (const problem of persistProblems(definition.persist, [
-                      ...pathOwners.keys(),
-                    ]))
-                      report(`${routeName}: query parameter '${name}' ${problem}`);
-                  }
-                }
+          }
+        }
+      }
+      const ownPaths = new Map(pathOwners);
+      for (const name of parsed.placeholders) {
+        const previous = ownPaths.get(name);
+        if (previous !== undefined) {
+          report(
+            `path parameter '${name}' appears in both '${previous}' and '${route.path}'. Rename one, because params().path holds one value per name.`,
+          );
+        } else {
+          ownPaths.set(name, route.path ?? '');
+        }
+      }
+      const ownQueries = new Map(queryOwners);
+      const declaresQuery = route.queryParams !== undefined;
+      if (declaresQuery && !readByName) {
+        report(
+          'no named route at or below it reads queryParams. Add a routeName, or remove queryParams.',
+        );
+      } else if (declaresQuery) {
+        if (!isRecord(route.queryParams)) {
+          report('queryParams must be an object');
+        } else {
+          for (const [name, definition] of Object.entries(route.queryParams)) {
+            if (!isQueryDefinition(definition)) {
+              report(`query parameter '${name}' must come from queryParam()`);
+            }
+            const previous = ownQueries.get(name);
+            if (previous !== undefined) {
+              report(
+                `query parameter '${name}' is defined in both '${previous}' and '${route.path}'. Define it once.`,
+              );
+            } else {
+              ownQueries.set(name, route.path ?? '');
             }
           }
         }
       }
       if (route.children !== undefined) {
-        if (!Array.isArray(route.children))
-          report(`${at}.children: route collection must be an array`);
-        else visit(route.children, chain, `${at}.children`);
+        if (!Array.isArray(route.children)) {
+          report('children must be an array');
+        } else {
+          visit(route.children, `${at}.children`, ownPaths, ownQueries);
+        }
       }
     });
-  };
-  visit(routes, [], 'routes');
+
+  visit(routes, 'routes', new Map(), new Map());
+  for (const [member, routeName] of Object.entries(routeNames)) {
+    if (!usedNames.has(routeName)) {
+      errors.push(
+        `RouteNames.${member} has no route. Give a route routeName: '${routeName}', or remove the member.`,
+      );
+    }
+  }
   return errors;
 }

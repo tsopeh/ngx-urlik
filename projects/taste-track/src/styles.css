@@ -90,6 +90,8 @@
 }
 html {
   scroll-behavior: smooth;
+  /* Reserve the scrollbar's space so short pages don't shift sideways. */
+  scrollbar-gutter: stable;
   background: var(--surface-page);
 }
 body {
@@ -241,6 +243,11 @@ h2 {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
   gap: clamp(1rem, 2.5vw, 2rem);
+}
+/* Hold the list's space until its first results arrive, so the page doesn't collapse and jump. */
+.media-grid[aria-busy='true'],
+.history-list[aria-busy='true'] {
+  min-height: 100vh;
 }
 .chip-row {
   display: flex;

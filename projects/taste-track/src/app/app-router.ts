@@ -1,12 +1,9 @@
-import { inject } from '@angular/core';
-import { Router } from '@angular/router';
 import {
   defineAppRouter,
   enumCodec,
   listCodec,
   numberCodec,
   queryParam,
-  repeatedQueryParam,
   stringCodec,
 } from 'ngx-urlik';
 import {
@@ -23,8 +20,8 @@ const mediaKindCodec = enumCodec(['movie', 'show', 'episode'] as const);
 
 const catalogQueryParams = () => ({
   search: queryParam({ codec: stringCodec(), defaultValue: '' }),
-  genres: repeatedQueryParam({ codec: stringCodec() }),
-  ...paginationParams({ defaultPageSize: 24, pageSizes: [12, 24, 48] }),
+  genres: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),
+  ...paginationParams({ pageSizes: [12, 24, 48] }),
   sort: queryParam({
     codec: sortCodec(['title', 'year'] as const),
     defaultValue: { field: 'title', direction: 'asc' },
@@ -35,9 +32,6 @@ const loadShell = () => import('./shell').then((module) => module.Shell);
 const loadBrowse = () => import('./browse-page').then((module) => module.BrowsePage);
 const loadCatalog = () => import('./catalog-page').then((module) => module.CatalogPage);
 const loadDetail = () => import('./detail-page').then((module) => module.DetailPage);
-
-const redirectToMovies = ({ queryParams }: { queryParams: Record<string, unknown> }) =>
-  inject(Router).createUrlTree(['/movies'], { queryParams });
 
 export enum RouteNames {
   BROWSE = 'BROWSE',
@@ -64,7 +58,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
       path: '',
       loadComponent: loadShell,
       children: [
-        { path: '', pathMatch: 'full', redirectTo: redirectToMovies },
+        { path: '', pathMatch: 'full', redirectTo: 'movies' },
         {
           // Movies and TV share the catalog filters, without a segment of their own.
           path: '',
@@ -84,7 +78,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                 {
                   path: ':movieId',
                   routeName: RouteNames.MOVIE_DETAIL,
-                  pathParam: { codec: prefixedIdCodec('mov') },
+                  pathParam: { movieId: prefixedIdCodec('mov') },
                   loadComponent: loadDetail,
                 },
               ],
@@ -100,7 +94,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                 },
                 {
                   path: ':showId',
-                  pathParam: { codec: prefixedIdCodec('tv') },
+                  pathParam: { showId: prefixedIdCodec('tv') },
                   children: [
                     {
                       path: '',
@@ -111,12 +105,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                     {
                       path: 's/:seasonNumber',
                       routeName: RouteNames.SEASON,
-                      // Each show remembers its last season for this tab, so
-                      // `tv/:showId/s` opens it again.
-                      pathParam: {
-                        codec: positiveIntegerCodec(),
-                        persist: { key: 'season', storage: 'session', scope: ['showId'] },
-                      },
+                      pathParam: { seasonNumber: positiveIntegerCodec() },
                       children: [
                         {
                           path: '',
@@ -136,15 +125,13 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                             {
                               path: ':episodeNumber',
                               routeName: RouteNames.EPISODE_DETAIL,
-                              pathParam: { codec: positiveIntegerCodec() },
+                              pathParam: { episodeNumber: positiveIntegerCodec() },
                               loadComponent: loadDetail,
                             },
                           ],
                         },
                       ],
                     },
-                    // Without a remembered season, `s` opens the show, which lists its seasons.
-                    { path: 's', pathMatch: 'full', redirectTo: '' },
                   ],
                 },
               ],
@@ -163,7 +150,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
             {
               path: ':personId',
               routeName: RouteNames.PERSON_DETAIL,
-              pathParam: { codec: prefixedIdCodec('per') },
+              pathParam: { personId: prefixedIdCodec('per') },
               loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
             },
           ],
@@ -180,7 +167,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
             {
               path: ':studioId',
               routeName: RouteNames.STUDIO_DETAIL,
-              pathParam: { codec: prefixedIdCodec('st') },
+              pathParam: { studioId: prefixedIdCodec('st') },
               loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
             },
           ],
@@ -191,10 +178,10 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
             media: queryParam({ codec: listCodec(mediaKindCodec, ','), defaultValue: [] }),
-            statuses: repeatedQueryParam({ codec: statusCodec }),
+            statuses: queryParam({ codec: listCodec(statusCodec, ','), defaultValue: [] }),
             replayCount: queryParam({ codec: experienceCountCodec() }),
             minRating: queryParam({ codec: numberCodec() }),
-            ...paginationParams({ defaultPageSize: 24, pageSizes: [12, 24, 48] }),
+            ...paginationParams({ pageSizes: [12, 24, 48] }),
             sort: queryParam({
               codec: sortCodec(['title', 'rating'] as const),
               defaultValue: { field: 'title', direction: 'asc' },
@@ -209,7 +196,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
             from: queryParam({ codec: stringCodec() }),
             to: queryParam({ codec: stringCodec() }),
-            ...paginationParams({ defaultPageSize: 24, pageSizes: [12, 24, 48] }),
+            ...paginationParams({ pageSizes: [12, 24, 48] }),
             sort: queryParam({
               codec: sortCodec(['date', 'rating'] as const),
               defaultValue: { field: 'date', direction: 'desc' },

@@ -7,7 +7,7 @@ export interface AppRouterEscapeHatch {
   readonly navigateByUrl: Router['navigateByUrl'];
   readonly parseUrl: Router['parseUrl'];
   readonly serializeUrl: Router['serializeUrl'];
-  /** Angular's `isActive()` function bound to the application router. */
+  /** Angular's `isActive()`, bound to this router. */
   readonly isActive: (
     url: string | UrlTree,
     matchOptions?: Partial<IsActiveMatchOptions>,

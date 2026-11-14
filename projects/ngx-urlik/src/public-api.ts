@@ -1,22 +1,16 @@
-export { isEqual } from './lib/is-equal';
 export {
   booleanCodec,
   enumCodec,
   listCodec,
   numberCodec,
   queryParam,
-  repeatedQueryParam,
   stringCodec,
-  type DefaultValue,
   type UrlParamCodec,
 } from './lib/params';
 export {
   defineAppRouter,
-  type ActiveRoute,
   type AppRouterDiagnostic,
   type AppRouterDiagnosticCode,
-  type AppRouterParameterDiagnostic,
-  type AppRouterUnknownKeyDiagnostic,
   type AppRouterDiagnostics,
   type GeneratedAppRouter,
   type PathParamsOf,

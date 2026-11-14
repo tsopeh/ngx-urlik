@@ -1,13 +1,14 @@
 import { Component, EnvironmentProviders, inject, InjectionToken, NgModule } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Router, RouterModule, RouterOutlet, Routes } from '@angular/router';
 import {
-  defineAppRouter,
-  numberCodec,
-  queryParam,
-  repeatedQueryParam,
-  stringCodec,
-} from 'ngx-urlik';
+  Router,
+  RouterFeatures,
+  RouterModule,
+  RouterOutlet,
+  Routes,
+  withRouterConfig,
+} from '@angular/router';
+import { defineAppRouter, listCodec, numberCodec, queryParam, stringCodec } from 'ngx-urlik';
 
 @Component({ template: '' })
 class Page {}
@@ -15,11 +16,14 @@ class Page {}
 @Component({ imports: [RouterOutlet], template: '<router-outlet />' })
 class Layout {}
 
-function setup<T>(definition: {
-  AppRouter: InjectionToken<T>;
-  provideAppRouter: () => EnvironmentProviders;
-}) {
-  TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+function setup<T>(
+  definition: {
+    AppRouter: InjectionToken<T>;
+    provideAppRouter: (...features: RouterFeatures[]) => EnvironmentProviders;
+  },
+  ...features: RouterFeatures[]
+) {
+  TestBed.configureTestingModule({ providers: [definition.provideAppRouter(...features)] });
   return {
     appRouter: TestBed.inject(definition.AppRouter),
     router: TestBed.inject(Router),
@@ -55,10 +59,10 @@ describe('migration cookbook', () => {
       { path: 'lazy', loadChildren: async () => [{ path: '', component: Page }] },
       { path: '**', component: Page },
     ];
-    const { appRouter, router } = setup(defineAppRouter(RouteNames, { routes }));
+    const { appRouter, router } = setup(defineAppRouter({}, { routes }));
 
     expect(Object.keys(appRouter.routes)).toEqual([]);
-    expect(router.config).toEqual(routes);
+    expect(router.config).toMatchObject(routes);
     await router.navigateByUrl('/');
     expect(router.url).toBe('/catalog');
     await router.navigateByUrl('/lazy');
@@ -69,13 +73,16 @@ describe('migration cookbook', () => {
 
   it('2. names one route without changing its Angular neighbors', async () => {
     // Keep this array literal so TypeScript can infer CATALOG from routeName.
-    const definition = defineAppRouter(RouteNames, {
-      routes: [
-        { path: '', pathMatch: 'full', redirectTo: 'catalog' },
-        { path: 'catalog', routeName: RouteNames.CATALOG, title: 'Catalog', component: Page },
-        { path: '**', component: Page },
-      ],
-    });
+    const definition = defineAppRouter(
+      { CATALOG: RouteNames.CATALOG },
+      {
+        routes: [
+          { path: '', pathMatch: 'full', redirectTo: 'catalog' },
+          { path: 'catalog', routeName: RouteNames.CATALOG, title: 'Catalog', component: Page },
+          { path: '**', component: Page },
+        ],
+      },
+    );
     const { appRouter, router } = setup(definition);
     const catalog = appRouter.routes.CATALOG;
 
@@ -88,18 +95,25 @@ describe('migration cookbook', () => {
   });
 
   it('3. reads a typed path value from an unnamed parent', async () => {
-    const definition = defineAppRouter(RouteNames, {
-      routerConfig: { paramsInheritanceStrategy: 'emptyOnly' },
-      routes: [
-        {
-          path: 'teams/:teamId',
-          pathParam: { codec: numberCodec() },
-          component: Layout,
-          children: [{ path: 'members/:memberId', routeName: RouteNames.MEMBER, component: Page }],
-        },
-      ],
-    });
-    const { appRouter, router } = setup(definition);
+    const definition = defineAppRouter(
+      { MEMBER: RouteNames.MEMBER },
+      {
+        routes: [
+          {
+            path: 'teams/:teamId',
+            pathParam: { teamId: numberCodec() },
+            component: Layout,
+            children: [
+              { path: 'members/:memberId', routeName: RouteNames.MEMBER, component: Page },
+            ],
+          },
+        ],
+      },
+    );
+    const { appRouter, router } = setup(
+      definition,
+      withRouterConfig({ paramsInheritanceStrategy: 'emptyOnly' }),
+    );
     const member = appRouter.routes.MEMBER;
 
     expect(Object.keys(appRouter.routes)).toEqual(['MEMBER']);
@@ -111,31 +125,36 @@ describe('migration cookbook', () => {
   });
 
   it('4. adds query fields without taking over unrelated URL keys', async () => {
-    const definition = defineAppRouter(RouteNames, {
-      routerConfig: { defaultQueryParamsHandling: 'merge' },
-      routes: [
-        {
-          path: 'teams/:id',
-          pathParam: { codec: numberCodec() },
-          queryParams: { id: queryParam({ codec: stringCodec() }) },
-          children: [
-            {
-              path: 'members',
-              routeName: RouteNames.MEMBERS,
-              queryParams: {
-                search: queryParam({ codec: stringCodec(), defaultValue: '' }),
-                tags: repeatedQueryParam({ codec: stringCodec() }),
+    const definition = defineAppRouter(
+      { MEMBERS: RouteNames.MEMBERS },
+      {
+        routes: [
+          {
+            path: 'teams/:id',
+            pathParam: { id: numberCodec() },
+            queryParams: { id: queryParam({ codec: stringCodec() }) },
+            children: [
+              {
+                path: 'members',
+                routeName: RouteNames.MEMBERS,
+                queryParams: {
+                  search: queryParam({ codec: stringCodec(), defaultValue: '' }),
+                  tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),
+                },
+                component: Page,
               },
-              component: Page,
-            },
-          ],
-        },
-      ],
-    });
-    const { appRouter, router } = setup(definition);
+            ],
+          },
+        ],
+      },
+    );
+    const { appRouter, router } = setup(
+      definition,
+      withRouterConfig({ defaultQueryParamsHandling: 'merge' }),
+    );
     const members = appRouter.routes.MEMBERS;
 
-    await router.navigateByUrl('/teams/7/members?unknown=keep&id=campaign&tags=a&tags=b');
+    await router.navigateByUrl('/teams/7/members?unknown=keep&id=campaign&tags=a,b');
     expect(members.params()).toEqual({
       path: { id: 7 },
       query: { id: 'campaign', search: '', tags: ['a', 'b'] },
@@ -148,66 +167,76 @@ describe('migration cookbook', () => {
     expect(router.parseUrl(router.url).queryParams).toEqual({
       unknown: 'keep',
       id: 'campaign',
-      tags: ['a', 'b'],
+      tags: 'a,b',
       search: 'new',
     });
   });
 
   it('5. uses the matched Angular route, then the deepest named child', async () => {
-    const definition = defineAppRouter(RouteNames, {
-      routes: [
-        {
-          path: 'dashboard',
-          routeName: RouteNames.ADMIN,
-          canMatch: [() => false],
-          component: Page,
-        },
-        {
-          path: 'dashboard',
-          routeName: RouteNames.USER,
-          children: [{ path: '', routeName: RouteNames.LANDING, component: Page }],
-        },
-      ],
-    });
+    const definition = defineAppRouter(
+      { ADMIN: RouteNames.ADMIN, USER: RouteNames.USER, LANDING: RouteNames.LANDING },
+      {
+        routes: [
+          {
+            path: 'dashboard',
+            routeName: RouteNames.ADMIN,
+            canMatch: [() => false],
+            component: Page,
+          },
+          {
+            path: 'dashboard',
+            routeName: RouteNames.USER,
+            children: [{ path: '', routeName: RouteNames.LANDING, component: Page }],
+          },
+        ],
+      },
+    );
     const { appRouter, router } = setup(definition);
     const { ADMIN, USER, LANDING } = appRouter.routes;
-    const active = appRouter.activeRoute({ admin: ADMIN, user: USER, landing: LANDING });
 
     expect(Object.keys(appRouter.routes)).toEqual(['ADMIN', 'USER', 'LANDING']);
     expect(router.serializeUrl(ADMIN.createUrlTree())).toBe('/dashboard');
     expect(router.serializeUrl(LANDING.createUrlTree())).toBe('/dashboard');
     expect(await USER.navigate()).toBe(true);
-    expect(active()).toMatchObject({ route: 'landing', node: LANDING });
-    expect(() => ADMIN.params()).toThrow(/inactive/);
+    expect([ADMIN.ifActive(), USER.ifActive(), LANDING.ifActive()]).toEqual([null, USER, LANDING]);
+    expect(() => ADMIN.params()).toThrow(/isn't active/);
   });
 
   it('6. reports route names and path names that cannot be typed safely', () => {
     expect(() =>
-      defineAppRouter(RouteNames, {
-        routes: [
-          { path: 'left', children: [{ path: 'item', routeName: RouteNames.DETAIL }] },
-          { path: 'right', children: [{ path: 'item', routeName: RouteNames.DETAIL }] },
-        ],
-      }),
+      defineAppRouter(
+        { DETAIL: RouteNames.DETAIL },
+        {
+          routes: [
+            { path: 'left', children: [{ path: 'item', routeName: RouteNames.DETAIL }] },
+            { path: 'right', children: [{ path: 'item', routeName: RouteNames.DETAIL }] },
+          ],
+        },
+      ),
     ).toThrow(
       /routeName 'DETAIL' is used by both routes\[0\]\.children\[0\] and routes\[1\]\.children\[0\]/,
     );
 
     expect(() =>
-      defineAppRouter(RouteNames, {
-        routes: [
-          {
-            path: 'teams/:id',
-            children: [{ path: 'members/:id', routeName: RouteNames.MEMBER }],
-          },
-        ],
-      }),
+      defineAppRouter(
+        { MEMBER: RouteNames.MEMBER },
+        {
+          routes: [
+            {
+              path: 'teams/:id',
+              children: [{ path: 'members/:id', routeName: RouteNames.MEMBER }],
+            },
+          ],
+        },
+      ),
     ).toThrow(
-      "MEMBER: path parameter 'id' appears in both 'teams/:id' and 'members/:id'. Rename one so params().path can hold both values.",
+      "MEMBER: path parameter 'id' appears in both 'teams/:id' and 'members/:id'. Rename one, because params().path holds one value per name.",
     );
   });
 
   it('7. runs from an NgModule next to a lazy feature that is not converted yet', async () => {
+    // This step shows an NgModule app, so the component isn't standalone on purpose.
+    // eslint-disable-next-line @angular-eslint/prefer-standalone
     @Component({ standalone: false, template: '<a [routerLink]="link">Results</a>' })
     class Nav {
       readonly link = inject(definition.AppRouter).routes.RESULTS.createUrlTree({
@@ -215,17 +244,20 @@ describe('migration cookbook', () => {
       });
     }
 
-    const definition = defineAppRouter(RouteNames, {
-      routes: [
-        {
-          path: 'results',
-          routeName: RouteNames.RESULTS,
-          queryParams: { page: queryParam({ codec: numberCodec(), defaultValue: 1 }) },
-          component: Page,
-        },
-        { path: 'settings', loadChildren: async () => [{ path: '', component: Page }] },
-      ],
-    });
+    const definition = defineAppRouter(
+      { RESULTS: RouteNames.RESULTS },
+      {
+        routes: [
+          {
+            path: 'results',
+            routeName: RouteNames.RESULTS,
+            queryParams: { page: queryParam({ codec: numberCodec(), defaultValue: 1 }) },
+            component: Page,
+          },
+          { path: 'settings', loadChildren: async () => [{ path: '', component: Page }] },
+        ],
+      },
+    );
 
     @NgModule({
       declarations: [Nav],
@@ -249,12 +281,15 @@ describe('migration cookbook', () => {
       { path: 'catalog', component: Page },
       { path: '**', component: Page },
     ];
-    const definition = defineAppRouter(RouteNames, {
-      routes: [
-        { path: 'results', routeName: RouteNames.RESULTS, component: Page },
-        ...existingRoutes,
-      ],
-    });
+    const definition = defineAppRouter(
+      { RESULTS: RouteNames.RESULTS },
+      {
+        routes: [
+          { path: 'results', routeName: RouteNames.RESULTS, component: Page },
+          ...existingRoutes,
+        ],
+      },
+    );
     const { appRouter, router } = setup(definition);
 
     expect(await appRouter.routes.RESULTS.navigate()).toBe(true);

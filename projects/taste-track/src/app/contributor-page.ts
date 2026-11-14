@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
-import { BackendApi, type ContributorProfile } from './backend';
+import { BackendApi } from './backend';
 
 @Component({
   imports: [RouterLink],
@@ -34,16 +34,19 @@ import { BackendApi, type ContributorProfile } from './backend';
   `,
 })
 export class ContributorPage {
-  private readonly routes = inject(AppRouter);
+  private readonly routes = inject(AppRouter).routes;
   private readonly backendApi = inject(BackendApi);
   protected readonly links = inject(CatalogLinks);
-  private readonly active = this.routes.activeRoute({
-    person: this.routes.routes.PERSON_DETAIL,
-    studio: this.routes.routes.STUDIO_DETAIL,
-  });
   private readonly contributorId = computed(() => {
-    const active = this.active();
-    return active.route === 'person' ? active.params.path.personId : active.params.path.studioId;
+    const person = this.routes.PERSON_DETAIL.ifActive();
+    if (person) {
+      return person.params().path.personId;
+    }
+    const studio = this.routes.STUDIO_DETAIL.ifActive();
+    if (studio) {
+      return studio.params().path.studioId;
+    }
+    throw new Error('ContributorPage shows only person and studio routes');
   });
   protected readonly profile = toSignal(
     toObservable(this.contributorId).pipe(

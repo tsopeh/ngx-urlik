@@ -1,21 +1,25 @@
 import { Component, inject } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { RouterLink, RouterOutlet } from '@angular/router';
 import { AppRouter } from './app-router';
 import { TasteTrackRepository } from './backend';
+import { Preferences } from './preferences';
 import { type ThemePreference, ThemeService } from './theme';
 
 @Component({
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterOutlet],
   template: `
     <div class="app-frame">
       <aside class="sidebar">
-        <a class="brand" [routerLink]="routes.routes.MOVIES.createUrlTree()">
+        <a class="brand" [routerLink]="navigation[0].url">
           <span class="brand-mark" aria-hidden="true">T</span>
           <span><strong>TasteTrack</strong><small>Movies, shows, and you</small></span>
         </a>
         <nav aria-label="Primary navigation">
           @for (item of navigation; track item.label) {
-            <a [routerLink]="item.url" routerLinkActive="active"
+            <a
+              [routerLink]="item.url"
+              [class.active]="item.route.ifActive()"
+              [attr.aria-current]="item.route.ifActive() ? 'page' : null"
               >{{ item.icon }} <span>{{ item.label }}</span></a
             >
           }
@@ -37,7 +41,10 @@ import { type ThemePreference, ThemeService } from './theme';
         @if (repository.error(); as error) {
           <p class="panel" role="alert">{{ error }}</p>
         }
-        <router-outlet />
+        <!-- A journal that never opened has nothing to show, so pages would wait forever. -->
+        @if (!repository.failedToOpen()) {
+          <router-outlet />
+        }
       </main>
     </div>
   `,
@@ -172,15 +179,51 @@ import { type ThemePreference, ThemeService } from './theme';
 })
 export class Shell {
   protected readonly repository = inject(TasteTrackRepository);
-  protected readonly routes = inject(AppRouter);
+  private readonly routes = inject(AppRouter).routes;
   protected readonly theme = inject(ThemeService);
   protected readonly themes: readonly ThemePreference[] = ['system', 'light', 'dark'];
   protected readonly navigation = [
-    { label: 'Browse', icon: '◉', url: this.routes.routes.MOVIES.createUrlTree() },
-    { label: 'Library', icon: '♥', url: this.routes.routes.LIBRARY.createUrlTree() },
-    { label: 'History', icon: '↻', url: this.routes.routes.HISTORY.createUrlTree() },
-    { label: 'People', icon: '◎', url: this.routes.routes.PEOPLE.createUrlTree() },
-    { label: 'Studios', icon: '▣', url: this.routes.routes.STUDIOS.createUrlTree() },
-    { label: 'Settings', icon: '⚙', url: this.routes.routes.SETTINGS.createUrlTree() },
+    // Browse opens movies, and stays highlighted on every movie and TV page.
+    {
+      label: 'Browse',
+      icon: '◉',
+      route: this.routes.BROWSE,
+      url: this.routes.MOVIES.createUrlTree(),
+    },
+    {
+      label: 'Library',
+      icon: '♥',
+      route: this.routes.LIBRARY,
+      url: this.routes.LIBRARY.createUrlTree(),
+    },
+    {
+      label: 'History',
+      icon: '↻',
+      route: this.routes.HISTORY,
+      url: this.routes.HISTORY.createUrlTree(),
+    },
+    {
+      label: 'People',
+      icon: '◎',
+      route: this.routes.PEOPLE,
+      url: this.routes.PEOPLE.createUrlTree(),
+    },
+    {
+      label: 'Studios',
+      icon: '▣',
+      route: this.routes.STUDIOS,
+      url: this.routes.STUDIOS.createUrlTree(),
+    },
+    {
+      label: 'Settings',
+      icon: '⚙',
+      route: this.routes.SETTINGS,
+      url: this.routes.SETTINGS.createUrlTree(),
+    },
   ];
+
+  constructor() {
+    // Created with the shell, so Preferences saves values from every page.
+    inject(Preferences);
+  }
 }

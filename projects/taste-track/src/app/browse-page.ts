@@ -19,15 +19,15 @@ import { AppRouter } from './app-router';
   `,
 })
 export class BrowsePage {
-  private readonly routes = inject(AppRouter);
-  private readonly route = this.routes.routes.BROWSE;
+  private readonly routes = inject(AppRouter).routes;
+  private readonly route = this.routes.BROWSE;
   protected readonly moviesUrl = computed(() =>
-    this.routes.routes.MOVIES.createUrlTree({
+    this.routes.MOVIES.createUrlTree({
       query: { ...this.route.params().query, page: 1 },
     }),
   );
   protected readonly showsUrl = computed(() =>
-    this.routes.routes.SHOWS.createUrlTree({
+    this.routes.SHOWS.createUrlTree({
       query: { ...this.route.params().query, page: 1 },
     }),
   );

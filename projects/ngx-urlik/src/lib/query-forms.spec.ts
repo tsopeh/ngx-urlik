@@ -1,9 +1,9 @@
-import { Component, ErrorHandler } from '@angular/core';
+import { Component, computed, ErrorHandler } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Validators } from '@angular/forms';
+import { minLength } from '@angular/forms/signals';
 import { NavigationStart, Router } from '@angular/router';
 import { createQueryParamsFormGroup, createQueryParamsSignalForm } from 'ngx-urlik/forms';
-import { AbstractControl, Validators } from '@angular/forms';
-import { minLength } from '@angular/forms/signals';
 import { defineAppRouter } from './app-router';
 import { numberCodec, queryParam, stringCodec, UrlParamCodec } from './params';
 
@@ -11,20 +11,23 @@ import { numberCodec, queryParam, stringCodec, UrlParamCodec } from './params';
 class Page {}
 
 async function setup() {
-  const definition = defineAppRouter(RouteNames, {
-    routes: [
-      {
-        path: 'results',
-        routeName: RouteNames.RESULTS,
-        queryParams: {
-          search: queryParam({ codec: stringCodec(), defaultValue: '' }),
-          page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
+  const definition = defineAppRouter(
+    { RESULTS: RouteNames.RESULTS },
+    {
+      routes: [
+        {
+          path: 'results',
+          routeName: RouteNames.RESULTS,
+          queryParams: {
+            search: queryParam({ codec: stringCodec(), defaultValue: '' }),
+            page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
+          },
+          component: Page,
         },
-        component: Page,
-      },
-      { path: 'other', component: Page },
-    ],
-  });
+        { path: 'other', component: Page },
+      ],
+    },
+  );
   TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
   const router = TestBed.inject(Router);
   await router.navigateByUrl('/results');
@@ -52,7 +55,9 @@ describe('query forms', () => {
     await router.navigateByUrl('/results?search=old&page=4&campaign=summer');
     const starts: string[] = [];
     router.events.subscribe((event) => {
-      if (event instanceof NavigationStart) starts.push(event.url);
+      if (event instanceof NavigationStart) {
+        starts.push(event.url);
+      }
     });
     const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
     form.patchValue({ search: 'new', page: 1 });
@@ -66,7 +71,9 @@ describe('query forms', () => {
     const { results, router } = await setup();
     const starts: string[] = [];
     router.events.subscribe((event) => {
-      if (event instanceof NavigationStart) starts.push(event.url);
+      if (event instanceof NavigationStart) {
+        starts.push(event.url);
+      }
     });
     const binding = TestBed.runInInjectionContext(() => createQueryParamsSignalForm(results));
     binding.model.update((query) => ({ ...query, search: 'new', page: 2 }));
@@ -108,22 +115,42 @@ describe('query forms', () => {
     expect(form.getRawValue()).toEqual({ search: 'first', page: 2 });
   });
 
+  it("doesn't report a decline when the user's next edit replaces the write", async () => {
+    const { results, router } = await setup();
+    const onWriteFailure = vi.fn();
+    const write = vi.spyOn(results, 'patchQuery');
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(results, { onWriteFailure }),
+    );
+    form.controls.search.setValue('e');
+    form.controls.search.setValue('el');
+
+    // The first write is cancelled, but the second one carries the newer value.
+    expect(await write.mock.results[0].value).toBe(false);
+    expect(await write.mock.results[1].value).toBe(true);
+    expect(router.url).toBe('/results?search=el');
+    expect(onWriteFailure).not.toHaveBeenCalled();
+  });
+
   describe('with a normalizing codec', () => {
     const trimmed: UrlParamCodec<string> = {
       serialize: (value) => (typeof value === 'string' ? value.trim() : null),
       deserialize: (raw) => raw.trim(),
     };
     const trimmedSetup = async () => {
-      const definition = defineAppRouter(RouteNames, {
-        routes: [
-          {
-            path: 'results',
-            routeName: RouteNames.RESULTS,
-            queryParams: { search: queryParam({ codec: trimmed, defaultValue: '' }) },
-            component: Page,
-          },
-        ],
-      });
+      const definition = defineAppRouter(
+        { RESULTS: RouteNames.RESULTS },
+        {
+          routes: [
+            {
+              path: 'results',
+              routeName: RouteNames.RESULTS,
+              queryParams: { search: queryParam({ codec: trimmed, defaultValue: '' }) },
+              component: Page,
+            },
+          ],
+        },
+      );
       TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
       const router = TestBed.inject(Router);
       await router.navigateByUrl('/results');
@@ -153,6 +180,49 @@ describe('query forms', () => {
       TestBed.tick();
       expect(binding.model().search).toBe('elm ');
     });
+
+    it("doesn't report a decline when the URL already holds the write", async () => {
+      const { results, router } = await trimmedSetup();
+      await router.navigateByUrl('/results?search=elm');
+      const onWriteFailure = vi.fn();
+      const write = vi.spyOn(results, 'patchQuery');
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { onWriteFailure }),
+      );
+      form.controls.search.setValue('elm ');
+
+      // The URL wouldn't change, so patchQuery() doesn't navigate.
+      expect(await write.mock.results[0].value).toBe(true);
+      expect(router.url).toBe('/results?search=elm');
+      expect(onWriteFailure).not.toHaveBeenCalled();
+      expect(form.controls.search.value).toBe('elm ');
+    });
+  });
+
+  it("doesn't write a form edit that goes back to the URL's value", async () => {
+    const { results, router } = await setup();
+    await router.navigateByUrl('/results?search=elm');
+    const write = vi.spyOn(results, 'patchQuery');
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(results, { debounce: { search: 20 } }),
+    );
+    let runs = 0;
+    const query = computed(() => {
+      runs++;
+      return results.params().query;
+    });
+    const before = results.params();
+    query();
+
+    // The user types a letter and deletes it before the debounce ends.
+    form.controls.search.setValue('elms');
+    form.controls.search.setValue('elm');
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(write).not.toHaveBeenCalled();
+    TestBed.tick();
+    expect(results.params()).toBe(before);
+    query();
+    expect(runs).toBe(1);
   });
 
   describe('writeWhen: valid', () => {
@@ -172,15 +242,30 @@ describe('query forms', () => {
       await vi.waitFor(() => expect(router.url).toBe('/results?page=2'));
     });
 
+    it("doesn't report a decline when a held field goes back to its URL value", async () => {
+      const { results, router } = await setup();
+      const onWriteFailure = vi.fn();
+      const write = vi.spyOn(results, 'patchQuery');
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { writeWhen: 'valid', onWriteFailure }),
+      );
+      form.controls.search.addValidators(Validators.minLength(3));
+
+      form.controls.search.setValue('e');
+      form.controls.search.setValue('');
+
+      expect(write).not.toHaveBeenCalled();
+      expect(router.url).toBe('/results');
+      expect(onWriteFailure).not.toHaveBeenCalled();
+    });
+
     it('writes a reactive field once its async validator passes', async () => {
       const { results, router } = await setup();
       const form = TestBed.runInInjectionContext(() =>
         createQueryParamsFormGroup(results, { writeWhen: 'valid' }),
       );
       let settle!: (errors: null | { taken: true }) => void;
-      form.controls.search.addAsyncValidators(
-        (_control: AbstractControl) => new Promise((resolve) => (settle = resolve)),
-      );
+      form.controls.search.addAsyncValidators(() => new Promise((resolve) => (settle = resolve)));
 
       form.controls.search.setValue('elm');
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -212,7 +297,9 @@ describe('query forms', () => {
       const { results, router } = await setup();
       const starts: string[] = [];
       router.events.subscribe((event) => {
-        if (event instanceof NavigationStart) starts.push(event.url);
+        if (event instanceof NavigationStart) {
+          starts.push(event.url);
+        }
       });
       const form = TestBed.runInInjectionContext(() =>
         createQueryParamsFormGroup(results, { debounce: { search: 200 } }),
@@ -249,7 +336,9 @@ describe('query forms', () => {
       await router.navigateByUrl('/results?page=4');
       const starts: string[] = [];
       router.events.subscribe((event) => {
-        if (event instanceof NavigationStart) starts.push(event.url);
+        if (event instanceof NavigationStart) {
+          starts.push(event.url);
+        }
       });
       const form = TestBed.runInInjectionContext(() =>
         createQueryParamsFormGroup(results, { debounce: { search: 40 }, beforeWrite: resetPage }),
@@ -272,7 +361,9 @@ describe('query forms', () => {
       await router.navigateByUrl('/results?page=4');
       const starts: string[] = [];
       router.events.subscribe((event) => {
-        if (event instanceof NavigationStart) starts.push(event.url);
+        if (event instanceof NavigationStart) {
+          starts.push(event.url);
+        }
       });
       const binding = TestBed.runInInjectionContext(() =>
         createQueryParamsSignalForm(results, { beforeWrite: resetPage }),
@@ -285,13 +376,59 @@ describe('query forms', () => {
       await vi.waitFor(() => expect(binding.model()).toEqual({ search: 'elm', page: 1 }));
     });
 
+    it("doesn't reset the page when a debounced search ends where it started", async () => {
+      const { results, router } = await setup();
+      await router.navigateByUrl('/results?search=oak&page=3');
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { debounce: { search: 20 }, beforeWrite: resetPage }),
+      );
+
+      form.controls.search.setValue('oakx');
+      form.controls.search.setValue('oak');
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(router.url).toBe('/results?search=oak&page=3');
+      expect(form.getRawValue()).toEqual({ search: 'oak', page: 3 });
+    });
+
+    it("doesn't reset the page when a held search goes back to its URL value", async () => {
+      const { results, router } = await setup();
+      await router.navigateByUrl('/results?page=3');
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { writeWhen: 'valid', beforeWrite: resetPage }),
+      );
+      form.controls.search.addValidators(Validators.minLength(3));
+
+      form.controls.search.setValue('a');
+      form.controls.search.setValue('');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(router.url).toBe('/results?page=3');
+      expect(form.getRawValue()).toEqual({ search: '', page: 3 });
+    });
+
+    it('still writes a search that goes back to its URL value while its write runs', async () => {
+      const { results, router } = await setup();
+      await router.navigateByUrl('/results?search=oak&page=3');
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { beforeWrite: resetPage }),
+      );
+
+      // The first write is still running, so going back to 'oak' must cancel it.
+      form.controls.search.setValue('elm');
+      form.controls.search.setValue('oak');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(router.url).toBe('/results?search=oak');
+      expect(form.controls.search.value).toBe('oak');
+    });
+
     it('reports a throwing beforeWrite and skips the write', async () => {
       const { results, router } = await setup();
       const handleError = vi.spyOn(TestBed.inject(ErrorHandler), 'handleError');
       const failure = new Error('beforeWrite failed');
       const starts: string[] = [];
       router.events.subscribe((event) => {
-        if (event instanceof NavigationStart) starts.push(event.url);
+        if (event instanceof NavigationStart) {
+          starts.push(event.url);
+        }
       });
       const form = TestBed.runInInjectionContext(() =>
         createQueryParamsFormGroup(results, {

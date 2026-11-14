@@ -3,8 +3,8 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import { CatalogLinks } from './catalog-links';
 import { BackendApi, type Contributor } from './backend';
+import { CatalogLinks } from './catalog-links';
 
 @Component({
   imports: [RouterLink],
@@ -25,16 +25,10 @@ import { BackendApi, type Contributor } from './backend';
   `,
 })
 export class ContributorsPage {
-  private readonly routes = inject(AppRouter);
+  private readonly routes = inject(AppRouter).routes;
   private readonly backendApi = inject(BackendApi);
   protected readonly links = inject(CatalogLinks);
-  private readonly active = this.routes.activeRoute({
-    people: this.routes.routes.PEOPLE,
-    studios: this.routes.routes.STUDIOS,
-  });
-  protected readonly kind = computed(() =>
-    this.active().route === 'people' ? 'person' : 'studio',
-  );
+  protected readonly kind = computed(() => (this.routes.PEOPLE.ifActive() ? 'person' : 'studio'));
   protected readonly contributors = toSignal(
     toObservable(this.kind).pipe(switchMap((kind) => this.backendApi.getContributors(kind))),
     { initialValue: [] as readonly Contributor[] },

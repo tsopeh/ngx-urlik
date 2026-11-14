@@ -1,12 +1,4 @@
-import {
-  booleanCodec,
-  enumCodec,
-  listCodec,
-  numberCodec,
-  queryParam,
-  repeatedQueryParam,
-  stringCodec,
-} from './params';
+import { booleanCodec, enumCodec, listCodec, numberCodec, queryParam, stringCodec } from './params';
 
 describe('parameter codecs and definitions', () => {
   it('creates pure reusable scalar codecs', () => {
@@ -53,15 +45,13 @@ describe('parameter codecs and definitions', () => {
     expect(() => enumCodec(['ok', 1] as never)).toThrow('enum codec values must all be strings');
   });
 
-  it('keeps query defaults and collection representation outside codecs', () => {
+  it('keeps query defaults outside codecs', () => {
     const codec = stringCodec();
     expect(queryParam({ codec, required: true, defaultValue: 'all' })).toMatchObject({
       kind: 'query',
-      mode: 'scalar',
       required: true,
       defaultValue: 'all',
     });
-    expect(repeatedQueryParam({ codec })).toMatchObject({ mode: 'repeated', required: false });
   });
 
   it('joins list items with a separator', () => {
@@ -75,8 +65,28 @@ describe('parameter codecs and definitions', () => {
 
     const text = listCodec(stringCodec(), '|');
     expect(text.serialize(['a,b', 'c'])).toBe('a,b|c');
-    expect(text.serialize(['a|b'])).toBeNull();
     expect(text.serialize([''])).toBeNull();
     expect(() => listCodec(stringCodec(), '')).toThrow('list codec separator');
+    expect(() => listCodec(stringCodec(), '\\')).toThrow('list codec separator');
+  });
+
+  it('escapes the separator and backslashes inside items', () => {
+    const codec = listCodec(stringCodec(), ',');
+    const values = ['red, green', 'blue', 'a\\b', '\\,', ','];
+    expect(codec.serialize(['red, green', 'blue'])).toBe('red\\, green,blue');
+    expect(codec.serialize(['a\\b'])).toBe('a\\\\b');
+    expect(codec.deserialize(codec.serialize(values)!)).toEqual(values);
+
+    const words = listCodec(stringCodec(), ' or ');
+    expect(words.serialize(['this or that', 'other'])).toBe('this\\ or that or other');
+    expect(words.deserialize('this\\ or that or other')).toEqual(['this or that', 'other']);
+
+    // A backslash that escapes nothing, or ends the text, isn't one this codec wrote.
+    expect(codec.deserialize('a\\b')).toBeNull();
+    expect(codec.deserialize('a\\')).toBeNull();
+
+    const nested = listCodec(listCodec(stringCodec(), ','), ';');
+    const grid = [['a,b', 'c'], ['d']];
+    expect(nested.deserialize(nested.serialize(grid)!)).toEqual(grid);
   });
 });

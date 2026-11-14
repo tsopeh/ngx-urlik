@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { AppRouter } from './app-router';
+import { Preferences } from './preferences';
 import { TasteTrackRepository } from './backend';
 import { ThemeService, type ThemePreference } from './theme';
 
@@ -41,23 +42,34 @@ import { ThemeService, type ThemePreference } from './theme';
         >
           {{ resetting() ? 'Resetting…' : 'Reset TasteTrack' }}
         </button>
+        @if (error()) {
+          <p role="alert">{{ error() }}</p>
+        }
       </section>
     </section>
   `,
 })
 export class SettingsPage {
-  private readonly routes = inject(AppRouter);
+  private readonly routes = inject(AppRouter).routes;
   private readonly repository = inject(TasteTrackRepository);
+  private readonly preferences = inject(Preferences);
   protected readonly theme = inject(ThemeService);
   protected readonly themes: readonly ThemePreference[] = ['system', 'light', 'dark'];
   protected readonly resetting = signal(false);
+  protected readonly error = signal('');
   protected async reset() {
-    if (!confirm('Reset all TasteTrack demo data?')) return;
+    if (!confirm('Reset all TasteTrack demo data?')) {
+      return;
+    }
     this.resetting.set(true);
+    this.error.set('');
     try {
       await this.repository.reset();
-      this.routes.clearPersisted();
-      await this.routes.routes.MOVIES.navigate();
+      this.preferences.clear();
+      await this.routes.MOVIES.navigate();
+    } catch {
+      // Resetting twice ends in the same data, so trying again is safe.
+      this.error.set('Could not reset TasteTrack. Please try again.');
     } finally {
       this.resetting.set(false);
     }

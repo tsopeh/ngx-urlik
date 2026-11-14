@@ -1,111 +1,146 @@
-import { EnvironmentInjector, runInInjectionContext } from '@angular/core';
-import { ParamMap } from '@angular/router';
-import { CompiledRoute, RuntimeParam } from './compiled-route';
-import { isEqual } from './is-equal';
-import { AnyQueryParamDefinition, DefaultValue, UrlParamCodec } from './params';
+import { ActivatedRouteSnapshot, ParamMap } from '@angular/router';
+import { findLastResult } from './compiled-route';
+import { isConverted } from './params';
+import type {
+  CompiledParam,
+  CompiledPathParam,
+  CompiledQueryParam,
+  CompiledRoute,
+} from './compiled-route';
 import { ReportParameterFailure } from './route-diagnostics';
 import type { AnyRecord } from './type-utils';
 
 export type RuntimeState = Readonly<{ path: AnyRecord; query: AnyRecord }>;
-/** Returns a persisted field's decoded stored value, or `undefined`. */
-type Restore = (param: RuntimeParam) => unknown;
-
-const resolveDefault = <T>(value: DefaultValue<T> | undefined): T | undefined =>
-  typeof value === 'function' ? (value as () => T)() : value;
+/**
+ * The value each field last read, with the URL text it came from. While the text stays the same,
+ * a read returns the same value, so a field that didn't change in the URL stays `===`.
+ */
+export type ValueCache = Map<CompiledParam, Readonly<{ text: string | null; value: unknown }>>;
+/** A field's URL text: the last value when its key repeats, or `null` when absent. */
+const fieldText = (param: CompiledQueryParam, query: ParamMap): string | null =>
+  query.getAll(param.name).at(-1) ?? null;
 
 export function createParameterReader(report: ReportParameterFailure) {
-  const decode = (param: RuntimeParam, raw: string, index?: number): unknown | null => {
+  /** The value that URL text stands for, or `undefined` if it doesn't decode. */
+  const decode = (param: CompiledParam, raw: string): unknown => {
+    const code = 'PARAM_DESERIALIZE_FAILED';
     try {
-      const value = (param.definition.codec as UrlParamCodec<unknown>).deserialize(raw);
-      if (value === null || value === undefined)
-        report(
-          param,
-          { code: 'PARAM_DESERIALIZE_FAILED', operation: 'deserialize', index },
-          'was invalid',
-        );
-      return value;
+      const value = param.codec.deserialize(raw);
+      if (isConverted(value)) {
+        return value;
+      }
+      report(param, { code, operation: 'deserialize' }, 'the codec returned null');
     } catch (cause) {
-      report(
-        param,
-        { code: 'PARAM_DESERIALIZE_FAILED', operation: 'deserialize', index, cause },
-        'threw in its codec',
-      );
-      return null;
+      report(param, { code, operation: 'deserialize', cause }, 'the codec threw');
     }
+    return undefined;
   };
 
-  const queryFallback = (definition: AnyQueryParamDefinition) => {
-    const fallback = resolveDefault(definition.defaultValue as DefaultValue<unknown> | undefined);
-    return fallback ?? (definition.mode === 'scalar' ? null : []);
-  };
-
-  const readQuery = (param: RuntimeParam, query: ParamMap, restore?: Restore): unknown => {
-    const definition = param.definition as AnyQueryParamDefinition;
-    // A persisted field falls back to its stored value before its default.
-    const fallback = () => restore?.(param) ?? queryFallback(definition);
-    const raws = query.getAll(param.name);
-    if (raws.length === 0) return fallback();
-    if (definition.mode === 'scalar') {
-      const value = decode(param, raws.at(-1)!);
-      return value ?? fallback();
+  /** Reads one field from its URL text, or takes the cached value if the text didn't change. */
+  const readField = (
+    param: CompiledParam,
+    text: string | null,
+    cache: ValueCache | undefined,
+    read: (text: string | null) => unknown,
+  ): unknown => {
+    const cached = cache?.get(param);
+    const textUnchanged = cached !== undefined && cached.text === text;
+    if (textUnchanged) {
+      return cached.value;
     }
-    const values: unknown[] = [];
-    let invalid = false;
-    raws.forEach((raw, index) => {
-      const value = decode(param, raw, index);
-      if (value === null || value === undefined) invalid = true;
-      else values.push(value);
-    });
-    return invalid ? queryFallback(definition) : values;
+    const value = read(text);
+    cache?.set(param, { text, value });
+    return value;
   };
 
   const readQueryState = (
-    params: readonly RuntimeParam[],
+    params: readonly CompiledQueryParam[],
     query: ParamMap,
-    restore?: Restore,
+    cache?: ValueCache,
   ): AnyRecord => {
     const result: Record<string, unknown> = {};
     for (const param of params) {
-      result[param.name] = readQuery(param, query, restore);
+      result[param.name] = readField(
+        param,
+        fieldText(param, query),
+        cache,
+        (text) =>
+          (text === null ? undefined : decode(param, text)) ??
+          param.definition.defaultValue ??
+          null,
+      );
     }
     return result;
   };
 
   const readState = (
-    info: Pick<CompiledRoute, 'identity' | 'pattern' | 'pathParams' | 'queryParams'>,
+    info: Pick<CompiledRoute, 'label' | 'pattern' | 'pathParams' | 'queryParams'>,
     params: ParamMap,
     query: ParamMap,
     attemptedPath: string,
-    restore?: Restore,
+    cache?: ValueCache,
   ): RuntimeState => {
     const path: Record<string, unknown> = {};
     for (const param of info.pathParams) {
-      const raw = params.get(param.name);
-      const value = raw === null ? null : decode(param, raw);
-      if (raw === null || value === null || value === undefined)
-        throw new Error(
-          `${info.identity}: expected active route '${info.pattern}', attempted current path '${attemptedPath}' could not resolve '${param.name}'`,
-        );
-      path[param.name] = value;
+      path[param.name] = readField(param, params.get(param.name), cache, (raw) => {
+        const value = raw === null ? undefined : decode(param, raw);
+        if (value === undefined) {
+          throw new Error(
+            `${info.label}: can't read path parameter '${param.name}' from '${attemptedPath}' for route '${info.pattern}'`,
+          );
+        }
+        return value;
+      });
     }
-    return { path, query: readQueryState(info.queryParams, query, restore) };
+    return { path, query: readQueryState(info.queryParams, query, cache) };
   };
 
-  return { readState, readQueryState };
+  /** Each path value from the deepest active route with that placeholder, or `null`. */
+  const readGlobalPath = (
+    params: readonly CompiledPathParam[],
+    chain: readonly ActivatedRouteSnapshot[],
+    cache?: ValueCache,
+  ): AnyRecord => {
+    const result: Record<string, unknown> = {};
+    for (const param of params) {
+      const raw = findLastResult(chain, (snapshot) => snapshot.paramMap.get(param.name)) ?? null;
+      result[param.name] = readField(
+        param,
+        raw,
+        cache,
+        (text) => (text === null ? undefined : decode(param, text)) ?? null,
+      );
+    }
+    return result;
+  };
+
+  return { readState, readQueryState, readGlobalPath };
 }
 
-export function createParameterSerializer(
-  injector: EnvironmentInjector,
-  report: ReportParameterFailure,
-) {
-  const encode = (param: RuntimeParam, value: unknown, index?: number): string | null => {
+/**
+ * Two states are the same when every field holds the same value. A `ValueCache` keeps a value while
+ * its URL text stays the same, so this compares URL text, field by field.
+ */
+export const sameState = (a: RuntimeState, b: RuntimeState): boolean =>
+  sameFields(a.path, b.path) && sameFields(a.query, b.query);
+
+function sameFields(a: AnyRecord, b: AnyRecord): boolean {
+  const names = Object.keys(a);
+  return (
+    names.length === Object.keys(b).length &&
+    names.every((name) => Object.hasOwn(b, name) && Object.is(a[name], b[name]))
+  );
+}
+
+export function createParameterSerializer(report: ReportParameterFailure) {
+  const encode = (param: CompiledParam, value: unknown): string | null => {
     try {
-      const output = (param.definition.codec as UrlParamCodec<unknown>).serialize(value);
+      const output = param.codec.serialize(value);
       if (typeof output !== 'string') {
         report(
           param,
-          { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize', index },
-          'was invalid',
+          { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize' },
+          "the codec didn't return a string",
         );
         return null;
       }
@@ -113,62 +148,55 @@ export function createParameterSerializer(
     } catch (cause) {
       report(
         param,
-        { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize', index, cause },
-        'threw in its codec',
+        { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize', cause },
+        'the codec threw',
       );
       return null;
     }
   };
 
-  /** Path values have no fallback, so a failed segment is a caller error. */
-  const serializePath = (param: RuntimeParam, value: unknown): string => {
+  /** A path value has no fallback, so a value that won't serialize is the caller's bug. */
+  const serializePath = (param: CompiledParam, value: unknown): string => {
     let output: unknown;
     try {
-      output = (param.definition.codec as UrlParamCodec<unknown>).serialize(value);
+      output = param.codec.serialize(value);
     } catch (cause) {
       throw new Error(
-        `${param.owner.fullIdentity}: serialize path parameter '${param.name}' threw in its codec`,
+        `${param.owner.label}: can't write path parameter '${param.name}': the codec threw`,
         { cause },
       );
     }
-    if (typeof output !== 'string' || output === '')
-      throw new Error(
-        `${param.owner.fullIdentity}: serialize path parameter '${param.name}' ${
-          output === '' ? 'produced an empty path segment' : 'was invalid'
-        }`,
-      );
+    const fail = (detail: string) =>
+      new Error(`${param.owner.label}: can't write path parameter '${param.name}': ${detail}`);
+    if (typeof output !== 'string') {
+      throw fail("the codec didn't return a string");
+    }
+    if (output === '') {
+      throw fail("the codec returned '', and a path segment can't be empty");
+    }
+    // Encoding doesn't help: a browser reads %2E%2E as '..' too, so a reload would leave the page.
+    const dotSegment = output === '.' || output === '..';
+    if (dotSegment) {
+      throw fail(`the codec returned '${output}', and browsers drop '.' and '..' path segments`);
+    }
     return output;
   };
 
-  const serializeQuery = (
-    param: RuntimeParam,
-    value: unknown,
-  ): string | readonly string[] | null => {
-    const definition = param.definition as AnyQueryParamDefinition;
-    const fallback = runInInjectionContext(injector, () =>
-      resolveDefault(definition.defaultValue as DefaultValue<unknown> | undefined),
-    );
-    // A persisted field always appears in the URL, so its default is written too.
-    const persisted = 'persist' in definition && !!definition.persist;
-    if (!persisted && fallback !== undefined && isEqual(value, fallback)) return null;
-    if (definition.mode === 'scalar') return value === null ? null : encode(param, value);
-    if (!Array.isArray(value)) {
-      report(
-        param,
-        { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize' },
-        'expected an array',
-      );
-      return null;
+  // Each field's default, as URL text. Built on first use, so a bad default reports once.
+  const defaultTexts = new WeakMap<CompiledQueryParam, string | null>();
+  /** A value that writes the same text as the default leaves the URL. */
+  const serializeQuery = (param: CompiledQueryParam, value: unknown): string | null => {
+    const output = value === null ? null : encode(param, value);
+    const { defaultValue } = param.definition;
+    const nothingToCompare = output === null || defaultValue === undefined;
+    if (nothingToCompare) {
+      return output;
     }
-    if (value.length === 0) return null;
-    const items: string[] = [];
-    let invalid = false;
-    value.forEach((item, index) => {
-      const output = encode(param, item, index);
-      if (output === null) invalid = true;
-      else items.push(output);
-    });
-    return invalid ? null : items;
+    if (!defaultTexts.has(param)) {
+      defaultTexts.set(param, encode(param, defaultValue));
+    }
+    const atDefault = output === defaultTexts.get(param);
+    return atDefault ? null : output;
   };
 
   return { serializePath, serializeQuery };

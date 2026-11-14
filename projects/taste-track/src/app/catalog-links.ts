@@ -4,15 +4,15 @@ import type { CatalogItem, Contributor } from './backend';
 
 @Injectable({ providedIn: 'root' })
 export class CatalogLinks {
-  private readonly routes = inject(AppRouter);
+  private readonly routes = inject(AppRouter).routes;
   item(item: CatalogItem) {
     switch (item.kind) {
       case 'movie':
-        return this.routes.routes.MOVIE_DETAIL.createUrlTree({ path: { movieId: item.id } });
+        return this.routes.MOVIE_DETAIL.createUrlTree({ path: { movieId: item.id } });
       case 'show':
-        return this.routes.routes.SHOW_DETAIL.createUrlTree({ path: { showId: item.id } });
+        return this.routes.SHOW_DETAIL.createUrlTree({ path: { showId: item.id } });
       case 'episode':
-        return this.routes.routes.EPISODE_DETAIL.createUrlTree({
+        return this.routes.EPISODE_DETAIL.createUrlTree({
           path: {
             showId: item.showId,
             seasonNumber: item.seasonNumber,
@@ -23,7 +23,7 @@ export class CatalogLinks {
   }
   contributor(contributor: Contributor) {
     return contributor.kind === 'person'
-      ? this.routes.routes.PERSON_DETAIL.createUrlTree({ path: { personId: contributor.id } })
-      : this.routes.routes.STUDIO_DETAIL.createUrlTree({ path: { studioId: contributor.id } });
+      ? this.routes.PERSON_DETAIL.createUrlTree({ path: { personId: contributor.id } })
+      : this.routes.STUDIO_DETAIL.createUrlTree({ path: { studioId: contributor.id } });
   }
 }

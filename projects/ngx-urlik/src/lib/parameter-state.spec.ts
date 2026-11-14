@@ -1,8 +1,8 @@
-import { Component, inject, InjectionToken } from '@angular/core';
+import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { AppRouterDiagnostic, defineAppRouter } from './app-router';
-import { listCodec, numberCodec, queryParam, repeatedQueryParam, stringCodec } from './params';
+import { listCodec, numberCodec, queryParam, stringCodec } from './params';
 
 @Component({ template: '' })
 class Page {}
@@ -23,49 +23,83 @@ enum RouteNames {
 }
 
 describe('parameter state', () => {
-  it('reads repeated keys and joined lists', async () => {
-    const definition = defineAppRouter(RouteNames, {
-      routes: [
-        {
-          path: 'items',
-          routeName: RouteNames.ITEMS,
-          queryParams: {
-            search: queryParam({ codec: stringCodec() }),
-            tags: repeatedQueryParam({ codec: stringCodec() }),
-            ids: queryParam({ codec: listCodec(numberCodec(), ','), defaultValue: [] }),
+  it('reads the last of a repeated key, and joined lists', async () => {
+    const definition = defineAppRouter(
+      { ITEMS: RouteNames.ITEMS },
+      {
+        routes: [
+          {
+            path: 'items',
+            routeName: RouteNames.ITEMS,
+            queryParams: {
+              search: queryParam({ codec: stringCodec() }),
+              ids: queryParam({ codec: listCodec(numberCodec(), ','), defaultValue: [] }),
+            },
+            component: Page,
           },
-          component: Page,
-        },
-      ],
-    });
+        ],
+      },
+    );
     TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
     const router = TestBed.inject(Router);
     const items = TestBed.inject(definition.AppRouter).routes.ITEMS;
 
-    await router.navigateByUrl('/items?search=old&search=new&tags=a&tags=b&ids=3,4');
-    expect(items.params().query).toEqual({ search: 'new', tags: ['a', 'b'], ids: [3, 4] });
+    await router.navigateByUrl('/items?search=old&search=new&ids=1&ids=3,4');
+    expect(items.params().query).toEqual({ search: 'new', ids: [3, 4] });
     expect(
-      router.serializeUrl(
-        items.createUrlTree({ query: { search: 'next', tags: ['x', 'y'], ids: [5, 6] } }),
-      ),
-    ).toBe('/items?search=next&tags=x&tags=y&ids=5,6');
+      router.serializeUrl(items.createUrlTree({ query: { search: 'next', ids: [5, 6] } })),
+    ).toBe('/items?search=next&ids=5,6');
+  });
+
+  it('keeps an empty list apart from a missing key, and items with commas whole', async () => {
+    const definition = defineAppRouter(
+      { ITEMS: RouteNames.ITEMS },
+      {
+        routes: [
+          {
+            path: 'items',
+            routeName: RouteNames.ITEMS,
+            queryParams: {
+              tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: ['new'] }),
+            },
+            component: Page,
+          },
+        ],
+      },
+    );
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const router = TestBed.inject(Router);
+    const items = TestBed.inject(definition.AppRouter).routes.ITEMS;
+    await router.navigateByUrl('/items');
+    expect(items.params().query.tags).toEqual(['new']);
+
+    await items.patchQuery({ tags: [] });
+    expect(router.url).toBe('/items?tags=');
+    expect(items.params().query.tags).toEqual([]);
+
+    await items.patchQuery({ tags: ['red, green', 'blue'] });
+    expect(router.url).toBe('/items?tags=red%5C,%20green,blue');
+    expect(items.params().query.tags).toEqual(['red, green', 'blue']);
   });
 
   it('uses the fallback for a malformed array and reports the field', async () => {
     const diagnostics: AppRouterDiagnostic[] = [];
-    const definition = defineAppRouter(RouteNames, {
-      diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
-      routes: [
-        {
-          path: 'items',
-          routeName: RouteNames.ITEMS,
-          queryParams: {
-            ids: queryParam({ codec: listCodec(numberCodec(), ','), defaultValue: [] }),
+    const definition = defineAppRouter(
+      { ITEMS: RouteNames.ITEMS },
+      {
+        diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
+        routes: [
+          {
+            path: 'items',
+            routeName: RouteNames.ITEMS,
+            queryParams: {
+              ids: queryParam({ codec: listCodec(numberCodec(), ','), defaultValue: [] }),
+            },
+            component: Page,
           },
-          component: Page,
-        },
-      ],
-    });
+        ],
+      },
+    );
     TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
     const router = TestBed.inject(Router);
     const items = TestBed.inject(definition.AppRouter).routes.ITEMS;
@@ -92,17 +126,20 @@ describe('parameter state', () => {
         throw failure;
       },
     };
-    const definition = defineAppRouter(RouteNames, {
-      diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
-      routes: [
-        {
-          path: 'items',
-          routeName: RouteNames.ITEMS,
-          queryParams: { search: queryParam({ codec: throwing }) },
-          component: Page,
-        },
-      ],
-    });
+    const definition = defineAppRouter(
+      { ITEMS: RouteNames.ITEMS },
+      {
+        diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
+        routes: [
+          {
+            path: 'items',
+            routeName: RouteNames.ITEMS,
+            queryParams: { search: queryParam({ codec: throwing }) },
+            component: Page,
+          },
+        ],
+      },
+    );
     TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
     const router = TestBed.inject(Router);
     const items = TestBed.inject(definition.AppRouter).routes.ITEMS;
@@ -116,22 +153,24 @@ describe('parameter state', () => {
     ]);
   });
 
-  it('resolves injection-aware defaults and omits default values from URLs', async () => {
-    const locale = new InjectionToken<string>('locale');
-    const definition = defineAppRouter(RouteNames, {
-      routes: [
-        {
-          path: 'items',
-          routeName: RouteNames.ITEMS,
-          queryParams: {
-            locale: queryParam({ codec: stringCodec(), defaultValue: () => inject(locale) }),
+  it('reads a missing value as its default and omits default values from URLs', async () => {
+    const definition = defineAppRouter(
+      { ITEMS: RouteNames.ITEMS },
+      {
+        routes: [
+          {
+            path: 'items',
+            routeName: RouteNames.ITEMS,
+            queryParams: {
+              locale: queryParam({ codec: stringCodec(), defaultValue: 'en' }),
+            },
+            component: Page,
           },
-          component: Page,
-        },
-      ],
-    });
+        ],
+      },
+    );
     TestBed.configureTestingModule({
-      providers: [definition.provideAppRouter(), { provide: locale, useValue: 'en' }],
+      providers: [definition.provideAppRouter()],
     });
     const router = TestBed.inject(Router);
     const items = TestBed.inject(definition.AppRouter).routes.ITEMS;
@@ -141,5 +180,76 @@ describe('parameter state', () => {
     expect(router.serializeUrl(items.createUrlTree({ query: { locale: 'en' } }))).toBe('/items');
     await router.navigateByUrl('/items?locale=fr');
     expect(items.params().query.locale).toBe('fr');
+  });
+
+  it('leaves out a query value passed as undefined, without a diagnostic', () => {
+    const diagnostics: AppRouterDiagnostic[] = [];
+    const definition = defineAppRouter(
+      { ITEMS: RouteNames.ITEMS },
+      {
+        diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
+        routes: [
+          {
+            path: 'items',
+            routeName: RouteNames.ITEMS,
+            queryParams: { pageSize: queryParam({ codec: numberCodec(), defaultValue: 24 }) },
+            component: Page,
+          },
+        ],
+      },
+    );
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const router = TestBed.inject(Router);
+    const items = TestBed.inject(definition.AppRouter).routes.ITEMS;
+    const saved: number | undefined = undefined;
+
+    expect(router.serializeUrl(items.createUrlTree({ query: { pageSize: saved } }))).toBe('/items');
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('compares field values by their URL text', async () => {
+    class Day {
+      readonly #iso: string;
+      constructor(iso: string) {
+        this.#iso = iso;
+      }
+      toString() {
+        return this.#iso;
+      }
+    }
+    const dayCodec = {
+      serialize: (value: Day) => String(value),
+      deserialize: (raw: string) => new Day(raw),
+    };
+    const definition = defineAppRouter(
+      { ITEMS: RouteNames.ITEMS },
+      {
+        routes: [
+          {
+            path: 'items',
+            routeName: RouteNames.ITEMS,
+            queryParams: {
+              from: queryParam({ codec: dayCodec, defaultValue: new Day('2026-01-01') }),
+              search: queryParam({ codec: stringCodec() }),
+            },
+            component: Page,
+          },
+        ],
+      },
+    );
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const router = TestBed.inject(Router);
+    const items = TestBed.inject(definition.AppRouter).routes.ITEMS;
+
+    const link = items.createUrlTree({ query: { from: new Day('2026-01-01') } });
+    expect(router.serializeUrl(link)).toBe('/items');
+    await router.navigateByUrl('/items?from=2026-02-01&search=elm');
+    const first = items.params();
+    await router.navigateByUrl('/items?search=elm&from=2026-02-01');
+    expect(items.params()).toBe(first);
+    await router.navigateByUrl('/items?from=2026-02-01&search=oak');
+    expect(items.params().query.from).toBe(first.query.from);
+    await router.navigateByUrl('/items?from=2026-03-01&search=elm');
+    expect(String(items.params().query.from)).toBe('2026-03-01');
   });
 });

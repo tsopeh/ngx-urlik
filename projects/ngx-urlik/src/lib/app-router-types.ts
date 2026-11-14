@@ -1,34 +1,28 @@
 import type { Signal } from '@angular/core';
 import type { ActivatedRouteSnapshot, Route, UrlTree } from '@angular/router';
-import type {
-  ArrayQueryParamDefinition,
-  PersistKeyCheck,
-  PersistOptions,
-  QueryParamDefinition,
-  UrlParamCodec,
-} from './params';
-import type { QueryDefinitions, RouteDefinition } from './route-definition';
-import type { TypedNavigationBehaviorOptions, UrlParamsState } from './route-node';
+import type { QueryParamDefinition, UrlParamCodec } from './params';
+import type { QueryDefinitions } from './route-definition';
+import type { NavigateOptions, UrlParamsState } from './route-node';
 import type { routeNodeInfo } from './route-symbols';
 import type { AppRouterEscapeHatch } from './router-escape-hatch';
 import type { Simplify } from './type-utils';
 
 type Merge<A, B> = Omit<A, keyof B> & B;
+// A field reads as T when it has a default, and as T | null when it doesn't.
 type QueryValue<D> =
   D extends QueryParamDefinition<infer T, boolean, infer Defaulted>
     ? Defaulted extends true
       ? T
       : T | null
-    : D extends ArrayQueryParamDefinition<infer T, boolean>
-      ? readonly T[]
-      : never;
+    : never;
 type OwnQuery<D> = D extends { queryParams: infer Q extends QueryDefinitions }
   ? { [K in keyof Q]: QueryValue<Q[K]> }
   : object;
 type RequiredQueryKeys<D> = D extends { queryParams: infer Q extends QueryDefinitions }
   ? { [K in keyof Q]: Q[K] extends { required: true } ? K : never }[keyof Q]
   : never;
-type ConstructionArgs<P, Q, Required extends PropertyKey> = (keyof P extends never
+// What a link takes: every path value, any query fields (the required ones always), a fragment.
+type LinkInput<P, Q, Required extends PropertyKey> = (keyof P extends never
   ? { path?: never }
   : { path: Simplify<P> }) &
   ([Required] extends [never]
@@ -36,57 +30,38 @@ type ConstructionArgs<P, Q, Required extends PropertyKey> = (keyof P extends nev
     : { query: Partial<Simplify<Q>> & Pick<Simplify<Q>, Extract<Required, keyof Q>> }) & {
     fragment?: string | null;
   };
-type MethodArgs<P, Q, Required extends PropertyKey> = keyof P extends never
+// The values can be left out only when the route has no path values and no required fields.
+type LinkArgs<P, Q, Required extends PropertyKey> = keyof P extends never
   ? [Required] extends [never]
-    ? [values?: ConstructionArgs<P, Q, Required>]
-    : [values: ConstructionArgs<P, Q, Required>]
-  : [values: ConstructionArgs<P, Q, Required>];
+    ? [values?: LinkInput<P, Q, Required>]
+    : [values: LinkInput<P, Q, Required>]
+  : [values: LinkInput<P, Q, Required>];
 
 export type RouteNode<P = unknown, Q = unknown, Required extends PropertyKey = never> = {
-  createUrlTree(...args: MethodArgs<P, Q, Required>): UrlTree;
-  navigate(
-    ...args: [...MethodArgs<P, Q, Required>, options?: TypedNavigationBehaviorOptions]
-  ): Promise<boolean>;
+  createUrlTree(...args: LinkArgs<P, Q, Required>): UrlTree;
+  navigate(...args: [...LinkArgs<P, Q, Required>, options?: NavigateOptions]): Promise<boolean>;
   readonly [routeNodeInfo]: unknown;
+  /**
+   * This route while it, or one of its children, is showing. Otherwise `null`. Read through what
+   * it returns, so the read goes to the route you checked: `EPISODE.ifActive()?.params()`.
+   */
+  readonly ifActive: Signal<RouteNode<P, Q, Required> | null>;
   readonly params: Signal<UrlParamsState<P, Q>>;
-  /** Decodes this route from a snapshot, such as the one a guard or resolver receives. */
-  paramsFrom(snapshot: ActivatedRouteSnapshot): UrlParamsState<P, Q>;
-  patchQuery(
-    patch: Partial<Readonly<Q>>,
-    options?: TypedNavigationBehaviorOptions,
-  ): Promise<boolean>;
+  patchQuery(patch: Partial<Readonly<Q>>, options?: NavigateOptions): Promise<boolean>;
 };
 
-type AnyStatefulNode = {
+type AnyRouteNode = {
   readonly [routeNodeInfo]: unknown;
   readonly params: Signal<UrlParamsState<unknown, unknown>>;
-  patchQuery(patch: never, options?: TypedNavigationBehaviorOptions): Promise<boolean>;
+  patchQuery(patch: never, options?: NavigateOptions): Promise<boolean>;
 };
-type StateOfNode<N> = N extends { params: Signal<infer S> } ? S : never;
-type QueryOfNode<N> = N extends { params: Signal<{ query: infer Q }> } ? Q : never;
 
-export type QueryParamsOf<N> = QueryOfNode<N>;
-export type PathParamsOf<N> = N extends RouteNode<infer P, infer Q, infer R> ? P : never;
-export type RouteStateOf<N> = StateOfNode<N>;
+export type QueryParamsOf<N> = N extends { params: Signal<{ query: infer Q }> } ? Q : never;
+export type PathParamsOf<N> = N extends RouteNode<infer P, infer _Q, infer _R> ? P : never;
+export type RouteStateOf<N> = N extends { params: Signal<infer S> } ? S : never;
 export type RouteQueryPatch<N> = Partial<Readonly<QueryParamsOf<N>>>;
 
-export type ActiveRoute<C extends Readonly<Record<PropertyKey, AnyStatefulNode>>> = {
-  readonly [K in keyof C]: Readonly<{
-    route: K;
-    node: C[K];
-    params: StateOfNode<C[K]>;
-    createUrlTree(patch?: {
-      query?: Partial<QueryOfNode<C[K]>>;
-      fragment?: string | null;
-    }): UrlTree;
-    patchQuery(
-      patch: Partial<Readonly<QueryOfNode<C[K]>>>,
-      options?: TypedNavigationBehaviorOptions,
-    ): Promise<boolean>;
-  }>;
-}[keyof C];
-
-// Infer each route object before applying contextual checks to nested fields.
+// Let TypeScript infer each route object first, then check its nested fields.
 export type InferDefinition<T> = {
   [K in keyof T]: T[K] &
     (unknown extends T[K]
@@ -101,77 +76,29 @@ type PathNames<S extends string> = S extends `${infer Head}/${infer Tail}`
   ? PathSegmentName<Head> | PathNames<Tail>
   : PathSegmentName<S>;
 type OwnPathNames<D> = D extends { path: infer P extends string } ? PathNames<P> : never;
-// Placeholders of a path that come before the placeholder `Name`.
-type NamesBefore<S extends string, Name extends string> = S extends `${infer Head}/${infer Tail}`
-  ? Head extends `:${Name}`
-    ? never
-    : PathSegmentName<Head> | NamesBefore<Tail, Name>
-  : never;
-type CodecOption = Readonly<{ codec: UrlParamCodec<unknown>; persist?: PersistOptions }>;
-type CodecValue<C> = C extends { codec: UrlParamCodec<infer T> } ? T : string;
-type IsUnion<T, C = T> = T extends C ? ([C] extends [T] ? false : true) : never;
-// A scope may name only path parameters known before this value. A scope typed as a wide string,
-// such as one from an annotated helper, is checked at runtime.
-type ScopeCheck<C, Names extends string> = C extends {
-  readonly persist?: { readonly scope?: readonly (infer S)[] };
-}
-  ? string extends S
-    ? unknown
-    : [Exclude<S, Names>] extends [never]
-      ? unknown
-      : { readonly persist?: { readonly scope?: readonly Names[] } }
-  : unknown;
-type KeyCheck<C> = C extends { readonly persist?: { readonly key: infer K extends string } }
-  ? K extends PersistKeyCheck<K>
-    ? unknown
-    : { readonly persist?: { readonly key: never } }
-  : unknown;
-type StrictCodecOption<C, ScopeNames extends string> = CodecOption &
-  Record<Exclude<keyof C, 'codec' | 'persist'>, never> &
-  ScopeCheck<C, ScopeNames> &
-  KeyCheck<C>;
-type KeyedPathConfig<
-  Names extends string,
-  Supplied,
-  Path extends string,
-  Ancestor extends string,
-> = {
-  readonly [K in Names]: K extends keyof Supplied
-    ? StrictCodecOption<Supplied[K], Ancestor | NamesBefore<Path, K>>
-    : CodecOption;
-} & Record<Exclude<keyof Supplied, Names>, never>;
-type PathConfig<Names extends string, Supplied, Path extends string, Ancestor extends string> = [
-  Names,
-] extends [never]
+type CodecValue<C> = C extends UrlParamCodec<infer T> ? T : string;
+// Each key names a placeholder, and each value is a codec.
+type PathConfig<Names extends string, Supplied> = [Names] extends [never]
   ? never
-  : IsUnion<Names> extends true
-    ? KeyedPathConfig<Names, Supplied, Path, Ancestor>
-    : | StrictCodecOption<Supplied, Ancestor | NamesBefore<Path, Names>>
-      | KeyedPathConfig<Names, Supplied, Path, Ancestor>;
+  : { readonly [K in keyof Supplied]: K extends Names ? UrlParamCodec<unknown> : never };
 type OwnPath<D> = {
   [K in OwnPathNames<D>]: D extends { pathParam: infer P }
-    ? P extends CodecOption
-      ? CodecValue<P>
-      : K extends keyof P
-        ? CodecValue<P[K]>
-        : string
+    ? K extends keyof P
+      ? CodecValue<P[K]>
+      : string
     : string;
 };
 type AccumulatedPath<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
 type AccumulatedQuery<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
-// A persisted query field's scope may name the path parameters of its route chain.
-type ScopeChecks<Q, Names extends string> = { readonly [P in keyof Q]: ScopeCheck<Q[P], Names> };
-type RouteKey = keyof Route | 'routeName' | 'pathParam' | 'queryParams' | 'isEqual';
+type RouteKey = keyof Route | 'routeName' | 'pathParam' | 'queryParams';
 
-type ContextualRoute<D, AncestorQuery, AncestorPath extends string> = {
+// Checks one route where it's written: only known keys, a literal routeName, codecs only for real
+// placeholders, and no query key a parent already declares.
+type ContextualRoute<D, AncestorQuery> = {
   [K in keyof D]: K extends RouteKey
     ? K extends 'children'
       ? D[K] extends readonly unknown[]
-        ? ContextualRouteArray<
-            D[K],
-            AccumulatedQuery<D, AncestorQuery>,
-            AncestorPath | OwnPathNames<D>
-          >
+        ? ContextualRouteArray<D[K], AccumulatedQuery<D, AncestorQuery>>
         : never
       : K extends 'routeName'
         ? D extends { path: '**' } | { redirectTo: unknown }
@@ -182,36 +109,24 @@ type ContextualRoute<D, AncestorQuery, AncestorPath extends string> = {
               : D[K]
             : never
         : K extends 'pathParam'
-          ? PathConfig<
-              OwnPathNames<D>,
-              D[K],
-              D extends { path: infer P extends string } ? P : '',
-              AncestorPath
-            >
+          ? PathConfig<OwnPathNames<D>, D[K]>
           : K extends 'queryParams'
             ? D[K] extends QueryDefinitions
-              ? Record<Extract<keyof D[K], keyof AncestorQuery>, never> &
-                  ScopeChecks<D[K], AncestorPath | OwnPathNames<D>>
+              ? Record<Extract<keyof D[K], keyof AncestorQuery>, never>
               : never
-            : K extends 'isEqual'
-              ? RouteDefinition['isEqual']
-              : K extends keyof Route
-                ? Route[K]
-                : never
+            : K extends keyof Route
+              ? Route[K]
+              : never
     : never;
 } & (D extends { matcher: unknown } ? { readonly path?: string } : { readonly path: string });
 
-/** Contextual checks for a literal Angular-shaped route array. */
-export type ContextualRouteArray<
-  R,
-  AncestorQuery = object,
-  AncestorPath extends string = never,
-> = R extends readonly unknown[]
+/** Type checks for a literal route array, applied to each route where it's written. */
+export type ContextualRouteArray<R, AncestorQuery = object> = R extends readonly unknown[]
   ? number extends R['length']
     ? R extends readonly Route[]
       ? R
-      : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery, AncestorPath> }
-    : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery, AncestorPath> }
+      : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery> }
+    : { readonly [K in keyof R]: ContextualRoute<R[K], AncestorQuery> }
   : never;
 
 type CompiledRouteNode<D, AP, AQ, Required extends PropertyKey> = RouteNode<
@@ -225,8 +140,9 @@ type NamedNode<D, AP, AQ, Required extends PropertyKey> = D extends {
 }
   ? D extends { path: '**' } | { redirectTo: unknown }
     ? object
-    : { readonly [K in Name]: CompiledRouteNode<D, AP, AQ, Required> }
+    : Readonly<Record<Name, CompiledRouteNode<D, AP, AQ, Required>>>
   : object;
+// Walks the route tree and gives each named route its node, with every parent's values included.
 type RouteEntries<
   R,
   AP = object,
@@ -245,34 +161,47 @@ type RouteEntries<
       RouteEntries<Rest, AP, AQ, Required>
   : object;
 type NamedRoutes<R> = Simplify<RouteEntries<R>>;
-type GlobalQueryValues<Q extends QueryDefinitions> = { [K in keyof Q]: QueryValue<Q[K]> };
+type PathCodecs = Readonly<Record<string, UrlParamCodec<unknown>>>;
+type GlobalValues<P extends PathCodecs, Q extends QueryDefinitions> = Readonly<{
+  path: Readonly<{ [K in keyof P]: CodecValue<P[K]> | null }>;
+  query: Readonly<{ [K in keyof Q]: QueryValue<Q[K]> }>;
+}>;
+type GlobalDefinitions<P extends PathCodecs, Q extends QueryDefinitions> = {
+  readonly path?: P;
+  readonly query?: Q;
+};
 
-/** The flat router keyed by route name. */
+/** What the `AppRouter` token gives you. `routes` has one entry per named route. */
 export type GeneratedAppRouter<E extends Record<string, string>, R> = {
   readonly routes: {
     readonly [K in keyof E]: E[K] extends keyof NamedRoutes<R> ? NamedRoutes<R>[E[K]] : never;
   };
-  globalQueryParams<const Q extends QueryDefinitions>(
-    definitions: Q,
-    options?: {
-      isEqual?: (
-        previous: Readonly<GlobalQueryValues<Q>>,
-        next: Readonly<GlobalQueryValues<Q>>,
-      ) => boolean;
-    },
-  ): Signal<Readonly<GlobalQueryValues<Q>>>;
-  activeRoute<const C extends Readonly<Record<PropertyKey, AnyStatefulNode>>>(
-    candidates: C,
-  ): Signal<ActiveRoute<C>>;
   /**
-   * Removes values that `persist` options stored. Without an argument, removes every key with the
-   * router's prefix from both storages. With an object, touches only the storages set to `true`
-   * (every prefixed key) or to an array of keys (each key with all of its scopes). The current URL
-   * does not change.
+   * Reads path and query values on every page, with no route needing to be active. A path value
+   * comes from whichever active route has a placeholder with that name, and is `null` when none
+   * does or when it doesn't decode. Query fields work as on routes.
    */
-  clearPersisted(options?: {
-    local?: boolean | readonly string[];
-    session?: boolean | readonly string[];
-  }): void;
+  globalParams<
+    const P extends PathCodecs = Record<never, never>,
+    const Q extends QueryDefinitions = Record<never, never>,
+  >(
+    definitions: GlobalDefinitions<P, Q>,
+  ): Signal<GlobalValues<P, Q>>;
+  /** Reads like `globalParams()`, once, from a snapshot such as the one a guard or resolver gets. */
+  globalParamsSnapshot<
+    const P extends PathCodecs = Record<never, never>,
+    const Q extends QueryDefinitions = Record<never, never>,
+  >(
+    definitions: GlobalDefinitions<P, Q>,
+    snapshot: ActivatedRouteSnapshot,
+  ): GlobalValues<P, Q>;
+  /**
+   * Reads a route's values once, from a snapshot such as the one a guard or resolver gets. Throws
+   * if the snapshot doesn't contain the route.
+   */
+  paramsSnapshot<const N extends AnyRouteNode>(
+    route: N,
+    snapshot: ActivatedRouteSnapshot,
+  ): RouteStateOf<N>;
   readonly escapeHatch: AppRouterEscapeHatch;
 };

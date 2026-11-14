@@ -13,12 +13,19 @@ const nonNegativeInteger = /^\d+$/;
 export function experienceCountCodec(): UrlParamCodec<ExperienceCount> {
   return {
     serialize(value) {
-      if (value.kind === 'countless') return 'countless';
-      return Number.isSafeInteger(value.value) && value.value >= 0 ? String(value.value) : null;
+      if (value.kind === 'countless') {
+        return 'countless';
+      }
+      const countable = Number.isSafeInteger(value.value) && value.value >= 0;
+      return countable ? String(value.value) : null;
     },
     deserialize(raw) {
-      if (raw === 'countless') return { kind: 'countless' };
-      if (!nonNegativeInteger.test(raw)) return null;
+      if (raw === 'countless') {
+        return { kind: 'countless' };
+      }
+      if (!nonNegativeInteger.test(raw)) {
+        return null;
+      }
       const value = Number(raw);
       return Number.isSafeInteger(value) ? { kind: 'exact', value } : null;
     },
@@ -27,12 +34,17 @@ export function experienceCountCodec(): UrlParamCodec<ExperienceCount> {
 
 export function positiveIntegerCodec(): UrlParamCodec<number> {
   return {
-    serialize: (value) =>
-      Number.isSafeInteger(value) && value > 0 && typeof value === 'number' ? String(value) : null,
+    serialize: (value) => {
+      const positiveInteger = typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+      return positiveInteger ? String(value) : null;
+    },
     deserialize(raw) {
-      if (!nonNegativeInteger.test(raw)) return null;
+      if (!nonNegativeInteger.test(raw)) {
+        return null;
+      }
       const value = Number(raw);
-      return Number.isSafeInteger(value) && value > 0 ? value : null;
+      const positiveInteger = Number.isSafeInteger(value) && value > 0;
+      return positiveInteger ? value : null;
     },
   };
 }
@@ -52,45 +64,49 @@ export function prefixedIdCodec<const Prefix extends string>(
   };
 }
 
+const isDirection = (value: unknown): value is SortDirection => value === 'asc' || value === 'desc';
+
 export function sortCodec<const Field extends string>(
   fields: readonly Field[],
 ): UrlParamCodec<SortValue<Field>> {
   const allowed = new Set<string>(fields);
   return {
     serialize(value) {
-      return allowed.has(value.field) && (value.direction === 'asc' || value.direction === 'desc')
-        ? `${value.field}:${value.direction}`
-        : null;
+      const writable = allowed.has(value.field) && isDirection(value.direction);
+      return writable ? `${value.field}:${value.direction}` : null;
     },
     deserialize(raw) {
       const [field, direction, extra] = raw.split(':');
-      if (extra || !allowed.has(field) || (direction !== 'asc' && direction !== 'desc'))
+      const readable = !extra && allowed.has(field) && isDirection(direction);
+      if (!readable) {
         return null;
+      }
       return { field: field as Field, direction };
     },
   };
 }
 
-export function paginationParams(options: {
-  readonly defaultPageSize: PageSize;
-  readonly pageSizes: readonly PageSize[];
-}) {
-  const sizes = new Set<number>(options.pageSizes);
-  const pageSizeCodec: UrlParamCodec<PageSize> = {
+export function pageSizeCodec(pageSizes: readonly PageSize[]): UrlParamCodec<PageSize> {
+  const sizes = new Set<number>(pageSizes);
+  return {
     serialize: (value) => (sizes.has(value) ? String(value) : null),
     deserialize(raw) {
-      if (!nonNegativeInteger.test(raw)) return null;
+      if (!nonNegativeInteger.test(raw)) {
+        return null;
+      }
       const value = Number(raw);
       return sizes.has(value) ? (value as PageSize) : null;
     },
   };
+}
+
+/**
+ * `pageSize` has no default, so the URL holds it only when the user picked one. A page falls back
+ * to the size picked last, through `Preferences.pageSize()`.
+ */
+export function paginationParams(options: { readonly pageSizes: readonly PageSize[] }) {
   return {
     page: queryParam({ codec: positiveIntegerCodec(), defaultValue: 1 }),
-    // Every list that uses this key remembers the last page size the user chose.
-    pageSize: queryParam({
-      codec: pageSizeCodec,
-      defaultValue: options.defaultPageSize,
-      persist: { key: 'pageSize', storage: 'local' },
-    }),
+    pageSize: queryParam({ codec: pageSizeCodec(options.pageSizes) }),
   } as const;
 }
