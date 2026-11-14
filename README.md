@@ -1,6 +1,6 @@
 # ngx-urlik
 
-Typed URL state for Angular Router.
+Type-safe URL parameters and navigation for Angular Router.
 
 Say your search page is at `/results?search=oak&page=4`. Plain Angular gives you `page` as the
 string `'4'`, or `null` when it's missing. So you parse it and pick a default. When the user clicks
