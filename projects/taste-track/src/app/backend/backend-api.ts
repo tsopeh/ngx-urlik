@@ -13,9 +13,7 @@ import type {
   Season,
 } from './domain';
 
-/**
- * Filter and pagination parameters for browsing titles in the catalog.
- */
+/** Filters and page for browsing the catalog. */
 export interface CatalogQuery {
   readonly route: 'episodes' | 'movies' | 'shows';
   readonly showId?: string;
@@ -27,25 +25,19 @@ export interface CatalogQuery {
   readonly pageSize: number;
 }
 
-/**
- * A catalog item paired with the user's library state.
- */
+/** A catalog title with the user's library entry, if any. */
 export interface CatalogItemCard {
   readonly item: CatalogItem;
   readonly state?: PersonalState;
 }
 
-/**
- * Paginated catalog result containing matching item cards and the total matching count.
- */
+/** One page of catalog cards, and how many titles match in total. */
 export interface CatalogResponse {
   readonly items: readonly CatalogItemCard[];
   readonly total: number;
 }
 
-/**
- * Route parameters identifying a single title, season, or episode for detail viewing.
- */
+/** The route values that pick one title, season, or episode. */
 export interface ItemDetailRequest {
   readonly route: 'episode' | 'season' | 'show' | 'movie';
   readonly movieId?: string;
@@ -54,17 +46,13 @@ export interface ItemDetailRequest {
   readonly episodeNumber?: number;
 }
 
-/**
- * A cast or crew credit linked to the contributor's full profile record.
- */
+/** A cast or crew credit, with the person or studio it names. */
 export interface ItemCredit {
   readonly person: Contributor;
   readonly role: 'Actor' | 'Director' | 'Writer' | 'Production';
 }
 
-/**
- * Complete presentation model for an item detail page.
- */
+/** Everything a detail page shows. */
 export interface ItemDetail {
   readonly item: CatalogItem;
   readonly heading: string;
@@ -74,9 +62,7 @@ export interface ItemDetail {
   readonly credits: readonly ItemCredit[];
 }
 
-/**
- * Query parameters for filtering the user's library.
- */
+/** Filters for the user's library. */
 export interface LibraryQuery {
   readonly search: string;
   readonly media: readonly MediaKind[];
@@ -88,25 +74,19 @@ export interface LibraryQuery {
   readonly sort: { readonly field: string; readonly direction: string };
 }
 
-/**
- * A library item paired with its guaranteed personal state.
- */
+/** A library title with the user's entry for it. */
 export interface LibraryItemCard {
   readonly item: CatalogItem;
   readonly state: PersonalState;
 }
 
-/**
- * Paginated library result containing library items and the total matching count.
- */
+/** One page of library titles, and how many match in total. */
 export interface LibraryResponse {
   readonly items: readonly LibraryItemCard[];
   readonly total: number;
 }
 
-/**
- * Filter parameters for searching personal viewing history.
- */
+/** Filters for the viewing history. */
 export interface HistoryQuery {
   readonly search: string;
   readonly from?: string | null;
@@ -116,44 +96,35 @@ export interface HistoryQuery {
   readonly sort: { readonly field: string; readonly direction: string };
 }
 
-/**
- * A journal viewing event joined with its referenced catalog title.
- */
+/** A logged viewing, with the title that was watched. */
 export interface HistoryEntry {
   readonly event: JournalEvent;
   readonly item?: CatalogItem;
 }
 
-/**
- * Paginated viewing history containing journal entries and the total matching count.
- */
+/** One page of viewings, and how many match in total. */
 export interface HistoryResponse {
   readonly entries: readonly HistoryEntry[];
   readonly total: number;
 }
 
-/**
- * A filmography entry linking an item to the roles a contributor performed.
- */
+/** A title someone worked on, and their roles in it. */
 export interface ContributorCredit {
   readonly item: CatalogItem;
   readonly roles: readonly ('Actor' | 'Director' | 'Writer' | 'Production')[];
 }
 
-/**
- * Contributor profile data along with all non-episode credits.
- */
+/** A person or studio, and every credit except single episodes. */
 export interface ContributorProfile {
   readonly contributor: Contributor;
   readonly credits: readonly ContributorCredit[];
 }
 
 /**
- * Central API service that encapsulates all querying, filtering, and mutation logic.
+ * The fake backend. Every page reads and changes data through it.
  *
- * Query methods return an RxJS Observable that resolves asynchronously on the next event-loop tick.
- * This delays emissions to mock network latency and prevents synchronous data coupling in components.
- * Active subscriptions automatically re-emit when database mutations change the data version.
+ * Each query returns an Observable that emits on the next tick, like a real network call would, so
+ * pages don't come to depend on data arriving at once. After any change, open queries emit again.
  */
 @Injectable({ providedIn: 'root' })
 export class BackendApi {
@@ -162,12 +133,7 @@ export class BackendApi {
     filter(() => this.repository.ready()),
   );
 
-  /**
-   * Queries the catalog by branch, search text, genre, sort order, and page size.
-   *
-   * Slices the matching titles to the requested page window and joins each item with its
-   * personal state record. Returns an empty items array if no titles match.
-   */
+  /** One page of catalog titles that match the search, genres, and sort order. */
   getCatalog(query: CatalogQuery): Observable<CatalogResponse> {
     return this.dataVersion$.pipe(
       delay(0),
@@ -182,11 +148,12 @@ export class BackendApi {
                   item.showId === query.showId &&
                   item.seasonNumber === query.seasonNumber
                 : item.kind === (query.route === 'movies' ? 'movie' : 'show');
-            return (
-              inBranch &&
-              `${item.title} ${item.subtitle}`.toLowerCase().includes(query.search.toLowerCase()) &&
-              (!query.genres.length || query.genres.some((genre) => item.genres.includes(genre)))
-            );
+            const matchesSearch = `${item.title} ${item.subtitle}`
+              .toLowerCase()
+              .includes(query.search.toLowerCase());
+            const matchesGenres =
+              !query.genres.length || query.genres.some((genre) => item.genres.includes(genre));
+            return inBranch && matchesSearch && matchesGenres;
           })
           .sort(
             (a, b) =>
@@ -209,11 +176,7 @@ export class BackendApi {
     );
   }
 
-  /**
-   * Resolves the full detail model for a movie, show, season, or episode.
-   *
-   * Returns `null` if the requested route parameters do not match an entity in the catalog.
-   */
+  /** The detail page for a movie, show, season, or episode, or `null` if there's no such title. */
   getItemDetail(request: ItemDetailRequest): Observable<ItemDetail | null> {
     return this.dataVersion$.pipe(
       delay(0),
@@ -248,7 +211,9 @@ export class BackendApi {
             break;
         }
 
-        if (!item) return null;
+        if (!item) {
+          return null;
+        }
 
         const isSeason = request.route === 'season';
         const heading = isSeason ? `${item.title} · Season ${request.seasonNumber}` : item.title;
@@ -273,9 +238,7 @@ export class BackendApi {
     );
   }
 
-  /**
-   * Returns all seasons associated with the given show ID.
-   */
+  /** Every season of a show. */
   getSeasons(showId: string): Observable<readonly Season[]> {
     return this.dataVersion$.pipe(
       delay(0),
@@ -283,10 +246,7 @@ export class BackendApi {
     );
   }
 
-  /**
-   * Queries library items filtered by search, media kind, status, replay count,
-   * and minimum rating.
-   */
+  /** One page of library titles, filtered by search, kind, status, viewing count, and rating. */
   getLibrary(query: LibraryQuery): Observable<LibraryResponse> {
     return this.dataVersion$.pipe(
       delay(0),
@@ -298,24 +258,18 @@ export class BackendApi {
           .items()
           .filter((item) => {
             const state = stateMap.get(item.id);
-            if (!state) return false;
-            if (
-              query.search &&
-              !`${item.title} ${item.subtitle}`.toLowerCase().includes(query.search.toLowerCase())
-            )
+            if (!state) {
               return false;
-            if (query.media.length && !query.media.includes(item.kind)) return false;
-            if (query.statuses.length && !query.statuses.includes(state.status)) return false;
-            if (query.minRating !== null && (state.rating ?? 0) < query.minRating) return false;
-            if (
-              query.replayCount &&
-              (query.replayCount.kind !== state.count.kind ||
-                (query.replayCount.kind === 'exact' &&
-                  state.count.kind === 'exact' &&
-                  query.replayCount.value !== state.count.value))
-            )
-              return false;
-            return true;
+            }
+            const matchesSearch =
+              !query.search ||
+              `${item.title} ${item.subtitle}`.toLowerCase().includes(query.search.toLowerCase());
+            const matchesMedia = !query.media.length || query.media.includes(item.kind);
+            const matchesStatus = !query.statuses.length || query.statuses.includes(state.status);
+            const matchesRating =
+              query.minRating === null || (state.rating ?? 0) >= query.minRating;
+            const matchesCount = !query.replayCount || sameCount(query.replayCount, state.count);
+            return matchesSearch && matchesMedia && matchesStatus && matchesRating && matchesCount;
           })
           .sort(
             (a, b) =>
@@ -338,10 +292,7 @@ export class BackendApi {
     );
   }
 
-  /**
-   * Queries viewing events filtered by title search and date boundaries.
-   * Joins each journal event with its matching catalog item title.
-   */
+  /** One page of viewings, filtered by title and date range. */
   getHistory(query: HistoryQuery): Observable<HistoryResponse> {
     return this.dataVersion$.pipe(
       delay(0),
@@ -349,11 +300,12 @@ export class BackendApi {
         const itemMap = new Map(this.repository.items().map((item) => [item.id, item]));
         const matched = this.repository.events().filter((event) => {
           const item = itemMap.get(event.itemId);
-          return (
-            (!query.search || item?.title.toLowerCase().includes(query.search.toLowerCase())) &&
-            (!query.from || event.occurredAt >= query.from) &&
-            (!query.to || event.occurredAt <= `${query.to}T23:59:59.999Z`)
-          );
+          const matchesSearch =
+            !query.search ||
+            (item?.title.toLowerCase().includes(query.search.toLowerCase()) ?? false);
+          const afterFrom = !query.from || event.occurredAt >= query.from;
+          const beforeTo = !query.to || event.occurredAt <= `${query.to}T23:59:59.999Z`;
+          return matchesSearch && afterFrom && beforeTo;
         });
 
         matched.sort(
@@ -376,9 +328,7 @@ export class BackendApi {
     );
   }
 
-  /**
-   * Lists all contributors matching the given kind ('person' or 'studio').
-   */
+  /** Every person, or every studio. */
   getContributors(kind: 'person' | 'studio'): Observable<readonly Contributor[]> {
     return this.dataVersion$.pipe(
       delay(0),
@@ -386,16 +336,15 @@ export class BackendApi {
     );
   }
 
-  /**
-   * Returns a contributor's profile along with all non-episode credits.
-   * Returns `null` if no contributor matches the ID.
-   */
+  /** A person or studio with their credits, or `null` if the ID is unknown. */
   getContributorProfile(id: string): Observable<ContributorProfile | null> {
     return this.dataVersion$.pipe(
       delay(0),
       map(() => {
         const contributor = this.repository.contributors().find((c) => c.id === id);
-        if (!contributor) return null;
+        if (!contributor) {
+          return null;
+        }
 
         const credits = this.repository
           .items()
@@ -415,16 +364,12 @@ export class BackendApi {
     );
   }
 
-  /**
-   * Toggles the favorite flag on an item in the user's library.
-   */
+  /** Marks a title as a favorite, or unmarks it. */
   async toggleFavorite(itemId: CatalogItem['id']): Promise<void> {
     await this.repository.toggleFavorite(itemId);
   }
 
-  /**
-   * Updates library properties (status, rating, favorite) on a title.
-   */
+  /** Changes a title's status, rating, or favorite mark. */
   async updatePersonal(
     itemId: CatalogItem['id'],
     patch: Partial<Omit<PersonalState, 'itemId'>>,
@@ -432,15 +377,17 @@ export class BackendApi {
     await this.repository.updatePersonal(itemId, patch);
   }
 
-  /**
-   * Records a viewing event for the title on the specified date.
-   */
+  /** Logs a viewing of the title on the given date. */
   async logViewing(item: CatalogItem, date: string): Promise<void> {
     await this.repository.logViewing(item, date);
   }
 }
 
-/**
- * Alias for BackendApi to match service naming conventions.
- */
-export { BackendApi as BackendApiService };
+/** Whether two viewing counts are the same: both countless, or the same exact number. */
+function sameCount(a: ExperienceCount, b: ExperienceCount): boolean {
+  const bothExact = a.kind === 'exact' && b.kind === 'exact';
+  if (bothExact) {
+    return a.value === b.value;
+  }
+  return a.kind === b.kind;
+}

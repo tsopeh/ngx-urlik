@@ -38,7 +38,9 @@ describe('movie and TV seed integrity', () => {
         episodePaths.add(path);
       }
     }
-    for (const state of seed.personalStates) expect(items.has(state.itemId)).toBe(true);
+    for (const state of seed.personalStates) {
+      expect(items.has(state.itemId)).toBe(true);
+    }
     for (const event of seed.events) {
       expect(items.get(event.itemId)?.kind).toBe(event.kind);
       expect(new Date(event.occurredAt).getUTCFullYear()).toBeGreaterThanOrEqual(

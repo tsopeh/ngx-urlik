@@ -72,3 +72,7 @@ export interface TasteTrackSeed {
   readonly personalStates: readonly PersonalState[];
   readonly events: readonly JournalEvent[];
 }
+
+/** Whether a date can be logged as a viewing: `2026-11-11`, not `20261-11-11` or `2026-13-01`. */
+export const isViewingDate = (date: string): boolean =>
+  /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date));

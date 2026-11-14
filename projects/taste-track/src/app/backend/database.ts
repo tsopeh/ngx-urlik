@@ -1,6 +1,13 @@
-import { Injectable, signal } from '@angular/core';
+import { computed, Injectable, signal } from '@angular/core';
 import Dexie, { type EntityTable } from 'dexie';
-import type { CatalogItem, Contributor, JournalEvent, PersonalState, Season } from './domain';
+import {
+  type CatalogItem,
+  type Contributor,
+  isViewingDate,
+  type JournalEvent,
+  type PersonalState,
+  type Season,
+} from './domain';
 import { tasteTrackSeed } from './seed';
 
 class TasteTrackDatabase extends Dexie {
@@ -45,6 +52,7 @@ export class TasteTrackRepository {
   readonly ready = signal(false);
   readonly error = signal<string | null>(null);
   readonly dataVersion = signal(0);
+  readonly failedToOpen = computed(() => !this.ready() && this.error() !== null);
 
   constructor() {
     void this.reload().catch(() =>
@@ -70,9 +78,32 @@ export class TasteTrackRepository {
     this.dataVersion.update((v) => v + 1);
   }
 
+  // A write that committed must resolve, or the page would ask the user to repeat it, and a
+  // repeated log would count a viewing twice. So a failed reload after it only sets `error`.
+  private async refresh(): Promise<void> {
+    try {
+      await this.reload();
+    } catch {
+      this.error.set("Your changes are saved, but the journal couldn't show them. Please reload.");
+    }
+  }
+
   async updatePersonal(
     itemId: CatalogItem['id'],
     patch: Partial<Omit<PersonalState, 'itemId'>>,
+  ): Promise<void> {
+    await this.writePersonal(itemId, () => patch);
+  }
+
+  async toggleFavorite(itemId: CatalogItem['id']): Promise<void> {
+    await this.writePersonal(itemId, (existing) => ({ favorite: !existing?.favorite }));
+  }
+
+  // Reads the entry inside the transaction. A double click starts two toggles before the first
+  // reload, so a toggle that read the signals would see the same old value twice.
+  private async writePersonal(
+    itemId: CatalogItem['id'],
+    change: (existing?: PersonalState) => Partial<Omit<PersonalState, 'itemId'>>,
   ): Promise<void> {
     await this.database.transaction('rw', this.database.personalStates, async () => {
       const existing = await this.database.personalStates.get(itemId);
@@ -83,20 +114,16 @@ export class TasteTrackRepository {
         rating: null,
         count: { kind: 'exact', value: 0 },
         ...existing,
-        ...patch,
+        ...change(existing),
       });
     });
-    await this.reload();
-  }
-
-  async toggleFavorite(itemId: CatalogItem['id']): Promise<void> {
-    await this.updatePersonal(itemId, {
-      favorite: !this.personalStates().find((state) => state.itemId === itemId)?.favorite,
-    });
+    await this.refresh();
   }
 
   async logViewing(item: CatalogItem, date: string): Promise<void> {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))) return;
+    if (!isViewingDate(date)) {
+      throw new RangeError(`Can't log a viewing on '${date}'. Use a date like 2026-11-11.`);
+    }
     await this.database.transaction(
       'rw',
       this.database.events,
@@ -125,7 +152,7 @@ export class TasteTrackRepository {
         });
       },
     );
-    await this.reload();
+    await this.refresh();
   }
 
   async reset(): Promise<void> {
@@ -135,6 +162,6 @@ export class TasteTrackRepository {
         await this.database.table(name).bulkAdd(rows);
       }
     });
-    await this.reload();
+    await this.refresh();
   }
 }

@@ -106,7 +106,7 @@ describe('BackendApi', () => {
         resolvedSynchronously = true;
       });
 
-      // Enforces async resolution via delay(0)
+      // delay(0) holds the value until the next tick.
       expect(resolvedSynchronously).toBe(false);
 
       const response = await firstValueFrom(obs$);
