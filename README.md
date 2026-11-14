@@ -1111,8 +1111,8 @@ npm run e2e        # Playwright against the demo
 ```
 
 [Design decisions](docs/decisions.md) explains why the library works the way it does, and what each
-choice costs. [Reading the code](docs/implementation.md) shows where things live and how a write
-moves through. [State machines](docs/state-machines.md) lists every state the code moves through.
+choice costs. [Reading the code](docs/implementation.md) shows where things live, how a write
+moves through, and every state the code moves between.
 [Development history](docs/development-history.md) records the designs we explored and where each
 topic stands.
 

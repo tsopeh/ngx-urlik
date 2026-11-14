@@ -28,95 +28,70 @@ file gives the path that led there. Commit hashes point at the code for each ste
 | Nov 14, 2026    | Type tests move to Vitest. Library coverage reaches 99.5% of lines                  |
 
 The package version is `0.2.0`. In conversation we call the design after Nov 13 "API version 3".
-The version number hasn't followed. Nothing has been published, so no release needs a migration
-guide.
+The version number hasn't followed, and whether it should is open. Nothing has been published, so
+no release needs a migration guide.
 
 ## Step by step
 
+The timeline in more detail, with what we kept from each design.
+
 ### 2025: a router keyed by path
 
-The repo started on Oct 26, 2025, from Angular CLI 20.3. `initUrlik({ routes })` (`2677519`) took
-routes shaped like Angular's, with two additions. `pathParam: { paramName, serde }` gave a route one
-path parameter. Paths didn't use Angular's `:name` syntax. `queryParams` mapped names to serdes. The
-result had one typed entry per path string, each with `createUrlTree()` and `navigate()`.
+`initUrlik({ routes })` (`2677519`, Oct 26, 2025) took routes shaped like Angular's. A route's one
+path parameter was `pathParam: { paramName, serde }`, without Angular's `:name` syntax.
 
 What we kept: a codec, then called a serde, owns the text conversion. Links take path and query
 values in separate objects.
 
 ### April 2026: params per component
 
-`url-params-v2.ts` (`421a936`) moved the declarations into the page. A component listed its path
-and query encoders, read them from `ActivatedRoute`, and wrote with
-`updateQueryParams(value | prev => next, replaceHistory)`. An `isEqual` deep comparison decided
-when values changed.
+`url-params-v2.ts` (`421a936`) moved the declarations into each page, which read them from
+`ActivatedRoute`. Every page repeated its route's params, and there were no typed links.
 
-It made pages typed, but every page repeated its route's params, and there were no typed links.
-The next design put declarations back on the routes.
+What we kept: nothing. The next design put the declarations back on the routes.
 
 ### August 2026: the strict design, 0.1.0
 
-On Aug 1 we wrote the design before the code (`d7f30d0`): a spec, a glossary, four ADRs, a list of
-restrictions compared with Angular, and a list of deferred discussions. It marked the earlier code
-obsolete. The four ADRs:
+On Aug 1 we wrote the design before the code (`d7f30d0`): a spec, a glossary, and four ADRs. An
+agent built it in 16 passes, through Aug 9. Pass 14 (`91e484b`) added the type tests and the first
+TasteTrack. Routes were a tree of named objects, each with one static segment and at most one
+parameter, so adding it to an app meant rewriting that app's routes.
+[How the restrictions loosened](#how-the-restrictions-loosened) lists the rest.
 
-- **One static route tree.** `defineAppRouter({ routes })` took exactly one root. Named object keys
-  formed the whole tree. Components could load lazily, route definitions couldn't.
-- **Keep a value's type apart from where it sits in the URL.** One codec shape served both path and
-  query values.
-- **Links built only from passed values.** `createUrlTree()` never copied the current query. Query
-  writes were a separate call, `updateQueryParams()`, taking a full updater function.
-- **Wrap Angular, don't replace it.** Angular Router still does the routing. The native `Router`
-  stays injectable.
-
-An agent built it in 16 passes, through Aug 9. Pass 14 (`91e484b`) added the type tests and the
-first TasteTrack. Until Sep 9 the demo also covered albums, songs, and theatre.
-
-The design, which we call 0.1.0, used a tree of named objects. Angular fields lived under an
-`angular` object. Each route had one static segment and at most one parameter. Typed redirect
-callbacks got every parent's parameters. Reads and writes were `urlParams()` and
-`updateQueryParams()`. Adding it to an app meant rewriting that app's routes.
-
-What we kept: route definitions that load with the app, codecs kept apart from where a value sits,
-links built only from passed values, and Angular doing the routing.
+What we kept, from the four ADRs: route definitions that load with the app, codecs kept apart from
+where a value sits, links built only from passed values, and Angular doing the routing.
 
 ### September 2026: features, then a new route model
 
-The month added features on top of 0.1.0, each with an ADR:
+Each feature came with an ADR: a shared query-write queue (`0f08b77`), `globalQueryParams()`
+(`6f5b102`), `exactMatch` (`821b371`), one write for the fields a form changes together
+(`a3c50cb`), and `params` signals with `patchQuery()` (`d928ecf`). The docs took on Plainspoken
+Engineering (`e897331`), and TasteTrack shrank to movies and TV (`785f876`).
 
-- TasteTrack cut to movies and TV (`785f876`, Sep 9).
-- A shared query-write queue (`0f08b77`, ADR 0011).
-- `globalQueryParams()` for read-only query fields on every page (`6f5b102`, ADR 0012).
-- `exactMatch`, for a page shown at its parent's own URL, like an overview at `/account`
-  (`821b371`, ADR 0014).
-- One write for the fields a form changes together (`a3c50cb`), and `params` signals with
-  `patchQuery()` (`d928ecf`).
-- Plainspoken Engineering for the docs (`e897331`).
-- Serena for TypeScript and Angular language tools (`985a190`), removed again on Oct 14.
+On Sep 26–27 the route model switched to Angular's own array (`54aa1f8`, `3ec28c7`), and the ADRs
+went with the old model. See [The route model](#the-route-model-angulars-array-plus-routename).
+The route names enum (`8408394`) and the first agent skill (`3424356`) followed.
 
-Then, on Sep 26–27, the route model changed (`54aa1f8`, `3ec28c7`). See
-[The route model](#the-route-model-angulars-array-plus-routename). The ADRs were dropped with the
-old model. `8408394` added the route names enum, and `3424356` wrote the first agent skill.
+What we kept: `params` signals, `patchQuery()`, and one write per form change.
 
 ### October 2026: a release plan, forms, and persistence
 
-From Oct 5 to 14, the `roadmap` branch planned a first release, for a few company apps to try.
-Before publishing, the plan wanted three things: the tests passing on GitHub for the exact commit,
-two separate apps trying the package, and one person in charge of releases. None of the three
-happened. The branch never merged into master.
+From Oct 5 to 14, the `roadmap` branch planned a first release. It wanted the tests passing on
+GitHub for the exact commit, two separate apps trying the package, and one person in charge of
+releases. None of the three happened, and the branch never merged.
 
-On master, Oct 14 brought the docs back up to date (`f7032a7`), Angular 22.2.2 (`9d0733e`), an MIT
-license and npm metadata (`02e5fac`), a GitHub Pages deploy for TasteTrack (`e365058`), and the
-ESLint advice for `Router` imports (`d0b871d`). Oct 14–15 rebuilt the form options and built
-persistence. Oct 30 shortened TasteTrack's URLs, replaced its data with original titles, moved all
-user docs into the README, and shipped the skill in the package (`881bd28`).
+On master, Oct 14 brought Angular 22.2.2 (`9d0733e`), an MIT license and npm metadata (`02e5fac`),
+and a GitHub Pages deploy for TasteTrack (`e365058`). Oct 14–15 rebuilt the form options and built
+persistence. Oct 30 moved all user docs into the README and shipped the skill in the package
+(`881bd28`).
 
 ### November 2026: simplify
 
 Nov 10 to 13 removed whatever existed to make up for an earlier choice: the write queue, function
 patches, default functions, persistence, the route memory hook, `isEqual`, repeated query keys, and
 the route lists passed to `activeRoute`. Three code reviews and two rounds of bug finding ran
-alongside. Nov 13
-made every doc describe only the present, and Nov 14 started this file to hold the past.
+alongside. Nov 13 made every doc describe only the present, and Nov 14 started this file to hold
+the past.
 
 ## How the restrictions loosened
 
@@ -294,13 +269,13 @@ asks.
   `debounce()` already did. A settling write also records its own URL value for a field edited
   again, so the form doesn't mistake that write for Back.
 
-**Open:** the maintainer considered dropping the Reactive Forms `debounce` option for Angular's
-experimental `debounced()`, which delays reading a value instead of writing it. They deferred it on
-Nov 13: "leave out debouncing for now." On Nov 14 we compared the two again. Delaying reads makes
-every keystroke a navigation, with its router events, analytics, and Safari's limit of 100
-`replaceState()` calls in 30 seconds. A page that delays only the search also reads a mix of two
-URLs, because `beforeWrite` resets the page right away. The Back problem above was the main case
-for delaying reads, and it's fixed. Still open.
+**Where it stands:** open. The maintainer considered dropping the Reactive Forms `debounce` option
+for Angular's experimental `debounced()`, which delays reading a value instead of writing it. They
+deferred it on Nov 13: "leave out debouncing for now." On Nov 14 we compared the two again.
+Delaying reads makes every keystroke a navigation, with its router events, analytics, and Safari's
+limit of 100 `replaceState()` calls in 30 seconds. A page that delays only the search also reads a
+mix of two URLs, because `beforeWrite` resets the page right away. The Back problem above was the
+main case for delaying reads, and it's fixed.
 
 ## Remembering values outside the URL
 
@@ -532,15 +507,10 @@ Three more could happen but weren't fixed that day. We fixed them on Nov 13:
   the README, which the package ships through a symlink.
 - `c2570be` (Nov 13) deleted the earlier `history.md`. The maintainer wants every reader-facing doc,
   comment, and message to describe only the present. This file is where the past goes instead.
+- On Nov 14 the state-machine tables moved from `state-machines.md` into `implementation.md`, next
+  to the prose about the same code. Each change to the form binding had touched both files.
 - ESLint with braces on every body (`3011517`, `d117a48`). Fix style with `npm run lint:fix`, not by
   hand.
-
-## Still open
-
-- The Reactive Forms `debounce` option versus Angular's `debounced()`. Deferred by the maintainer.
-- Whether the package version should say what we call API version 3.
-- The name `paramsSnapshot`.
-- Persistence, if it returns: start from `d5c9bf4`.
 
 ## Branches
 
