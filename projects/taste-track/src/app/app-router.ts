@@ -33,7 +33,7 @@ const loadBrowse = () => import('./browse-page').then((module) => module.BrowseP
 const loadCatalog = () => import('./catalog-page').then((module) => module.CatalogPage);
 const loadDetail = () => import('./detail-page').then((module) => module.DetailPage);
 
-export enum RouteNames {
+enum RouteNames {
   BROWSE = 'BROWSE',
   MOVIES = 'MOVIES',
   MOVIE_DETAIL = 'MOVIE_DETAIL',

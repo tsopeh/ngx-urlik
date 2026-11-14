@@ -34,7 +34,9 @@ export type { UrlParamsState } from './route-node';
  *
  * Pass your route names enum first. Give each named route one of its values, such as
  * `routeName: RouteNames.MOVIE_DETAIL`. Then Go to Definition on `routes.MOVIE_DETAIL` opens the
- * enum member. `AppRouter.routes` uses member names, so `Movie = 'movie'` gives `routes.Movie`.
+ * enum member, and Find References and Rename reach the route too. Keep the enum in this file and
+ * don't export it: pages use `AppRouter.routes`. `AppRouter.routes` uses member names, so
+ * `Movie = 'movie'` gives `routes.Movie`.
  *
  * Write `path` and `routeName` as literals, so TypeScript can read them. A named route, and every
  * route above it, needs a plain path in the primary outlet: fixed segments and `:name`

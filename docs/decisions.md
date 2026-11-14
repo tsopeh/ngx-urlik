@@ -23,13 +23,27 @@ patterns overlap. Angular's order decides which one matches.
 
 `defineAppRouter(RouteNames, …)` builds the keys of `AppRouter.routes` from the members of
 `RouteNames`. So Go to Definition on `routes.MOVIE_DETAIL` opens the enum member, the same one the
-route uses. Without the enum it would stop at a generated type.
+route uses. Find References and Rename on either one reach the route and every use.
+
+The enum is private to the router file. Pages use `AppRouter.routes`, so nothing else needs to
+import it. Its only job is to give TypeScript one declaration per name.
+
+TypeScript keeps a property's declaration through a mapped type only when the keys come from
+`keyof` of a type written in source. `{ [K in keyof E]: … }` over the enum does that. Keys taken
+from string values, as with `routeName: 'MOVIE_DETAIL'`, have no declaration. Go to Definition
+then finds nothing, and Rename at a use misses the route.
+
+We also tried writing each name as an object key on the route, like
+`{ MOVIE_DETAIL: { path: ':movieId' } }`. Navigation works and each name is written once. But
+`AppRouter.routes` then has to intersect one object per name. In a prototype with 800 named routes,
+type checking took 20 s, against 0.5 s for string names. It also changes the shape of Angular's
+route array.
 
 Every member needs a route, or `defineAppRouter()` throws. A member with no route would be
 `undefined` in `AppRouter.routes`, and the first call on it would crash far from the cause.
 
-**Cost:** every caller imports the enum. Each route name is written twice: once in the enum and once
-on the route. You can't add a name before its route exists.
+**Cost:** each route name is written twice: once in the enum and once on the route. You can't add a
+name before its route exists.
 
 ## Declare named routes up front
 

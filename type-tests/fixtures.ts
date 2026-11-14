@@ -5,7 +5,7 @@ import { defineAppRouter, listCodec, numberCodec, queryParam, stringCodec } from
 export type TokenValue<T> = T extends InjectionToken<infer Value> ? Value : never;
 export class Page {}
 
-export enum RouteNames {
+enum RouteNames {
   MEMBER = 'MEMBER',
   TEAMS = 'TEAMS',
   HOME = 'HOME',

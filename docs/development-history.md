@@ -159,6 +159,16 @@ one route at a time.
 the enum member, not a generated type. Routes are keyed by member name (`6818d8f`). A member that no
 route uses throws at startup (`55e2068`), because its `undefined` entry crashed far from the cause.
 
+**The enum became private** (Nov 14). Nothing outside the router file needed it, so the docs, the
+demo, and the skill stopped exporting it. We looked at three ways to hide the names inside the
+routes and asked the TypeScript language service what each one does. A private enum keeps Go to
+Definition, Find References, and Rename. Plain string names (`routeName: 'MOVIE_DETAIL'`) keep
+autocomplete and type errors, but Go to Definition finds nothing and Rename misses the route,
+because a mapped type keyed by `as` drops declarations. Names as object keys on the route
+(`{ MOVIE_DETAIL: { path } }`) navigate fully, but need an intersection over every named route. A
+prototype with 800 named routes took 20–27 s to type-check, against 0.5 s for string names. We kept
+the enum, private to the router file.
+
 **One route file** (Oct 30). A `defineRoutes()` helper with a `const` type parameter worked in a
 prototype and kept literal types across files. We declined it. The maintainer wants one file that
 maps the whole app. Apps adopt the library one feature at a time instead, and unconverted features

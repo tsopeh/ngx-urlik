@@ -26,6 +26,9 @@ mention `ActivatedRoute` or `Router`.
 
 - Declare every route in the one `defineAppRouter()` call, as a literal array. Don't split routes
   into `Routes`-typed arrays in other files. An array typed as `Routes` gives no typed routes.
+- To name a route, add a member to the route names enum in that file and set
+  `routeName: RouteNames.NAME`. Keep the enum private to the router file. Elsewhere, use
+  `appRouter.routes.NAME`, never the enum.
 - Load pages lazily with `loadComponent`, which needs a standalone component. A named route, and
   every route above it, can't use `loadChildren`.
 - To convert a lazy feature module, move its routes into the router file. Replace its `component`

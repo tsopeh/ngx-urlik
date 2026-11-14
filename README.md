@@ -35,7 +35,7 @@ Name your routes in an enum. Pass it to `defineAppRouter()` with a normal Angula
 ```ts
 import { defineAppRouter, numberCodec, queryParam, stringCodec } from 'ngx-urlik';
 
-export enum RouteNames {
+enum RouteNames {
   RESULTS = 'RESULTS',
 }
 
@@ -57,6 +57,12 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
 Your code calls the route `RESULTS`. The address bar shows `results`. The key in
 `AppRouter.routes` is the enum member's name, so with `Results = 'results'` you'd write
 `routes.Results`.
+
+Keep the enum in the router file, and don't export it. Pages reach routes through
+`AppRouter.routes`, never through the enum. The enum is only there for TypeScript. It gives each
+name one declaration that both the route and `routes.RESULTS` point to. So Go to Definition on
+`routes.RESULTS` opens the enum member, and Find References and Rename reach the route and every
+use. With a plain string like `routeName: 'RESULTS'`, TypeScript would have nothing to jump to.
 
 Use `provideAppRouter()` where you'd use `provideRouter()`:
 
@@ -184,7 +190,7 @@ You don't have to move a big app at once. Say each feature is a lazy NgModule, l
 and `<router-outlet>`:
 
 ```ts
-export enum RouteNames {}
+enum RouteNames {}
 
 export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, { routes });
 
