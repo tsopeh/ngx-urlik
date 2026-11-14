@@ -9,7 +9,8 @@
     "paths": {
       "ngx-urlik": ["../dist/ngx-urlik"],
       "ngx-urlik/forms": ["../dist/ngx-urlik/forms"]
-    }
+    },
+    "lib": ["ES2022", "DOM"]
   },
-  "include": ["consumer.ts", "large-app.generated.ts"]
+  "include": ["*.ts"]
 }

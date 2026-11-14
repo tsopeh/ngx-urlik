@@ -23,6 +23,31 @@ enum RouteNames {
 }
 
 describe('parameter state', () => {
+  it('warns on the console when defineAppRouter() gets no diagnostics option', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const definition = defineAppRouter(
+      { RESULTS: RouteNames.RESULTS },
+      {
+        routes: [
+          {
+            path: 'results',
+            routeName: RouteNames.RESULTS,
+            queryParams: { page: queryParam({ codec: numberCodec(), defaultValue: 1 }) },
+            component: Page,
+          },
+        ],
+      },
+    );
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    await TestBed.inject(Router).navigateByUrl('/results?page=abc');
+
+    expect(TestBed.inject(definition.AppRouter).routes.RESULTS.params().query.page).toBe(1);
+    expect(warn).toHaveBeenCalledWith(
+      "RESULTS: can't read query parameter 'page': the codec returned null",
+    );
+    warn.mockRestore();
+  });
+
   it('reads the last of a repeated key, and joined lists', async () => {
     const definition = defineAppRouter(
       { ITEMS: RouteNames.ITEMS },

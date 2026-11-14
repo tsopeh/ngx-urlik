@@ -62,13 +62,8 @@ export function numberCodec(): UrlParamCodec<number> {
       const isNumber = typeof value === 'number' && !Number.isNaN(value);
       return isNumber ? String(value) : null;
     },
-    deserialize(raw) {
-      if (!numberPattern.test(raw)) {
-        return null;
-      }
-      const value = Number(raw);
-      return Number.isNaN(value) ? null : value;
-    },
+    // The pattern accepts only text Number() reads in full, so the result is never NaN.
+    deserialize: (raw) => (numberPattern.test(raw) ? Number(raw) : null),
   };
 }
 

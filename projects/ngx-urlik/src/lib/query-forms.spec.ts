@@ -1,4 +1,11 @@
-import { Component, computed, ErrorHandler } from '@angular/core';
+import {
+  Component,
+  computed,
+  createEnvironmentInjector,
+  EnvironmentInjector,
+  ErrorHandler,
+  runInInjectionContext,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Validators } from '@angular/forms';
 import { minLength } from '@angular/forms/signals';
@@ -444,6 +451,111 @@ describe('query forms', () => {
       expect(starts).toEqual([]);
       expect(router.url).toBe('/results');
       expect(form.controls.search.value).toBe('elm');
+    });
+  });
+
+  describe('failures', () => {
+    it('sends errors to ErrorHandler without onWriteFailure, and keeps declines silent', async () => {
+      const { results, router } = await setup();
+      const handleError = vi.spyOn(TestBed.inject(ErrorHandler), 'handleError');
+      const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
+
+      form.controls.search.setValue('first');
+      await results.patchQuery({ page: 2 });
+      await vi.waitFor(() => expect(router.url).toBe('/results?page=2'));
+      expect(handleError).not.toHaveBeenCalled();
+
+      await router.navigateByUrl('/other');
+      form.controls.search.setValue('lost');
+      await vi.waitFor(() => expect(handleError).toHaveBeenCalledTimes(1));
+      expect(handleError.mock.calls[0][0]).toEqual(
+        new Error("RESULTS: route 'results' isn't active, so it has no params to read"),
+      );
+    });
+
+    it('keeps its values when its route stops showing, and reports an edit then as an error', async () => {
+      const { results, router } = await setup();
+      await router.navigateByUrl('/results?search=oak');
+      const onWriteFailure = vi.fn();
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { onWriteFailure }),
+      );
+
+      await router.navigateByUrl('/other');
+      TestBed.flushEffects();
+      expect(form.getRawValue()).toEqual({ search: 'oak', page: 1 });
+
+      form.controls.search.setValue('elm');
+      await vi.waitFor(() =>
+        expect(onWriteFailure).toHaveBeenCalledWith({ kind: 'error', error: expect.any(Error) }),
+      );
+      expect(router.url).toBe('/other');
+      expect(form.controls.search.value).toBe('elm');
+    });
+  });
+
+  describe('lifetime', () => {
+    const createIn = <T>(injector: EnvironmentInjector, create: () => T): T =>
+      runInInjectionContext(injector, create);
+
+    it('drops an edit still waiting for its debounce when it is destroyed', async () => {
+      const { results, router } = await setup();
+      const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
+      const form = createIn(injector, () =>
+        createQueryParamsFormGroup(results, { debounce: { search: 20 } }),
+      );
+
+      form.controls.search.setValue('elm');
+      injector.destroy();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      expect(router.url).toBe('/results');
+    });
+
+    it('lets a write that already started finish, and reports nothing after it is destroyed', async () => {
+      const { results, router } = await setup();
+      const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
+      const onWriteFailure = vi.fn();
+      const form = createIn(injector, () =>
+        createQueryParamsFormGroup(results, { onWriteFailure }),
+      );
+
+      form.controls.search.setValue('elm');
+      const cancelling = results.patchQuery({ page: 2 });
+      injector.destroy();
+      await cancelling;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(router.url).toBe('/results?page=2');
+      expect(onWriteFailure).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing for a write that fails after it is destroyed', async () => {
+      const { results, router } = await setup();
+      const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
+      const onWriteFailure = vi.fn();
+      const form = createIn(injector, () =>
+        createQueryParamsFormGroup(results, { onWriteFailure }),
+      );
+      await router.navigateByUrl('/other');
+
+      form.controls.search.setValue('elm');
+      injector.destroy();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(onWriteFailure).not.toHaveBeenCalled();
+    });
+
+    it('stops following the URL when it is destroyed', async () => {
+      const { results, router } = await setup();
+      const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
+      const form = createIn(injector, () => createQueryParamsFormGroup(results));
+
+      injector.destroy();
+      await router.navigateByUrl('/results?search=after');
+      TestBed.flushEffects();
+
+      expect(form.controls.search.value).toBe('');
     });
   });
 });

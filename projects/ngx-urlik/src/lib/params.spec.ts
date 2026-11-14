@@ -1,6 +1,24 @@
 import { booleanCodec, enumCodec, listCodec, numberCodec, queryParam, stringCodec } from './params';
 
 describe('parameter codecs and definitions', () => {
+  it('booleanCodec reads and writes exactly true and false', () => {
+    expect(booleanCodec().serialize(true)).toBe('true');
+    expect(booleanCodec().serialize(false)).toBe('false');
+    expect(booleanCodec().serialize('true' as never)).toBeNull();
+    expect(booleanCodec().deserialize('false')).toBe(false);
+    expect(booleanCodec().deserialize('1')).toBeNull();
+  });
+
+  it('numberCodec writes only numbers', () => {
+    expect(numberCodec().serialize(-1.5)).toBe('-1.5');
+    expect(numberCodec().serialize('4' as never)).toBeNull();
+  });
+
+  it('listCodec writes only arrays', () => {
+    expect(listCodec(stringCodec(), ',').serialize('a,b' as never)).toBeNull();
+    expect(listCodec(stringCodec(), ',').serialize([])).toBe('');
+  });
+
   it('creates pure reusable scalar codecs', () => {
     expect(stringCodec().deserialize('')).toBe('');
     expect(booleanCodec().deserialize('true')).toBe(true);
