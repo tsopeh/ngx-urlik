@@ -74,26 +74,73 @@ export function booleanCodec(): UrlParamCodec<boolean> {
   };
 }
 
-type StringRecord = Readonly<Record<string, string>>;
-type EnumValue<Values> = Values extends readonly string[]
+type EnumLiteral = string | number;
+type EnumRecord = Readonly<Record<string, EnumLiteral>>;
+// A numeric enum's type also has a number index for its reverse mapping. Only string keys name
+// members.
+type EnumValue<Values> = Values extends readonly EnumLiteral[]
   ? Values[number]
-  : Values extends StringRecord
-    ? Values[keyof Values]
+  : Values extends EnumRecord
+    ? Values[Extract<keyof Values, string>]
     : never;
 
-export function enumCodec<const Values extends readonly string[] | StringRecord>(
+// TypeScript adds a reverse entry, `Status[0] = 'Active'`, for each numeric member. A key is one
+// when its value names a member whose number writes as that key. Member names can't be numeric, so
+// this never drops a member.
+function isReverseMapping(values: EnumRecord, key: string): boolean {
+  const name = values[key];
+  return (
+    typeof name === 'string' &&
+    Object.hasOwn(values, name) &&
+    typeof values[name] === 'number' &&
+    String(values[name]) === key
+  );
+}
+
+function describeValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return `'${value}'`;
+  }
+  return typeof value === 'bigint' ? `${value}n` : String(value);
+}
+
+/**
+ * Accepts the values of an array, a record, or a string, numeric, or mixed enum. Strings and finite
+ * numbers each write as their text: `Status.Archived = 1` writes `1`. Two values can't share a
+ * text, like `1` and `'1'`.
+ */
+export function enumCodec<const Values extends readonly EnumLiteral[] | EnumRecord>(
   values: Values,
 ): UrlParamCodec<EnumValue<Values>> {
-  const list = Array.isArray(values) ? values : Object.values(values);
-  if (list.some((value) => typeof value !== 'string')) {
-    throw new Error(
-      'enumCodec(): every value must be a string. Use a string enum or an array of strings.',
-    );
+  const list: readonly unknown[] = Array.isArray(values)
+    ? values
+    : Object.keys(values)
+        .filter((key) => !isReverseMapping(values as EnumRecord, key))
+        .map((key) => (values as EnumRecord)[key]);
+  const byText = new Map<string, EnumValue<Values>>();
+  for (const value of list) {
+    const usable =
+      typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value));
+    if (!usable) {
+      throw new Error(
+        `enumCodec(): ${describeValue(value)} can't be a value. Use strings or finite numbers.`,
+      );
+    }
+    const text = String(value);
+    const taken = byText.get(text);
+    if (byText.has(text) && taken !== value) {
+      throw new Error(
+        `enumCodec(): ${describeValue(taken)} and ${describeValue(value)} both write as '${text}'. Give each value its own text.`,
+      );
+    }
+    byText.set(text, value as EnumValue<Values>);
   }
-  const allowed = new Set(list);
   return {
-    serialize: (value) => (allowed.has(value as string) ? (value as string) : null),
-    deserialize: (raw) => (allowed.has(raw) ? (raw as EnumValue<Values>) : null),
+    serialize: (value) => {
+      const text = String(value);
+      return byText.has(text) && byText.get(text) === value ? text : null;
+    },
+    deserialize: (raw) => (byText.has(raw) ? (byText.get(raw) as EnumValue<Values>) : null),
   };
 }
 

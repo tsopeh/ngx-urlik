@@ -28,6 +28,7 @@ file gives the path that led there. Commit hashes point at the code for each ste
 | Nov 14, 2026    | Type tests move to Vitest. Library coverage reaches 99.5% of lines                  |
 | Nov 14, 2026    | Form bindings compare one set of values with the URL                                |
 | Nov 14, 2026    | The README is rewritten at 60% of its length. Finer rules move to the agent skill   |
+| Nov 14, 2026    | `enumCodec()` takes numeric and mixed enums, and arrays of numbers                  |
 
 The package version is `0.2.0`. In conversation we call the design after Nov 13 "API version 3".
 The version number hasn't followed, and whether it should is open. Nothing has been published, so
@@ -71,8 +72,9 @@ Each feature came with an ADR: a shared query-write queue (`0f08b77`), `globalQu
 Engineering (`e897331`), and TasteTrack shrank to movies and TV (`785f876`).
 
 On Sep 26–27 the route model switched to Angular's own array (`54aa1f8`, `3ec28c7`). The ADRs
-described the old model, so we dropped them. See [The route model](#the-route-model-angulars-array-plus-routename).
-The route names enum (`8408394`) and the first agent skill (`3424356`) followed.
+described the old model, so we dropped them. See [The route
+model](#the-route-model-angulars-array-plus-routename). The route names enum (`8408394`) and the
+first agent skill (`3424356`) followed.
 
 What we kept: `params` signals, `patchQuery()`, and one write per form change.
 
@@ -150,8 +152,8 @@ discussions.
 **What we chose.** On Sep 26–27, 2026 (`54aa1f8`, `3ec28c7`) the library started taking Angular's
 route array as it is. A route with a name gets a flat entry in `AppRouter.routes`. Proposal ADR 0015
 called the name `identifier`. It became `routeName`. An empty-path child shows the page at its
-parent's URL, which replaced `exactMatch`. Redirects became plain unnamed Angular routes. Reads and writes became
-`params` and `patchQuery()` (`d928ecf`).
+parent's URL, which replaced `exactMatch`. Redirects became plain unnamed Angular routes. Reads and
+writes became `params` and `patchQuery()` (`d928ecf`).
 
 **Why.** An app should get typed routing without rewriting its routes, and should be able to name
 one route at a time.
@@ -201,6 +203,30 @@ It also made `createUrlTree()` always return a `UrlTree`. The 0.1.0 design retur
 unserializable path value, and every link had to handle a `null` that meant a bug.
 
 **Where it stands:** decided.
+
+## Enum values
+
+`enumCodec()` first took only strings, from an array or a string record. A numeric enum threw,
+because TypeScript's runtime object for it also holds reverse entries, like `Status[0] = 'Active'`.
+
+On Nov 14 the maintainer asked how far a simple codec could go. A prototype showed the reverse
+entries can be skipped exactly: a key is one when its value names a member whose number writes as
+that key, and TypeScript forbids numeric member names. With that, one codec takes strings and finite
+numbers, from arrays, records, and string, numeric, or mixed enums. It throws at creation when two
+values write the same text, like `1` and `'1'`.
+
+Three questions came up:
+
+- **Value or member name in the URL.** Names read better and survive reordering, but string enums
+  write values, so names would need a second codec. The maintainer chose values. Keeping an enum's
+  values stable is the job of whoever owns the enum.
+- **Booleans.** The prototype also took them, for sets like `[true, false, 'auto']`. The maintainer
+  dropped them. An enum can't hold a boolean, and `booleanCodec()` is the one way to read them.
+- **Open unions, like any number or `'auto'`.** A `oneOf()` helper would be short, but it can't
+  check up front that its codecs' texts don't overlap. `stringCodec()` overlaps everything. We
+  stopped at fixed sets of values. Open unions stay with custom codecs.
+
+**Where it stands:** built on `feat/enum-literals`.
 
 ## Lists and arrays
 
@@ -264,8 +290,8 @@ asks.
 - **`d8bf070`** (Oct 14) replaced it with `writeWhen: 'valid'` and a Reactive Forms `debounce`
   option. Signal Forms use Angular's `debounce()` rule.
 - **A throwaway prototype** (branch `prototype/forms-write-api`, Oct 14) tried those options in
-  TasteTrack's forms. It concluded that the page reset belonged on the route, which led to the
-  next item.
+  TasteTrack's forms. It concluded that the page reset belonged on the route, which led to the next
+  item.
 - **`resetWhen`** (`7abef4d`, Oct 14) let a query field name the fields that reset it. We reverted
   it the next day (`267318b`). Which fields reset is the page's decision, and a route-wide rule is
   hard to see from the component that set it off.

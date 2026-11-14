@@ -30,6 +30,33 @@ describe('built-in codecs', () => {
     expectTypeOf(enumCodec({ a: 'x', b: 'y' } as const)).toEqualTypeOf<UrlParamCodec<'x' | 'y'>>();
   });
 
+  it('enumCodec reads numeric and mixed enums as the enum type', () => {
+    enum Status {
+      Active,
+      Archived,
+    }
+    enum Limit {
+      None = 0,
+      Auto = 'auto',
+    }
+    expectTypeOf(enumCodec(Status).deserialize('0')).toEqualTypeOf<Status | null>();
+    expectTypeOf(enumCodec(Limit).deserialize('0')).toEqualTypeOf<Limit | null>();
+    // @ts-expect-error 2 isn't a member
+    enumCodec(Status).serialize(2);
+    // @ts-expect-error a member's name isn't its value
+    enumCodec(Status).serialize('Active');
+  });
+
+  it('enumCodec reads arrays of numbers and strings', () => {
+    expectTypeOf(enumCodec([10, 50, 'all'] as const)).toEqualTypeOf<
+      UrlParamCodec<10 | 50 | 'all'>
+    >();
+    // @ts-expect-error booleans have booleanCodec()
+    enumCodec([true, 'friends']);
+    // @ts-expect-error null can't be a value
+    enumCodec([null]);
+  });
+
   it('listCodec holds a readonly array of the item type', () => {
     expectTypeOf(listCodec(numberCodec(), ',')).toEqualTypeOf<UrlParamCodec<readonly number[]>>();
     // @ts-expect-error a list of numbers can't write strings

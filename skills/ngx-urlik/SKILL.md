@@ -81,7 +81,8 @@ A form holds the draft: what the user is typing right now. The URL holds what's 
 **Codecs** turn a URL string into a value and back.
 
 - `stringCodec()`, `numberCodec()`, `booleanCodec()`.
-- `enumCodec(values)` takes a readonly string array, a tuple, or a string record.
+- `enumCodec(values)` takes an array, a record, or a string, numeric, or mixed enum. Each value
+  writes as its text: `Status.Archived = 1` writes `1`, not `Archived`.
 - `listCodec(item, separator)` joins items into one value, like `?a=1,2`. An array field is a
   `queryParam` with a `listCodec` and `defaultValue: []`.
 - For anything else, like dates or "positive integers only", write a `UrlParamCodec`: `serialize`
@@ -142,8 +143,9 @@ Give a remembered query field no default, so the URL holds it only when someone 
 
 **Codecs and fields**
 
-- `enumCodec()` throws when it's created if a value isn't a string. Numeric TypeScript enums fail,
-  because their reverse mapping adds numbers.
+- `enumCodec()` takes strings and finite numbers. It throws when it's created for any
+  other value, or when two values write the same text, like `1` and `'1'`. It skips the reverse
+  entries TypeScript adds to numeric enums.
 - `listCodec()` throws when it's created if the separator is empty or holds a backslash. `[]` writes
   as `?tags=`. Items can't be empty, so `?tags=a,,b` fails and `['']` can't be written. A backslash
   escapes the separator and itself. A backslash before anything else fails.

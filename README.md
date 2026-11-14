@@ -220,8 +220,11 @@ last one wins: `?minRating=1&minRating=2` reads as `2`.
 | `stringCodec()`              | Any string, including `''`                                                                     |
 | `numberCodec()`              | Decimals like `-1.5`, `.5`, `1e3`, and `Infinity`. Not `NaN`, hex, whitespace, `''`, or `12px` |
 | `booleanCodec()`             | Exactly `true` or `false`                                                                      |
-| `enumCodec(values)`          | One of the strings in an array or a string enum. Numeric enums don't work                      |
+| `enumCodec(values)`          | One value from an array, a record, or any enum. `Status.Archived = 1` writes `1`               |
 | `listCodec(item, separator)` | `item` values joined by `separator`                                                            |
+
+`enumCodec()` takes strings and finite numbers, so string, numeric, and mixed enums all
+work. Each value writes as its text. Two values can't share one, so `enumCodec([1, '1'])` throws.
 
 A path value can't write as `''`, `.`, or `..`. A path segment can't be empty, and browsers drop `.`
 and `..`.

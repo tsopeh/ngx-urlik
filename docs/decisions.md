@@ -1,8 +1,9 @@
 # Design decisions
 
-Each entry gives a problem, the choice, and what it costs. The [README](../README.md) and the
-[agent skill](../skills/ngx-urlik/SKILL.md) have the exact rules. Before you reopen a decision, read the alternatives it rejects.
-[Development history](development-history.md) shows how each choice was reached.
+Each entry gives a problem, the choice, and what it costs. The [README](../README.md) and the [agent
+skill](../skills/ngx-urlik/SKILL.md) have the exact rules. Before you reopen a decision, read the
+alternatives it rejects. [Development history](development-history.md) shows how each choice was
+reached.
 
 ## Take Angular's route array, and name routes one at a time
 
@@ -127,6 +128,25 @@ value back while the user types. Values from `params()` are shared between reads
 change them in place. A form edit that builds a new object equal to the old one, like picking the
 sort that's already chosen, counts as an edit. Its write leaves the URL as it is, but `beforeWrite`
 still runs and can add fields like `minRating: 0`.
+
+## Write enum values, not member names
+
+`enumCodec()` writes each value as its text. `Status.Archived = 1` writes `?status=1`, and
+`Status.Open = 'open'` writes `?status=open`. String, numeric, and mixed enums follow one rule, and
+so do arrays like `[10, 50, 'all']`. A numeric enum's runtime object also holds reverse entries,
+like `Status[1] = 'Archived'`. The codec skips them: a key is a reverse entry when its value names a
+member whose number writes as that key. TypeScript doesn't allow numeric member names, so no member
+gets skipped.
+
+Writing member names, like `?status=Archived`, would read better and survive reordering. But string
+enums would then need a second rule, or a second codec, for the same job. Keeping an enum's values
+stable is the job of whoever owns the enum.
+
+The codec checks at creation that each value has its own text. `1` and `'1'` both write `1`, so
+`enumCodec([1, '1'])` throws. `NaN` has no text that reads back to it, so it throws too.
+
+**Cost:** an auto-numbered member's URL changes when someone inserts a member before it. A URL holds
+`1`, not a name, so it's less readable.
 
 ## Build links only from the values you pass
 
