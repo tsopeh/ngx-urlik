@@ -33,6 +33,13 @@
           "options": {
             "tsConfig": "projects/ngx-urlik/tsconfig.spec.json"
           }
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": ["projects/ngx-urlik/**/*.ts", "projects/ngx-urlik/**/*.html"],
+            "eslintConfig": "projects/ngx-urlik/eslint.config.js"
+          }
         }
       }
     },
@@ -94,6 +101,13 @@
         },
         "test": {
           "builder": "@angular/build:unit-test"
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": ["projects/taste-track/**/*.ts", "projects/taste-track/**/*.html"],
+            "eslintConfig": "projects/taste-track/eslint.config.js"
+          }
         }
       }
     }
