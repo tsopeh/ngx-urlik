@@ -1,115 +1,119 @@
 # Reading the code
 
-Start with `projects/ngx-urlik/src/lib/app-router.ts`. It validates the Angular route array,
-compiles Angular's routes, and provides the router. The public node types live in
-`app-router-types.ts`; they infer route names and parameter state from the literal route array and
-key `AppRouter.routes` by the `RouteNames` members.
+Start with `projects/ngx-urlik/src/lib/app-router.ts`. `defineAppRouter()` checks the route array,
+compiles it for Angular, and returns the `AppRouter` token and its provider. The public types are
+in `app-router-types.ts`. They read route names and values from the literal route array, and use
+the `RouteNames` members as the keys of `AppRouter.routes`.
 
-Follow the route declaration, state reads, query writes, or form bindings below.
+`RouteArrayInput` types the `routes` option. It does two jobs in one walk of the literal: it lets
+TypeScript infer each route, and it checks each field where it's written. The checks sit in
+`NoInfer`, so they never change what TypeScript infers. Each route array is one mapped type, so
+TypeScript compares the literal element by element. `RouteEntries` then collects one entry per
+named route, as a union, and `NamedRoutes` turns the union into `AppRouter.routes`. Both recurse
+only as deep as the routes nest, however many siblings each level has.
+
+The sections below follow one job each: defining routes, reading, writing, and forms.
 
 ## Define
 
-`route-definition.ts` parses paths and validates every named chain. `compiled-route.ts` keeps the
-original Angular route fields, tags each Angular route configuration, and builds the catalog of
-named routes. It records path and query definitions from unnamed ancestors as well as the named
-route. The catalog is the shared input for URL construction and state reads. If no route uses an
-ngx-urlik field, the array goes to Angular untouched.
+`route-definition.ts` parses paths and checks every named route and every route above one, in one
+walk down the tree. Each level passes on the path and query names the routes above it declared.
+`compiled-route.ts` copies each route's Angular fields into a plain Angular route. It marks that
+route with `compiledRouteKey`, which points back to the compiled route. It also builds
+`namedRoutes`, a map from route name to compiled route. A compiled route holds the path and query
+fields of every route above it, named or not. Building links and reading values both start from
+it.
 
-## Read or construct
+## Read and build links
 
-`route-node.ts` creates the flat `AppRouter.routes` object and the router-level `activeRoute()`
-and `globalQueryParams()`. `createUrlTree` walks a node's compiled segments and encodes the values
-supplied by the caller. `params` finds the active Angular snapshot by its tag and decodes its
-values. `route-params-runtime.ts` handles codecs, defaults, and malformed input;
-`route-diagnostics.ts` turns failures into `AppRouterDiagnostic` values.
+`route-node.ts` builds `AppRouter.routes` and `globalParams()`. `createUrlTree` writes each value
+the caller passed into the route's segments, and builds the `UrlTree` directly. A typed link is
+absolute, so it needs none of Angular's command parsing. A test checks that the tree matches
+Angular's `createUrlTree(['/', ...segments])`. `params` finds the active Angular snapshot by its
+`compiledRouteKey` and decodes its values. `ifActive` looks for that snapshot the same way, and
+returns the node or `null`. `compiled-route.ts` walks a router state's snapshot tree once, and every
+signal that reads that state shares the result. `route-params-runtime.ts` runs codecs and defaults,
+and handles broken input. `route-diagnostics.ts` turns failures into `AppRouterDiagnostic` values.
 
-Angular performs route matching. `compiled-route.ts` adds a `canMatch` check to routes with
-`pathParam` codecs, so a path value its codec rejects makes Angular try the next route. ngx-urlik
-uses the matched route to find the declared schema.
+Each signal keeps a `ValueCache`: every field's last value and the URL text it came from. If the
+text is the same on the next read, the field keeps its old value, so the signal compares fields
+with `Object.is`. A query value leaves the URL when it serializes to the same text as its default.
 
-Angular commits the new router state and creates routed components before it emits
-`NavigationEnd`. Each state signal therefore remembers the router state it was computed from and
-decodes again when Angular has committed a newer one. Guards and resolvers run before the commit,
-so `paramsFrom()` decodes the snapshot they receive instead.
+Angular does the matching. For a route with `pathParam` codecs, `compiled-route.ts` adds a
+`canMatch` check. A path value its codec rejects makes Angular try the next route.
 
-## Remember values
-
-`persistence.ts` reads and writes browser storage, always inside `try`/`catch`, and only on the
-browser platform. `compileRoutes` appends `restoreQueryCheck` to the `canMatch` guards of each
-route whose chain declares a persisted query field, and of every ancestor of such a route. Angular
-calls `canMatch` with only the segments left at the route's level, and before the children match.
-So each check first records the segments its route consumed, by depth, in the router's
-persistence instance for the current navigation. The route that consumes the rest of the URL and
-has no empty-path or `**` child then joins the recorded ancestor segments with its own to get the
-matched path, reads scope values from it by position, collects the persisted fields whose URL
-value is missing or fails to decode, and returns a `RedirectCommand` with those fields filled in.
-The path-codec check comes first in `canMatch` and the restore check last, so a route that fails
-its codecs or its own `canMatch` guards never redirects. The reader asks the same module for a
-stored value before it falls back to a default; stored text that fails to decode is removed there.
-`route-node.ts` saves the active chain's persisted values on each `NavigationEnd`.
-
-For a named route with persisted trailing placeholders, `compileRoutes` inserts unnamed routes
-right after it, one per count of missing placeholders, each with `restorePathMatcher` and a static
-`redirectTo` of the route's own path. Angular calls the matcher with the segments left at this
-level and their segment group. The group's earlier segments, and the segments of the groups above
-it, are the ones the ancestors consumed, so the matcher reads ancestor values from them by
-position. It returns the stored values as positional parameters, which `redirectTo` fills in.
-
-A matcher has no injection context, so it cannot ask for `PLATFORM_ID`. `defineAppRouter()` creates
-one `createStorageGate()` per definition, and an environment initializer registers each injector's
-platform with it. The matchers read storage only after a browser has registered and while no
-server has. A server process registers only servers, so Node's global `localStorage` is never
-read and one request cannot turn reads on for another. A process that renders on the server and
-also runs a browser injector of the same definition, such as a test, never restores a path value.
-`clearPersisted()` on the router removes keys through the same storage wrapper.
+Angular switches to the new router state, and creates the new page, before it emits
+`NavigationEnd`. So each signal remembers which router state it read. When Angular has switched
+to a newer one, the signal reads again. Guards and resolvers run before the switch, so
+`paramsSnapshot()` and `globalParamsSnapshot()` read the snapshot they get instead.
 
 ## Write
 
-`patchQuery` in `route-node.ts` reads the committed query, merges the patch, serializes every
-declared field into the current URL tree, and calls `router.navigateByUrl()` with the caller's
-options. Angular's rule applies: the newest navigation cancels any that is still running.
+`patchQuery` in `route-node.ts` reads the current query and merges the patch in. It writes every
+declared field into the current URL, then calls `router.navigateByUrl()` with the caller's options.
+Angular's rule applies: the newest navigation cancels any that's still running. If the URL wouldn't
+change and nothing is navigating, it resolves `true` without calling Angular, which would resolve
+`false` as if a guard said no.
 
 ## Follow a form edit
 
-`projects/ngx-urlik/forms/query-forms.ts` adapts both Angular form systems to the same binding. The
-form holds a draft that may be waiting for a debounce or a guard. The URL holds committed state.
+`projects/ngx-urlik/forms/query-forms.ts` connects both Angular form systems to the same binding.
+The form holds a draft that may be waiting for a debounce or a guard. The URL holds what's been
+written. The binding uses only the public route: `params()` to read and `patchQuery()` to write.
 
-The binding uses only the public route node. It reads `params()` and writes with `patchQuery()`.
-
-Each edit is stored as an object in `staged`, keyed by field. When a write settles, whatever the
+Each edit goes into `pending` as its own object, keyed by field. When a write settles, whatever the
 result, the binding removes the objects that write sent. If the user edited the field again in the
-meantime, the newer object stays. The form keeps showing what the user typed either way.
+meantime, the newer object stays. Either way, the form keeps showing what the user typed. A write
+that resolves `false` reports a decline only if one of its objects is still pending.
+[State machines](state-machines.md) has the full table.
 
-`committed` holds the URL values the form last took in. When `params()` changes, a field follows
-the URL only if its URL value differs from `committed` and the field has no staged edit. A write to
-one field therefore never touches another field the user is typing in.
+`lastUrl` holds the URL values the form last took in. When `params()` changes, a field follows the
+URL only if its URL value differs from `lastUrl` and the field has no pending edit. So a write to
+one field never touches another field the user is typing in.
 
-One form notification can change several fields. The fields that write at once share one
-navigation. A Reactive Forms field with a `debounce` entry waits on its own timer. With
-`writeWhen: 'valid'`, an invalid field goes into `held`, and the binding tries the held fields again
-whenever the form's validity changes. That is how a field waits for an async validator.
+One form change can touch several fields. The fields that write right away share one navigation. A
+Reactive Forms field with a `debounce` entry waits on its own timer. With `writeWhen: 'valid'`, an
+invalid field goes into `held`. The binding tries the held fields again whenever the form's
+validity changes. That's how a field waits for an async validator.
 
-Right before a write navigates, `beforeWrite` may change its fields. Fields it adds are not staged,
-so they come back into the form from the URL. Destroying the binding clears its timers.
+Before a write navigates, the binding drops each edit that equals the URL's value, unless
+`sending` shows a write of that field still running. If nothing is left, nothing writes. Then
+`beforeWrite` can change the fields. Fields it adds aren't pending, so they come back into the form
+from the URL. Destroying the binding clears its timers.
 
 ## Check a change
 
 Library test paths below are relative to `projects/ngx-urlik`.
 
-| Change                    | Tests                                           |
-| ------------------------- | ----------------------------------------------- |
-| Definitions, links, state | `src/lib/app-router.spec.ts`                    |
-| Adopting an existing app  | `src/lib/migration-cookbook.spec.ts`            |
-| Codecs                    | `src/lib/params.spec.ts`                        |
-| Parameter decoding        | `src/lib/parameter-state.spec.ts`               |
-| Reads during navigation   | `src/lib/navigation-reads.spec.ts`              |
-| Server rendering          | `src/lib/server-rendering.spec.ts`              |
-| Query writes              | `src/lib/query-updates.spec.ts`                 |
-| Query form bindings       | `src/lib/query-forms.spec.ts`                   |
-| Global query observations | `src/lib/global-query.spec.ts`                  |
-| Default equality          | `src/lib/is-equal.spec.ts`                      |
-| Storage persistence       | `src/lib/persistence.spec.ts`                   |
-| Consumer type inference   | `type-tests/consumer.ts` at the repository root |
+| Change                     | Tests                                     |
+| -------------------------- | ----------------------------------------- |
+| Definitions, links, values | `src/lib/app-router.spec.ts`              |
+| Startup checks             | `src/lib/route-checks.spec.ts`            |
+| Path values and failures   | `src/lib/path-values.spec.ts`             |
+| Escape hatch               | `src/lib/escape-hatch.spec.ts`            |
+| Moving an existing app     | `src/lib/migration-cookbook.spec.ts`      |
+| Codecs                     | `src/lib/params.spec.ts`                  |
+| Decoding values            | `src/lib/parameter-state.spec.ts`         |
+| Reads during navigation    | `src/lib/navigation-reads.spec.ts`        |
+| Server rendering           | `src/lib/server-rendering.spec.ts`        |
+| Query writes               | `src/lib/query-updates.spec.ts`           |
+| Form bindings              | `src/lib/query-forms.spec.ts`             |
+| Global reads               | `src/lib/global-params.spec.ts`           |
+| Public types               | `type-tests/*.test-d.ts` at the repo root |
+| Type-check speed           | `type-tests/generate-large-app.mjs`       |
 
-Build before running the type tests: `type-tests` and the demo resolve `ngx-urlik` from `dist`.
-Test what a caller observes so the checks survive changes to the internal structure.
+Build before you run the type tests. `type-tests` and the demo load `ngx-urlik` from `dist`. Test
+what a caller can see, so the tests keep passing when the internals change. Each spec reads as a
+reference for its part of the library: a test name says what happens, and its body shows it.
+
+Type tests run in Vitest's typecheck mode. The compiler checks each `*.test-d.ts` file, and Vitest
+reports each `it()` as a test, but never runs the code. `expectTypeOf(x).toEqualTypeOf<T>()` checks
+the exact type, so a type that quietly widens or narrows fails. A line marked `@ts-expect-error` is
+code that must not compile, and the test fails if it starts compiling. `fixtures.ts` holds the
+routers the type tests share.
+
+To see which library lines no test reaches, run `npx ng test ngx-urlik --watch=false --coverage`.
+
+`npm run typecheck` also writes and checks a 201-route app, as one literal. It takes about a second.
+If a type change makes it slow, or it fails with TS2589, "excessively deep", that change made big
+route trees cost more than they should.
