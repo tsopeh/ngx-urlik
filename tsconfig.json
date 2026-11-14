@@ -32,10 +32,10 @@
       "path": "./projects/ngx-urlik/tsconfig.spec.json"
     },
     {
-      "path": "./projects/taste-track/tsconfig.app.json"
+      "path": "./projects/demo-app/tsconfig.app.json"
     },
     {
-      "path": "./projects/taste-track/tsconfig.spec.json"
+      "path": "./projects/demo-app/tsconfig.spec.json"
     }
   ]
 }

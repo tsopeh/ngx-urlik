@@ -1061,7 +1061,7 @@ function update(patch: RouteQueryPatch<typeof results>) {
 
 ## TasteTrack demo
 
-[`projects/taste-track`](projects/taste-track) is a small movie and TV journal built with
+[`projects/demo-app`](projects/demo-app) is a small movie and TV journal built with
 ngx-urlik. It uses only the public entry points and keeps its data in your browser, in IndexedDB.
 From the repo root, with the Node version from `.nvmrc`:
 
@@ -1101,7 +1101,7 @@ between pages. The form pages reset the page number in `beforeWrite`. The catalo
 same `patchQuery()` call. Sort field and direction are one codec value, so a write always changes
 both.
 
-The fake backend is in `projects/taste-track/src/app/backend/`. `BackendApi` answers every query and
+The fake backend is in `projects/demo-app/src/app/backend/`. `BackendApi` answers every query and
 change. Each query returns an `Observable`, which pages turn into a signal with `toObservable`,
 `switchMap`, and `toSignal`. `TasteTrackRepository` keeps the IndexedDB tables in signals through
 Dexie. After a change it reloads them and adds one to `dataVersion`, so open queries emit again.

@@ -1,4 +1,4 @@
-# Builds TasteTrack against the library on master and publishes it to GitHub Pages.
+# Builds the demo app (TasteTrack) against the library on master and publishes it to GitHub Pages.
 name: Deploy demo
 
 on:
@@ -28,12 +28,12 @@ jobs:
       - run: npm run build:lib
       - id: pages
         uses: actions/configure-pages@v6
-      - run: npx ng build taste-track --base-href "${{ steps.pages.outputs.base_path }}/"
+      - run: npx ng build demo-app --base-href "${{ steps.pages.outputs.base_path }}/"
       # Pages serves 404.html for unknown paths, so deep links load the app and Angular routes them.
-      - run: cp dist/taste-track/browser/index.html dist/taste-track/browser/404.html
+      - run: cp dist/demo-app/browser/index.html dist/demo-app/browser/404.html
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: dist/taste-track/browser
+          path: dist/demo-app/browser
 
   deploy:
     needs: build

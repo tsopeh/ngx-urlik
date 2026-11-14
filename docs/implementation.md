@@ -241,7 +241,7 @@ The demo has a few small state machines of its own.
 
 ### The journal database
 
-`TasteTrackRepository` in `projects/taste-track/src/app/backend/database.ts` keeps IndexedDB data in
+`TasteTrackRepository` in `projects/demo-app/src/app/backend/database.ts` keeps IndexedDB data in
 signals.
 
 | State   | `ready` | `error` |
@@ -272,7 +272,7 @@ signals.
 
 ### The detail page's save state
 
-`DetailPage` in `projects/taste-track/src/app/detail-page.ts` has `writes`, `saved`, and `error`.
+`DetailPage` in `projects/demo-app/src/app/detail-page.ts` has `writes`, `saved`, and `error`.
 `writes` counts running writes, and `saving` is `writes > 0`. Log viewing is off while `saving`.
 
 | Event                     | `writes` | `saved`   | `error`                          |

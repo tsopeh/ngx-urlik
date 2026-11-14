@@ -518,6 +518,8 @@ Three more could happen but weren't fixed that day. We fixed them on Nov 13:
 - `9e43e47` (Oct 30) replaced parodies of real titles with 30 original movies and 30 shows. The
   maintainer wants no legal ambiguity. Every new title, person, and studio gets a web search first.
 - `e365058` (Oct 14) deploys the demo to GitHub Pages from master.
+- On Nov 14 the Angular project and its folder became `demo-app` (`projects/demo-app`), so the
+  workspace says plainly which project is the demo. The app itself is still called TasteTrack.
 
 ## Docs and style
 

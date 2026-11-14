@@ -43,25 +43,25 @@
         }
       }
     },
-    "taste-track": {
+    "demo-app": {
       "projectType": "application",
       "schematics": {},
-      "root": "projects/taste-track",
-      "sourceRoot": "projects/taste-track/src",
+      "root": "projects/demo-app",
+      "sourceRoot": "projects/demo-app/src",
       "prefix": "app",
       "architect": {
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "browser": "projects/taste-track/src/main.ts",
-            "tsConfig": "projects/taste-track/tsconfig.app.json",
+            "browser": "projects/demo-app/src/main.ts",
+            "tsConfig": "projects/demo-app/tsconfig.app.json",
             "assets": [
               {
                 "glob": "**/*",
-                "input": "projects/taste-track/public"
+                "input": "projects/demo-app/public"
               }
             ],
-            "styles": ["projects/taste-track/src/styles.css"]
+            "styles": ["projects/demo-app/src/styles.css"]
           },
           "configurations": {
             "production": {
@@ -91,10 +91,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "taste-track:build:production"
+              "buildTarget": "demo-app:build:production"
             },
             "development": {
-              "buildTarget": "taste-track:build:development"
+              "buildTarget": "demo-app:build:development"
             }
           },
           "defaultConfiguration": "development"
@@ -105,8 +105,8 @@
         "lint": {
           "builder": "@angular-eslint/builder:lint",
           "options": {
-            "lintFilePatterns": ["projects/taste-track/**/*.ts", "projects/taste-track/**/*.html"],
-            "eslintConfig": "projects/taste-track/eslint.config.js"
+            "lintFilePatterns": ["projects/demo-app/**/*.ts", "projects/demo-app/**/*.html"],
+            "eslintConfig": "projects/demo-app/eslint.config.js"
           }
         }
       }
