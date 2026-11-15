@@ -109,6 +109,10 @@ function describeValue(value: unknown): string {
  * Accepts the values of an array, a record, or a string, numeric, or mixed enum. Strings and finite
  * numbers each write as their text: `Status.Archived = 1` writes `1`. Two values can't share a
  * text, like `1` and `'1'`.
+ *
+ * A record whose keys are numbers, like `{ '1': 'one', one: 1 }`, is read like a numeric enum, so
+ * `'1'` counts as a reverse entry and is skipped. For a record like that, pass an array of its
+ * values instead.
  */
 export function enumCodec<const Values extends readonly EnumLiteral[] | EnumRecord>(
   values: Values,

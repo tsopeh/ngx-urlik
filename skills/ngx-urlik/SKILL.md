@@ -86,7 +86,8 @@ written.
 
 - `stringCodec()`, `numberCodec()`, and `booleanCodec()` cover the basics.
 - `enumCodec(values)` takes an array, a record, or a string, numeric, or mixed enum. Each value
-  writes as its text, so `Status.Archived = 1` writes `1`, not `Archived`.
+  writes as its text, so `Status.Archived = 1` writes `1`, not `Archived`. A record whose keys are
+  numbers is read like a numeric enum and loses those members, so pass an array of its values.
 - `listCodec(item, separator)` joins items into one value, like `?a=1,2`. An array field is a
   `queryParam` with a `listCodec` and `defaultValue: []`.
 - For anything else, like dates or "positive integers only", write a `UrlParamCodec` with

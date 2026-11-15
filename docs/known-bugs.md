@@ -30,16 +30,6 @@ covers the whole separator, so an item that ends with part of it runs into the n
 
 The fix accepts only one-character separators, which is what the error message already asks for.
 
-### `enumCodec` drops a member of a record with numeric keys
-
-`enumCodec()` in `src/lib/params.ts`.
-
-In `{ '1': 'one', one: 1 }`, the key `'1'` looks exactly like the reverse entry TypeScript adds to a
-numeric enum, so the codec skips it and `serialize('one')` returns `null`. At runtime a record and
-an enum can't be told apart.
-
-The fix documents the rule: for a record like this, pass an array of its values.
-
 ### `form.reset()` restores the starting URL, not the defaults
 
 `createQueryParamsFormGroup()` in `forms/query-forms.ts`.
