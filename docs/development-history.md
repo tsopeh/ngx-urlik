@@ -239,6 +239,10 @@ Three questions came up:
   maintainer wants "select none" to work, and wants one way to write a list.
 - `de94157` (Nov 12) escapes the separator inside items. Angular decodes the URL before the codec
   runs, so a comma inside an item split it.
+- On Nov 15 a bug hunt found that a longer separator could still lose items: with `||`, the lists
+  `['a|', 'b']` and `['a', '|b']` both wrote `a|||b`. The maintainer chose to allow only
+  one-character separators over escaping the separator's first character, which would have kept
+  longer ones working.
 
 **Where it stands:** decided. Bring back repeated keys only if the maintainer asks, for example to
 read URLs that other code writes.

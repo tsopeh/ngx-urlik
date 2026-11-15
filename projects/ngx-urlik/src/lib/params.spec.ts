@@ -151,8 +151,15 @@ describe('parameter codecs and definitions', () => {
     const text = listCodec(stringCodec(), '|');
     expect(text.serialize(['a,b', 'c'])).toBe('a,b|c');
     expect(text.serialize([''])).toBeNull();
-    expect(() => listCodec(stringCodec(), '')).toThrow("the separator can't be empty");
-    expect(() => listCodec(stringCodec(), '\\')).toThrow("the separator can't be empty");
+  });
+
+  it('takes one character as the separator, other than a backslash', () => {
+    const message = 'the separator must be one character other than a backslash';
+    expect(() => listCodec(stringCodec(), '')).toThrow(message);
+    expect(() => listCodec(stringCodec(), '\\')).toThrow(message);
+    // With '||', ['a|', 'b'] and ['a', '|b'] would both write 'a|||b'.
+    expect(() => listCodec(stringCodec(), '||')).toThrow(message);
+    expect(() => listCodec(stringCodec(), ' or ')).toThrow(message);
   });
 
   it('escapes the separator and backslashes inside items', () => {
@@ -161,10 +168,6 @@ describe('parameter codecs and definitions', () => {
     expect(codec.serialize(['red, green', 'blue'])).toBe('red\\, green,blue');
     expect(codec.serialize(['a\\b'])).toBe('a\\\\b');
     expect(codec.deserialize(codec.serialize(values)!)).toEqual(values);
-
-    const words = listCodec(stringCodec(), ' or ');
-    expect(words.serialize(['this or that', 'other'])).toBe('this\\ or that or other');
-    expect(words.deserialize('this\\ or that or other')).toEqual(['this or that', 'other']);
 
     // A backslash that escapes nothing, or ends the text, isn't one this codec wrote.
     expect(codec.deserialize('a\\b')).toBeNull();

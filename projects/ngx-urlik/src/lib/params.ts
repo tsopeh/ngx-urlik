@@ -150,19 +150,21 @@ export function enumCodec<const Values extends readonly EnumLiteral[] | EnumReco
 }
 
 /**
- * Joins items with `separator` into one string, such as `a,b`. `''` is the empty list. Inside an
- * item, a backslash escapes the separator and itself: `['red, green', 'blue']` writes
- * `red\, green,blue`. An empty item fails to convert.
+ * Joins items with `separator`, one character, into one string, such as `a,b`. `''` is the empty
+ * list. Inside an item, a backslash escapes the separator and itself: `['red, green', 'blue']`
+ * writes `red\, green,blue`. An empty item fails to convert.
  */
 export function listCodec<T>(
   item: UrlParamCodec<T>,
   separator: string,
 ): UrlParamCodec<readonly T[]> {
+  // A longer separator could run into the item before it: with '||', ['a|', 'b'] and ['a', '|b']
+  // would both write 'a|||b'.
   const usableSeparator =
-    typeof separator === 'string' && separator !== '' && !separator.includes('\\');
+    typeof separator === 'string' && separator.length === 1 && separator !== '\\';
   if (!usableSeparator) {
     throw new Error(
-      "listCodec(): the separator can't be empty or hold a backslash. Use a character like ','.",
+      "listCodec(): the separator must be one character other than a backslash, like ','.",
     );
   }
   return {
@@ -187,22 +189,20 @@ export function listCodec<T>(
       }
       const parts: string[] = [];
       let part = '';
-      for (let i = 0; i < raw.length;) {
+      for (let i = 0; i < raw.length; i++) {
         if (raw[i] === '\\') {
-          const escaped = raw.startsWith(separator, i + 1) ? separator : raw[i + 1];
+          const escaped = raw[i + 1];
           const knownEscape = escaped === separator || escaped === '\\';
           if (!knownEscape) {
             return null;
           }
           part += escaped;
-          i += 1 + escaped.length;
-        } else if (raw.startsWith(separator, i)) {
+          i++;
+        } else if (raw[i] === separator) {
           parts.push(part);
           part = '';
-          i += separator.length;
         } else {
           part += raw[i];
-          i += 1;
         }
       }
       parts.push(part);

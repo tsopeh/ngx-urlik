@@ -152,7 +152,8 @@ from `globalParams()` too, and fall back to the saved value where the page reads
 - `enumCodec()` takes strings and finite numbers. It throws on creation for any other value, or
   when two values write the same text, like `1` and `'1'`. It skips the reverse entries TypeScript
   adds to numeric enums.
-- `listCodec()` throws on creation if the separator is empty or holds a backslash. `[]` writes as
+- `listCodec()` throws on creation unless the separator is one character other than a backslash,
+  because a longer one could run into the item before it. `[]` writes as
   `?tags=`. Items can't be empty, so `['']` can't be written. A backslash escapes the separator and
   itself.
 - A query value leaves the URL when its text matches the default's text.

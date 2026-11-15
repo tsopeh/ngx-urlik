@@ -20,16 +20,6 @@ The fix lets a patch cancel only an earlier patch. When some other navigation ru
 typed `navigate()`, or Back, the patch resolves `false` without navigating, which is the "something
 else navigated first" case the README already lists.
 
-### `listCodec` loses items when the separator can overlap itself
-
-`listCodec()` in `src/lib/params.ts`.
-
-With the separator `'||'`, the lists `['a|', 'b']` and `['a', '|b']` both write `a|||b`, which
-reads back as `['a', '|b']`. With `'--'`, `['x-', 'y']` reads back as `['x', '-y']`. Escaping only
-covers the whole separator, so an item that ends with part of it runs into the next one.
-
-The fix accepts only one-character separators, which is what the error message already asks for.
-
 ### `form.reset()` restores the starting URL, not the defaults
 
 `createQueryParamsFormGroup()` in `forms/query-forms.ts`.

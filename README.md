@@ -234,7 +234,7 @@ URL key, and when a key repeats, the last one wins: `?minRating=1&minRating=4.5`
 | `numberCodec()`              | Any number except `NaN`, like `4.5` or `-Infinity`                               |
 | `booleanCodec()`             | `true` or `false`                                                                |
 | `enumCodec(values)`          | One value from an array, a record, or any enum. `Status.Archived = 1` writes `1` |
-| `listCodec(item, separator)` | `item` values joined by `separator`                                              |
+| `listCodec(item, separator)` | `item` values joined by `separator`, one character like `,`                      |
 
 `enumCodec()` takes strings and finite numbers, so string, numeric, and mixed enums all work, and
 each value is written as its text. Two values can't share a text, so `enumCodec([1, '1'])` throws.

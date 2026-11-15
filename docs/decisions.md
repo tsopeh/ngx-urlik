@@ -93,7 +93,9 @@ A missing value belongs to the field, not the codec, and a field reads a missing
 That matches Angular Signal Forms, where `undefined` means the field doesn't exist.
 
 A list like `a,b` is a single string, so it's a codec too: `listCodec(item, ',')` on an ordinary
-`queryParam`. A backslash escapes the separator inside an item, so `red, green` stays one item. An
+`queryParam`. The separator is one character, and a backslash escapes it inside an item, so
+`red, green` stays one item. A longer separator could run into the item before it: with `||`, the
+lists `['a|', 'b']` and `['a', '|b']` would both write `a|||b`. An
 empty list writes as `?tags=`, which keeps `[]` apart from a missing key even when the default
 isn't empty. A custom codec can define any other list format the same way.
 
