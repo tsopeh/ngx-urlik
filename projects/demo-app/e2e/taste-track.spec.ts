@@ -366,3 +366,13 @@ test.describe('east of UTC+4', () => {
     await expect(page.locator('.history-list article time')).toHaveText('Sep 9, 2026');
   });
 });
+
+test.describe('late in the evening west of UTC', () => {
+  test.use({ timezoneId: 'America/New_York' });
+
+  test('the viewing date starts at the local date', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-11-15T23:30:00-05:00'));
+    await page.goto(movieUrl);
+    await expect(page.getByLabel('Viewing date')).toHaveValue('2026-11-15');
+  });
+});

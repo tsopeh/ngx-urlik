@@ -13,6 +13,13 @@ import {
 import { CatalogLinks } from './catalog-links';
 import { Preferences } from './preferences';
 
+/** The date as `YYYY-MM-DD` in the browser's timezone. */
+function localDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 @Component({
   imports: [RouterLink],
   template: `
@@ -131,7 +138,7 @@ export class DetailPage {
   private readonly backendApi = inject(BackendApi);
   private readonly preferences = inject(Preferences);
   protected readonly links = inject(CatalogLinks);
-  protected readonly viewingDate = signal(new Date().toISOString().slice(0, 10));
+  protected readonly viewingDate = signal(localDate(new Date()));
   // Counts running writes. A status change can finish while a log still runs.
   private readonly writes = signal(0);
   protected readonly saving = computed(() => this.writes() > 0);

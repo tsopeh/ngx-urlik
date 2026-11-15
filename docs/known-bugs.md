@@ -33,15 +33,6 @@ The fix is still open: the controls could reset to the route's defaults, or the 
 
 ## TasteTrack
 
-### The viewing date starts at the UTC date
-
-`viewingDate` in `detail-page.ts`.
-
-The default comes from `new Date().toISOString()`, which is the UTC date. In New York at 23:30 on
-November 15, the input shows `2026-11-16`.
-
-The fix builds the default from the local year, month, and day.
-
 ### A bad remembered season breaks the show page
 
 `readSeasons()` in `preferences.ts`, used by the "Continue with Season" link in `detail-page.ts`.
