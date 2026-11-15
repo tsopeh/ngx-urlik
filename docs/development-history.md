@@ -29,6 +29,7 @@ file gives the path that led there. Commit hashes point at the code for each ste
 | Nov 14, 2026    | Form bindings compare one set of values with the URL                                |
 | Nov 14, 2026    | The README is rewritten at 60% of its length. Finer rules move to the agent skill   |
 | Nov 14, 2026    | `enumCodec()` takes numeric and mixed enums, and arrays of numbers                  |
+| Nov 15, 2026    | Every doc is rewritten to open with the idea and read as connected prose            |
 
 The package version is `0.2.0`. In conversation we call the design after Nov 13 "API version 3".
 The version number hasn't followed, and whether it should is open. Nothing has been published, so
@@ -569,6 +570,14 @@ Three more could happen but weren't fixed that day. We fixed them on Nov 13:
   custom codec section shows compact formats instead: a date range that writes whole days as
   `2026-11-01..2026-11-15`, and an API's paging value, `3,24,130`. That example's field is `paging`,
   not `page`.
+- On Nov 15 the maintainer read the README's opening, a walk through
+  `/results?search=oak&minRating=4` before any idea, and found it stiff: nobody would write it that
+  way, or enjoy reading it. The cause was the style guide itself. Its rule of short sentences with one idea each had turned every
+  paragraph into a string of clipped statements. The opening went, and Plainspoken Engineering now
+  asks for the idea first and for prose that connects its sentences, while keeping the plain words.
+  The README, the agent skill, `decisions.md`, and `implementation.md` were rewritten to match, with
+  no change to what they claim. The rewrite also restored the skill's YAML frontmatter, which
+  `dab2610` had collapsed onto one line.
 - ESLint with braces on every body (`3011517`, `d117a48`). Fix style with `npm run lint:fix`, not by
   hand.
 

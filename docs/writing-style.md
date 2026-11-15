@@ -1,22 +1,38 @@
 # Plainspoken Engineering
 
-Write the way you'd explain the code to a friend who has to use it tomorrow.
+Write the way a senior engineer explains their library to a colleague they respect: plainly,
+confidently, and in the order that makes the idea click.
 
 To ask for this style, say **“Use Plainspoken Engineering.”**
 
 ## Rules
 
-- Use plain words. If a short word works, use it.
-- Say it the way you'd say it out loud. If you wouldn't say a sentence to a friend across the
-  table, rewrite it.
-- Write short sentences, with one idea each.
-- Walk through one concrete example with real values: `minRating=4`, not “a numeric parameter”.
-- Say what happens. Then say why.
-- No hype and no hedging. Cut “simply”, “powerful”, “seamless”, “might”, and “generally”.
-- No summary at the end. Stop when you're done.
-- Make it as short as it can be without losing meaning. Shorten the words, never the rules.
+- **Start with the idea.** Open a document or a section with what the thing is and why it exists.
+  Then show it. An example backs up an idea. It can't stand in for one.
+- **Use plain words.** If a short word works, use it.
+- **Write prose, not a telegram.** Sentences can be short or long, as long as each one is easy to
+  follow. Join related thoughts with “because”, “so”, “which”, and “but”. A run of four-word
+  sentences reads like a list somebody forgot to format.
+- **Read it out loud.** If you wouldn't say it to a colleague across the table, rewrite it. If it
+  sounds like a manual translated twice, rewrite it.
+- **Show real values.** Walk through one example: `minRating=4`, not “a numeric parameter”.
+- **Say what happens, then why.** The reason is often the most useful sentence in the paragraph.
+- **No hype and no hedging.** Cut “simply”, “powerful”, “seamless”, “might”, and “generally”.
+- **Stop when you're done.** No summary at the end.
+- **Cut what doesn't earn its place.** Shorten the text, never the rules, and keep the words that
+  connect one sentence to the next.
 
 ## Example
+
+Instead of:
+
+> Angular gives you strings. So you parse them. Then you pick a default. Then you do it again on the
+> next page.
+
+Write:
+
+> Angular gives you every URL value as a string, so each page ends up parsing its own numbers and
+> picking its own defaults.
 
 Instead of:
 
@@ -26,9 +42,10 @@ Instead of:
 Write:
 
 > `form.patchValue({ search: 'elm', minRating: 0 })` changes both fields in one navigation. If
-> search is debounced by 300 ms, the rating writes first and the search writes 300 ms later.
+> search is debounced by 300 ms, the rating writes first and the search follows 300 ms later.
 
-The second version gives the reader something to try and a result to check.
+The first pair shows that short isn't the same as clear. The second gives the reader something to
+try and a result to check.
 
 ## Words
 
@@ -72,30 +89,32 @@ count as shorthand too. So do metaphors borrowed from other work, like gates, la
 Put timing and failure rules next to the operation they affect. Say whether a value is a draft or
 already in the URL, when a callback runs, and what happens when it fails.
 
-Give a design choice its reason and its cost. “Route definitions load with the app. That's why a
-link to `/orders/4` works before the orders page has loaded. The cost is that you can't load a
-route's definition lazily.”
+Give a design choice its reason and its cost: “Route definitions load with the app, which is why a
+link to `/orders/4` works before the orders page has loaded. The cost is that a route's definition
+can't load lazily.”
 
 ## Code
 
 Names and comments follow the same rules. A name says what the thing is: `storageKey`, not
-`persistenceKeyDescriptor`. A comment says why, not what the next line does. Leave out a comment
-that only repeats the code.
+`persistenceKeyDescriptor`. A comment says why, not what the next line does, and a comment that
+only repeats the code goes.
 
 An error message says what went wrong and how to fix it: “routeName 'HOME' is used by both
 routes[0] and routes[2]. Give each route its own name.”
 
 ## Formats
 
-Use code to show behavior, tables to compare cases, and lists for steps or separate rules. Use
-sentences for cause and effect. Make headings the questions a reader would look for.
+Use code to show behavior, tables to compare cases, and lists for steps or for rules that really
+are separate. Use paragraphs for cause and effect, and for anything a reader should follow from
+start to finish. Make headings the questions a reader would look for.
 
-| Document             | The reader gets                             |
-| -------------------- | ------------------------------------------- |
-| Getting started      | A working example and enough to adapt it    |
-| Reference            | Exact inputs, results, timing, and failures |
-| Design decision      | The problem, the choice, and what it costs  |
-| Implementation guide | Where the code for each behavior lives      |
+| Document             | The reader gets                                     |
+| -------------------- | --------------------------------------------------- |
+| Getting started      | The idea, a working example, and enough to adapt it |
+| Reference            | Exact inputs, results, timing, and failures         |
+| Design decision      | The problem, the choice, and what it costs          |
+| Implementation guide | Where the code for each behavior lives              |
 
-Before you finish, check four things. Every claim matches the code. Every example works against
-the public API. Every sentence adds something. Every sentence sounds natural read out loud.
+Before you finish, check four things: every claim matches the code, every example works against
+the public API, every sentence adds something, and the whole thing reads well out loud, in one
+pass, without stumbling.
