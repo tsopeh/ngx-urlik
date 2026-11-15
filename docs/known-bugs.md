@@ -41,16 +41,6 @@ the value it was created with. On `/results?search=foo`, a "Clear filters" butto
 The fix is still open: the controls could reset to the route's defaults, or the docs could say what
 `reset()` does.
 
-### The Signal Forms binding re-reads the URL on every edit
-
-`bindQueryParamsToSignalForm()` in `forms/query-forms.ts`.
-
-When the URL changes a field, the binding writes the form's value from inside the effect that
-follows the URL, and that read makes the effect track the form. From then on, every edit runs the
-effect again. It finds no URL change and does nothing, so the cost is a wasted run per edit.
-
-The fix reads the form's value with `untracked()`.
-
 ## TasteTrack
 
 ### Clearing a History date leaves `?from=` in the URL

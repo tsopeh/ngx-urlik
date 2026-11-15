@@ -151,6 +151,29 @@ describe('query forms', () => {
     await vi.waitFor(() => expect(router.url).toBe('/results?page=3&search=first'));
   });
 
+  it('follows a URL change that is written into a signal form in one effect run', async () => {
+    const { results, router } = await setup();
+    let reads = 0;
+    const counted = {
+      params: () => {
+        reads++;
+        return results.params();
+      },
+      patchQuery: results.patchQuery.bind(results),
+    } as typeof results;
+    const binding = TestBed.runInInjectionContext(() => createQueryParamsSignalForm(counted));
+    TestBed.flushEffects();
+
+    // The binding writes the new search into the form from inside its URL effect. That write
+    // must not make the effect follow the form, or it runs a second time after the write.
+    reads = 0;
+    await router.navigateByUrl('/results?search=b');
+    TestBed.flushEffects();
+
+    expect(binding.model().search).toBe('b');
+    expect(reads).toBe(1);
+  });
+
   describe('with an object field', () => {
     type Sort = { readonly field: string; readonly direction: 'asc' | 'desc' };
     const sortCodec: UrlParamCodec<Sort> = {

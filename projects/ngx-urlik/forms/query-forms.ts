@@ -334,7 +334,9 @@ export function bindQueryParamsToSignalForm<Q extends QueryState>(
     route,
     {
       reset: (query) => form().reset(query as never),
-      write: (changes) => form().value.set({ ...form().value(), ...changes } as never),
+      // The write runs inside the URL effect, which must not follow the form's value.
+      write: (changes) =>
+        untracked(() => form().value.set({ ...form().value(), ...changes } as never)),
       valid: (param) => untracked(() => field(param).valid()),
       changes: (emit) => {
         const watcher = effect(() => {
