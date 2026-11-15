@@ -1,9 +1,13 @@
-# ngx-urlik — URL Is King
+<h1 align="center">ngx-urlik — URL Is King</h1>
 
-![A howling mouse with the Angular logo on its body](docs/banner.gif)
+<p align="center">
+  <img src="docs/banner.gif" alt="A howling mouse with the Angular logo on its body" width="480">
+</p>
 
-ngx-urlik is an Angular library that makes routing fully type-safe: the route definitions,
-path and query parameters, and the navigation between pages.
+<p align="center">
+  <em>ngx-urlik is an Angular library that makes routing fully type-safe: the route definitions,
+  the path and query parameters, and the navigation between pages.</em>
+</p>
 
 You keep writing Angular routes the way you do now, with three additions: a name for the route, a
 type for each path parameter, and a name and type for each query parameter. That's enough for
