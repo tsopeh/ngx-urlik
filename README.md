@@ -213,7 +213,7 @@ interface UrlParamCodec<T> {
 
 `null` means "I can't convert this", so `T` can't include `null`. One codec works in a path, in the
 query, and inside a list. In the query, the property name is the URL key. When a key repeats, the
-last one wins: `?minRating=1&minRating=2` reads as `2`.
+last one wins: `?minRating=1&minRating=4.5` reads as `4.5`.
 
 | Codec                        | Accepts                                                                                        |
 | ---------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -327,9 +327,9 @@ updates before Angular creates the new page, so a page's constructor sees its ow
 route that isn't active throws.
 
 `params` fires only when a field's text changes. A field whose text stayed the same keeps the same
-object. Go from `?sort=title:asc&minRating=1` to `?minRating=2&sort=title:asc`, and `sort` is still
-`===` the one you read before. So a `computed()` over `sort` doesn't rerun its readers. Don't change
-these objects in place.
+object. Go from `?sort=title:asc&minRating=1` to `?minRating=4.5&sort=title:asc`, and `sort` is
+still `===` the one you read before. So a `computed()` over `sort` doesn't rerun its readers. Don't
+change these objects in place.
 
 The fragment isn't in `params()`. You can set it in links, but not read it.
 
@@ -463,15 +463,15 @@ await results.patchQuery({ search: 'elm', minRating: 0 });
 
 `minRating` went back to its default, so it left the URL. `sort` stayed, because a patch never
 touches keys it doesn't know. Fields you leave out stay too, and so do the path and the fragment. To
-clear a field, set it to its default or `null`. A patch also cleans up: `?minRating=02` becomes
-`?minRating=2`.
+clear a field, set it to its default or `null`. A patch also cleans up: `?minRating=04.50` becomes
+`?minRating=4.5`.
 
 Each patch is one Angular navigation, built from the URL when you call it. A new navigation cancels
 the one running, so two patches in a row don't add up:
 
 ```ts
 void results.patchQuery({ search: 'elm' });
-void results.patchQuery({ minRating: 2 }); // cancels the first: only minRating=2 is left
+void results.patchQuery({ minRating: 4.5 }); // cancels the first: only minRating=4.5 is left
 ```
 
 Put fields that change together in one patch.
