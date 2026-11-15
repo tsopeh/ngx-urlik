@@ -122,12 +122,12 @@ export interface ContributorProfile {
 
 /**
  * How long the fake backend takes to answer, in milliseconds. Three answers in four take 150 to
- * 500 ms, and the rest take 500 to 1000 ms.
+ * 300 ms, and the rest take 300 to 500 ms.
  */
 export const BACKEND_LATENCY = new InjectionToken<() => number>('BACKEND_LATENCY', {
   providedIn: 'root',
   factory: () => () =>
-    Math.random() < 0.75 ? 150 + Math.random() * 350 : 500 + Math.random() * 500,
+    Math.random() < 0.8 ? 150 + Math.random() * 150 : 300 + Math.random() * 200,
 });
 
 /**
