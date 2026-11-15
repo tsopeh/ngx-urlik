@@ -1,6 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import type { RouteQueryPatch } from 'ngx-urlik';
+import { debounce, FormField } from '@angular/forms/signals';
+import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
 import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { Preferences } from './preferences';
@@ -12,7 +13,7 @@ import { MediaCard } from './media-card';
 const headings = { episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' } as const;
 
 @Component({
-  imports: [MediaCard],
+  imports: [FormField, MediaCard],
   template: `
     <section class="page-stack inset">
       <div class="section-heading">
@@ -31,20 +32,22 @@ const headings = { episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' } a
         <label
           >Search<input
             type="search"
-            [value]="query().search"
-            (input)="update({ search: $any($event.target).value, page: 1 })"
+            [formField]="binding.form.search"
             placeholder="Search titles…"
         /></label>
         <label
-          >Sort<select [value]="query().sort.field" (change)="sort($any($event.target).value)">
+          >Sort<select
+            [value]="binding.model().sort.field"
+            (change)="setSort($any($event.target).value)"
+          >
             <option value="title">Title</option>
             <option value="year">Year</option>
           </select></label
         >
         <label
           >Direction<select
-            [value]="query().sort.direction"
-            (change)="direction($any($event.target).value)"
+            [value]="binding.model().sort.direction"
+            (change)="setDirection($any($event.target).value)"
           >
             <option value="asc">Ascending</option>
             <option value="desc">Descending</option>
@@ -62,8 +65,8 @@ const headings = { episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' } a
         @for (genre of genres; track genre) {
           <button
             type="button"
-            [class.selected]="query().genres.includes(genre)"
-            [attr.aria-pressed]="query().genres.includes(genre)"
+            [class.selected]="binding.model().genres.includes(genre)"
+            [attr.aria-pressed]="binding.model().genres.includes(genre)"
             (click)="toggleGenre(genre)"
           >
             {{ genre }}
@@ -87,16 +90,16 @@ const headings = { episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' } a
       <nav class="anchor-links" aria-label="Pagination">
         <button
           class="button"
-          [disabled]="query().page <= 1"
-          (click)="update({ page: query().page - 1 })"
+          [disabled]="binding.model().page <= 1"
+          (click)="setPage(binding.model().page - 1)"
         >
           Previous
         </button>
-        <span>Page {{ query().page }}</span>
+        <span>Page {{ binding.model().page }}</span>
         <button
           class="button"
-          [disabled]="query().page * pageSize() >= (response()?.total ?? 0)"
-          (click)="update({ page: query().page + 1 })"
+          [disabled]="binding.model().page * pageSize() >= (response()?.total ?? 0)"
+          (click)="setPage(binding.model().page + 1)"
         >
           Next
         </button>
@@ -110,6 +113,14 @@ export class CatalogPage {
   private readonly preferences = inject(Preferences);
   protected readonly links = inject(CatalogLinks);
   private readonly route = this.routes.BROWSE;
+  protected readonly binding = createQueryParamsSignalForm(this.route, {
+    schema: (fields) => debounce(fields.search, 300),
+    // Any change other than the page itself starts from the first page, in the same navigation.
+    beforeWrite: (patch) => {
+      const changesMoreThanPage = Object.keys(patch).some((field) => field !== 'page');
+      return changesMoreThanPage ? { page: 1, ...patch } : patch;
+    },
+  });
   private readonly catalog = computed(() => {
     const episodes = this.routes.EPISODES.ifActive();
     if (episodes) {
@@ -120,7 +131,9 @@ export class CatalogPage {
   });
   protected readonly genres = ['Drama', 'Comedy', 'Science fiction', 'Mystery'];
   protected readonly query = computed(() => this.route.params().query);
-  protected readonly pageSize = computed(() => this.preferences.pageSize(this.query().pageSize));
+  protected readonly pageSize = computed(() =>
+    this.preferences.pageSize(this.binding.model().pageSize),
+  );
   protected readonly heading = computed(() => headings[this.catalog().route]);
 
   private readonly request = computed<CatalogQuery>(() => {
@@ -135,28 +148,32 @@ export class CatalogPage {
     toObservable(this.request).pipe(switchMap((req) => this.backendApi.getCatalog(req))),
   );
 
-  protected update(patch: RouteQueryPatch<typeof this.route>) {
-    void this.route.patchQuery(patch, { replaceUrl: true });
+  protected setSort(field: 'title' | 'year') {
+    this.edit({ sort: { ...this.binding.model().sort, field } });
   }
-  protected sort(field: 'title' | 'year') {
-    this.update({ sort: { ...this.query().sort, field }, page: 1 });
-  }
-  protected direction(direction: 'asc' | 'desc') {
-    this.update({ sort: { ...this.query().sort, direction }, page: 1 });
+  protected setDirection(direction: 'asc' | 'desc') {
+    this.edit({ sort: { ...this.binding.model().sort, direction } });
   }
   protected setPageSize(value: string) {
-    this.update({ pageSize: Number(value) as PageSize, page: 1 });
+    this.edit({ pageSize: Number(value) as PageSize });
+  }
+  protected setPage(page: number) {
+    this.edit({ page });
   }
   protected toggleGenre(genre: string) {
-    const { genres } = this.query();
-    this.update({
+    const { genres } = this.binding.model();
+    this.edit({
       genres: genres.includes(genre)
         ? genres.filter((value) => value !== genre)
         : [...genres, genre],
-      page: 1,
     });
   }
   protected toggleFavorite(id: CatalogItem['id']) {
     void this.backendApi.toggleFavorite(id);
+  }
+
+  // Every control changes the model, and the binding decides when the URL follows.
+  private edit(change: Partial<ReturnType<typeof this.binding.model>>) {
+    this.binding.model.update((query) => ({ ...query, ...change }));
   }
 }

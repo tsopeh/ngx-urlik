@@ -33,15 +33,6 @@ The fix is still open: the controls could reset to the route's defaults, or the 
 
 ## TasteTrack
 
-### The catalog search writes every keystroke
-
-The search box in `catalog-page.ts`.
-
-It calls `patchQuery()` on each input event. The agent skill says text inputs go through a bound
-form, and Library and History already do that.
-
-The fix binds the catalog filters to a form with a debounced search.
-
 ### The theme breaks where storage is blocked
 
 `ThemeService` in `theme.ts`.

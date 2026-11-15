@@ -395,3 +395,26 @@ test('a bad remembered season leaves the show page working', async ({ page }) =>
   await expect(page.getByRole('link', { name: /^Continue with Season/ })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('writes a typed catalog search to the URL once, not per keystroke', async ({ page }) => {
+  await page.addInitScript(() => {
+    const writes: string[] = [];
+    Object.assign(window, { writes });
+    for (const method of ['pushState', 'replaceState'] as const) {
+      const original = history[method].bind(history);
+      history[method] = (data, unused, url) => {
+        writes.push(String(url));
+        original(data, unused, url);
+      };
+    }
+  });
+  await page.goto('/movies?pageSize=12&page=2');
+  const search = page.getByRole('searchbox', { name: 'Search', exact: true });
+  await expect(page.locator('app-media-card')).not.toHaveCount(0);
+
+  await search.pressSequentially('nine cells', { delay: 50 });
+  await expect(page).toHaveURL(/\/movies\?pageSize=12&search=nine%20cells$/);
+  await expect(page.locator('app-media-card')).toHaveCount(1);
+  const writes = await page.evaluate(() => (window as unknown as { writes: string[] }).writes);
+  expect(writes.filter((url) => url.includes('search='))).toHaveLength(1);
+});
