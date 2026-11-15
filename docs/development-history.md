@@ -563,6 +563,12 @@ Three more could happen but weren't fixed that day. We fixed them on Nov 13:
   idea behind the library. Rules that are easy to miss moved to a new section of the agent skill.
   Examples stopped using a `page` field, because a reader can't tell a `page` parameter from a web
   page. They use `search` and `minRating` instead.
+- On Nov 15 the docs stopped covering URLs that people edit by hand. The maintainer expects the app
+  to write every URL it reads, so a value it didn't write is just invalid. The docs no longer say
+  how a patch rewrites text like `?minRating=02`, or which odd input `numberCodec()` rejects. The
+  custom codec section shows compact formats instead: a date range that writes whole days as
+  `2026-11-01..2026-11-15`, and an API's paging value, `3,24,130`. That example's field is `paging`,
+  not `page`.
 - ESLint with braces on every body (`3011517`, `d117a48`). Fix style with `npm run lint:fix`, not by
   hand.
 

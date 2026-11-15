@@ -215,43 +215,19 @@ interface UrlParamCodec<T> {
 query, and inside a list. In the query, the property name is the URL key. When a key repeats, the
 last one wins: `?minRating=1&minRating=4.5` reads as `4.5`.
 
-| Codec                        | Accepts                                                                                        |
-| ---------------------------- | ---------------------------------------------------------------------------------------------- |
-| `stringCodec()`              | Any string, including `''`                                                                     |
-| `numberCodec()`              | Decimals like `-1.5`, `.5`, `1e3`, and `Infinity`. Not `NaN`, hex, whitespace, `''`, or `12px` |
-| `booleanCodec()`             | Exactly `true` or `false`                                                                      |
-| `enumCodec(values)`          | One value from an array, a record, or any enum. `Status.Archived = 1` writes `1`               |
-| `listCodec(item, separator)` | `item` values joined by `separator`                                                            |
+| Codec                        | Accepts                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `stringCodec()`              | Any string, including `''`                                                       |
+| `numberCodec()`              | Any number except `NaN`, like `4.5` or `-Infinity`                               |
+| `booleanCodec()`             | `true` or `false`                                                                |
+| `enumCodec(values)`          | One value from an array, a record, or any enum. `Status.Archived = 1` writes `1` |
+| `listCodec(item, separator)` | `item` values joined by `separator`                                              |
 
 `enumCodec()` takes strings and finite numbers, so string, numeric, and mixed enums all
 work. Each value writes as its text. Two values can't share one, so `enumCodec([1, '1'])` throws.
 
 A path value can't write as `''`, `.`, or `..`. A path segment can't be empty, and browsers drop `.`
 and `..`.
-
-### Write your own codec
-
-For dates, objects, or stricter rules, write the two functions:
-
-```ts
-const rating: UrlParamCodec<number> = {
-  serialize: (value) =>
-    Number.isInteger(value) && value >= 0 && value <= 5 ? String(value) : null,
-  deserialize: (raw) => (/^[0-5]$/.test(raw) ? Number(raw) : null),
-};
-
-minRating: queryParam({ codec: rating, defaultValue: 0 });
-```
-
-`?minRating=3` reads as `3`. `?minRating=9` reads as 0 and logs a warning. Writing `9` drops the
-field. On a path, `/ratings/9` doesn't match, and building a link with `9` throws.
-
-A codec follows three rules:
-
-- One text per value. The library compares text to tell whether a value changed.
-- Lose nothing: `deserialize(serialize(value))` gives back an equal value. Shorter text is fine,
-  like `t:a` for `{ field: 'title', direction: 'asc' }`. Trimming isn't.
-- Stay pure, and don't call `inject()`. Codecs often run outside an injection context.
 
 ### Lists
 
@@ -264,12 +240,82 @@ key. That's why "select none" works even with `defaultValue: ['new']`. Without a
 key reads as `null`.
 
 A backslash keeps a comma inside an item: `['red, green', 'blue']` writes
-`?tags=red%5C,%20green,blue`. Empty items, like `?tags=a,,b`, fail and read as the default.
+`?tags=red%5C,%20green,blue`. Items can't be empty, so `['']` can't be written.
+
+### Write your own codec
+
+Write one when a value has a format of its own. Your app writes the URL and reads it back, so a
+codec only has to read the text it writes.
+
+A date range can be short when it covers whole days. This codec writes `2026-11-01..2026-11-15` for
+1 to 15 November, and full times for anything else:
+
+```ts
+type Period = { readonly start: Date; readonly end: Date };
+
+const day = /^\d{4}-\d{2}-\d{2}$/;
+
+const periodCodec: UrlParamCodec<Period> = {
+  serialize: ({ start, end }) => {
+    const [from, to] = [start.toISOString(), end.toISOString()];
+    const fullDays = from.endsWith('T00:00:00.000Z') && to.endsWith('T23:59:59.999Z');
+    return fullDays ? `${from.slice(0, 10)}..${to.slice(0, 10)}` : `${from}..${to}`;
+  },
+  deserialize: (raw) => {
+    const [from, to] = raw.split('..');
+    const days = day.test(from) && day.test(to);
+    const start = new Date(days ? `${from}T00:00:00.000Z` : from);
+    const end = new Date(days ? `${to}T23:59:59.999Z` : to);
+    return Number.isNaN(start.getTime() + end.getTime()) ? null : { start, end };
+  },
+};
+
+period: queryParam({ codec: periodCodec });
+```
+
+`2026-11-01..2026-11-15` reads back as `2026-11-01T00:00:00.000Z` to `2026-11-15T23:59:59.999Z`. A
+range from 9:30 to 17:00 writes `2026-11-01T09:30:00.000Z..2026-11-01T17:00:00.000Z`. Both ends are
+in UTC.
+
+A codec can also match a format your API already uses. Say it takes paging as one value: the page
+number, the page size, and the total number of items, like `3,24,130`:
+
+```ts
+type Paging = {
+  readonly pageNumber: number;
+  readonly pageSize: number;
+  readonly totalItems: number;
+};
+
+const pagingCodec: UrlParamCodec<Paging> = {
+  serialize: ({ pageNumber, pageSize, totalItems }) => `${pageNumber},${pageSize},${totalItems}`,
+  deserialize: (raw) => {
+    const parts = /^(\d+),(\d+),(\d+)$/.exec(raw);
+    return parts
+      ? { pageNumber: Number(parts[1]), pageSize: Number(parts[2]), totalItems: Number(parts[3]) }
+      : null;
+  },
+};
+
+paging: queryParam({ codec: pagingCodec });
+```
+
+The URL holds `?paging=3,24,130`, and `pagingCodec.serialize()` writes the same text into the API
+request.
+
+A codec follows three rules:
+
+- One text per value. The library compares text to tell whether a value changed.
+- Lose nothing: `deserialize(serialize(value))` gives back an equal value that was serialized.
+- Stay pure, and don't call `inject()`. Codecs often run outside an injection context.
+
+Return `null` for a value you can't write, or text you can't read. A query field is then left out of
+the link, or reads as its default. A path value makes the link throw, or the route not match.
 
 ### Defaults and required fields
 
-With `defaultValue: 0`, `/results` and `/results?minRating=abc` both read `minRating` as 0. Writing
-0 takes `minRating` out of the URL. Without a default, a missing field reads as `null`.
+With `defaultValue: 0`, `/results` reads `minRating` as 0, and writing 0 takes it out of the URL.
+Without a default, a missing field reads as `null`.
 
 A default is a plain value, so `/results` shows the same page for everyone. A fallback that needs a
 service goes in the page:
@@ -327,7 +373,7 @@ updates before Angular creates the new page, so a page's constructor sees its ow
 route that isn't active throws.
 
 `params` fires only when a field's text changes. A field whose text stayed the same keeps the same
-object. Go from `?sort=title:asc&minRating=1` to `?minRating=4.5&sort=title:asc`, and `sort` is
+object. Go from `?sort=title:asc&minRating=1` to `?sort=title:asc&minRating=4.5`, and `sort` is
 still `===` the one you read before. So a `computed()` over `sort` doesn't rerun its readers. Don't
 change these objects in place.
 
@@ -463,8 +509,7 @@ await results.patchQuery({ search: 'elm', minRating: 0 });
 
 `minRating` went back to its default, so it left the URL. `sort` stayed, because a patch never
 touches keys it doesn't know. Fields you leave out stay too, and so do the path and the fragment. To
-clear a field, set it to its default or `null`. A patch also cleans up: `?minRating=04.50` becomes
-`?minRating=4.5`.
+clear a field, set it to its default or `null`.
 
 Each patch is one Angular navigation, built from the URL when you call it. A new navigation cancels
 the one running, so two patches in a row don't add up:
@@ -586,8 +631,8 @@ the field again. `onWriteFailure` gets `{ kind: 'declined' }` or `{ kind: 'error
 
 ## Diagnostics and errors
 
-Bad URL data falls back to the default and logs a warning. On `/results?minRating=abc`, `minRating`
-reads as 1, and you get:
+A value the codec can't read falls back to the default and logs a warning. On
+`/results?minRating=abc`, `minRating` reads as 0, and you get:
 
 ```ts
 {

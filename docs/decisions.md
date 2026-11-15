@@ -98,11 +98,10 @@ writes an empty list as `?tags=`, so `[]` stays apart from a missing key, even w
 isn't empty. A custom codec can define any other list format the same way.
 
 **Cost:** a list field needs `defaultValue: []` to read a missing key as empty. An item that holds
-the separator or a backslash gets a `%5C` in the URL. A URL from other code, like `?tag=a&tag=b`,
-reads as `['b']`, because a repeated key gives its last value. A bad item fails the whole field.
-Codecs and defaults can't use `inject()`. A fallback that depends on a service, like the user's
-locale, goes in the page that reads the field. A default that could change would let the same URL
-show different values, and it would pull services into the route file.
+the separator or a backslash gets a `%5C` in the URL. Codecs and defaults can't use `inject()`. A
+fallback that depends on a service, like the user's locale, goes in the page that reads the field. A
+default that could change would let the same URL show different values, and it would pull services
+into the route file.
 
 ## Compare field values by their URL text
 

@@ -147,8 +147,8 @@ Give a remembered query field no default, so the URL holds it only when someone 
   other value, or when two values write the same text, like `1` and `'1'`. It skips the reverse
   entries TypeScript adds to numeric enums.
 - `listCodec()` throws when it's created if the separator is empty or holds a backslash. `[]` writes
-  as `?tags=`. Items can't be empty, so `?tags=a,,b` fails and `['']` can't be written. A backslash
-  escapes the separator and itself. A backslash before anything else fails.
+  as `?tags=`. Items can't be empty, so `['']` can't be written. A backslash escapes the separator
+  and itself.
 - A query value leaves the URL when its text matches the default's text.
 - Every declared field is always in `params().query`. A field without a default reads as `null`.
 - A path value can't write as `''`, `.`, or `..`.
@@ -165,8 +165,7 @@ Give a remembered query field no default, so the URL holds it only when someone 
 
 **Reading**
 
-- Reordering keys doesn't fire `params`. Values keep their identity while their text stays the
-  same, so never change them in place.
+- Values keep their identity while their text stays the same, so never change them in place.
 - `paramsSnapshot()` throws if the snapshot doesn't contain the route. Any snapshot from the same
   navigation works, so a child's guard can read its parent.
 - `ifActive()` notifies only when its answer changes, not on every query change.
@@ -180,8 +179,6 @@ Give a remembered query field no default, so the URL holds it only when someone 
 **Writing**
 
 - A field passed as `undefined` stays as it is. So do fields owned by child routes.
-- Every patch rewrites all the route's declared fields, so `?minRating=abc` and `?minRating=0`
-  disappear.
 - `patchQuery()` takes the same options as `navigate()`, like `replaceUrl` and `state`.
 - A patch that wouldn't change the URL resolves `true` without navigating. If another navigation is
   running, it navigates anyway, to cancel that one. So `false` means a guard said no or another
