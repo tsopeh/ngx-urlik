@@ -528,21 +528,28 @@ await results.patchQuery({ search: 'elm', minRating: 0 });
 touches keys it doesn't know, and so did the fields you left out, the path, and the fragment. To
 clear a field, set it to its default or to `null`.
 
-Each patch is one Angular navigation, built from the URL at the moment you call it. A new
-navigation cancels the one in progress, so two patches in a row don't add up:
+Each patch is one Angular navigation, built from the URL at the moment you call it. A new patch
+cancels one still in progress, so two patches in a row don't add up:
 
 ```ts
 void results.patchQuery({ search: 'elm' });
 void results.patchQuery({ minRating: 4.5 }); // cancels the first: only minRating=4.5 is left
 ```
 
-Put fields that change together in one patch. The promise tells you how it went:
+Put fields that change together in one patch.
+
+A patch never cancels a navigation it didn't start, like a link click, `navigate()`, or Back. While
+one of those runs, the patch resolves `false` without navigating. A form writes after its debounce,
+often while the user is already on the way to another page, and that write mustn't keep them where
+they were.
+
+The promise tells you how it went:
 
 | What happened                             | The promise      |
 | ----------------------------------------- | ---------------- |
 | It worked, or the URL already matched     | Resolves `true`  |
 | A guard said no                           | Resolves `false` |
-| Something else navigated first            | Resolves `false` |
+| Another navigation won, or was running    | Resolves `false` |
 | The route wasn't active, or Angular threw | Rejects          |
 
 ## Bind a form

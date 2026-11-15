@@ -280,6 +280,12 @@ navigation wins. Then:
   queue used `info` to recognize its own navigations.
 - `18dc692` (Nov 12): a patch the URL already holds resolves `true` without navigating. Angular
   resolves `false` for it, which looks like a guard saying no.
+- Nov 15: a bug hunt found that a debounced form write cancelled the user's click on a link when
+  the next page was still loading, so the user stayed where they were. The maintainer chose that a
+  patch cancels only an earlier patch, and resolves `false` while any other navigation runs. Holding
+  writes in the form bindings alone would have let a direct `patchQuery()` on a timer still cancel
+  a click. Skipping only navigations to another path would still have cancelled a link to the same
+  page with other filters.
 
 **Why.** The maintainer had used these building blocks in other projects for months with no
 navigation problems. The queue cost more to explain than it gained.

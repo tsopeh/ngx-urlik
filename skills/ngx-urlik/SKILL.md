@@ -52,7 +52,8 @@ All URL access goes through the typed route, `AppRouter.routes.NAME`.
   you. It returns plain values, not a signal. `params()` there still shows the page being left.
 - **Write** with `route.patchQuery(patch)`, passing only the fields that changed. Each patch is one
   navigation, built from the URL at the moment you call it, and a later navigation cancels it. Put
-  fields that change together in one patch.
+  fields that change together in one patch. A patch never cancels a navigation it didn't start,
+  like a link click or Back: while one runs, the patch resolves `false` and doesn't navigate.
 - **Link** with `route.createUrlTree(values)`. A link holds only the values you pass, never the
   current URL's.
 
@@ -189,9 +190,10 @@ from `globalParams()` too, and fall back to the saved value where the page reads
 
 - A field passed as `undefined` stays as it is, and so do fields owned by child routes.
 - `patchQuery()` takes the same options as `navigate()`, like `replaceUrl` and `state`.
-- A patch that wouldn't change the URL resolves `true` without navigating. If another navigation is
-  running, it navigates anyway, to cancel that one. So `false` always means a guard said no or
-  another navigation won.
+- A patch that wouldn't change the URL resolves `true` without navigating. If another patch is
+  running, it navigates anyway, to cancel that one. While any other navigation runs, a patch
+  resolves `false` without navigating. So `false` always means a guard said no or another
+  navigation won.
 - Patches collide more often when guards or resolvers run on query changes, as with
   `runGuardsAndResolvers: 'paramsOrQueryParamsChange'`.
 

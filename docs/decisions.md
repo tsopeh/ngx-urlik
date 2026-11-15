@@ -247,13 +247,21 @@ writes overlap, the later one cancels the earlier one, just as with two `router.
 Anyone who knows Angular's router already knows the rules, and a patch, a link, and the Back button
 all behave the same way.
 
+The one exception is a navigation the write didn't start. While a link, a typed `navigate()`, or
+Back runs, a patch resolves `false` without navigating. Writes often start on their own, when a
+form's debounce ends, and by then the user may have clicked a link to a page that's still loading.
+Cancelling that navigation would keep them on the page they tried to leave. `patchQuery()` knows
+its own navigations by the `UrlTree` it passes to Angular, which Angular keeps as the navigation's
+`initialUrl`.
+
 Say the page is on `?minRating=4`, and two patches start in the same tick: `{ search: 'elm' }`,
 then `{ minRating: 2 }`. Both read `?minRating=4`. The second navigation cancels the first, so the
 URL ends at `?minRating=2` without `search`. Written as one patch,
 `{ search: 'elm', minRating: 2 }`, both fields reach the URL.
 
 **Cost:** two writes started in the same tick lose the first write's fields, and so does a write
-that starts while a slow guard or resolver runs. A debounced form field still writes after the user
+that starts while a slow guard or resolver runs. A write that starts while the user navigates
+doesn't happen at all, and a form sends the field again with its next write. A debounced form field still writes after the user
 presses Back, if Back left that field alone. Code that changes several fields together should do it
 in one patch.
 

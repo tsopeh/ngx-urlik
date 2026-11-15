@@ -32,6 +32,11 @@ async function setup() {
           component: Page,
         },
         { path: 'other', component: Page },
+        // A page whose chunk takes 50 ms to load.
+        {
+          path: 'slow',
+          loadComponent: () => new Promise((resolve) => setTimeout(() => resolve(Page), 50)),
+        },
       ],
     },
   );
@@ -370,6 +375,19 @@ describe('query forms', () => {
       await router.navigateByUrl('/results?page=3');
       await vi.waitFor(() => expect(router.url).toBe('/results?page=3&search=stale'));
       expect(form.controls.search.value).toBe('stale');
+    });
+
+    it('lets the user leave while a debounced edit waits', async () => {
+      const { results, router } = await setup();
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { debounce: { search: 10 } }),
+      );
+
+      // The delay ends while the next page still loads, and the write must not cancel that
+      // navigation.
+      form.controls.search.setValue('elm');
+      expect(await router.navigateByUrl('/slow')).toBe(true);
+      expect(router.url).toBe('/slow');
     });
 
     it('drops a debounced reactive edit when a navigation changes that field', async () => {

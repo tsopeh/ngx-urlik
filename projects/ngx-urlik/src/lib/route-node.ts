@@ -152,6 +152,10 @@ export function createAppRouter(
     return readActiveState(info, active, values);
   };
 
+  // The URLs patches navigated to. Angular keeps the tree a navigation started from, so a running
+  // navigation whose tree is here came from a patch.
+  const patchTrees = new WeakSet<UrlTree>();
+
   // Like router.navigate(), a patch starts from the URL at the moment you call it.
   const patchQuery = (
     info: CompiledRoute,
@@ -160,6 +164,12 @@ export function createAppRouter(
   ) => {
     const supplied = Object.entries(patch).filter(([, value]) => value !== undefined);
     const next = { ...readCurrent(info).query, ...Object.fromEntries(supplied) };
+    // A navigation no patch started is the user's, like a link or Back, so a patch gives way to it.
+    const running = router.currentNavigation();
+    const userNavigating = running !== null && !patchTrees.has(running.initialUrl);
+    if (userNavigating) {
+      return Promise.resolve(false);
+    }
     const tree = router.parseUrl(router.url);
     for (const param of info.queryParams) {
       const output = serializeQuery(param, next[param.name]);
@@ -170,12 +180,12 @@ export function createAppRouter(
       }
     }
     // Angular skips a navigation to the URL it's on and resolves false, like a declined one. A
-    // navigation that's still running needs this one to cancel it.
+    // patch that's still running needs this one to cancel it.
     const urlUnchanged = router.serializeUrl(tree) === router.url;
-    const navigating = router.currentNavigation() !== null;
-    if (urlUnchanged && !navigating) {
+    if (urlUnchanged && running === null) {
       return Promise.resolve(true);
     }
+    patchTrees.add(tree);
     return router.navigateByUrl(tree, options);
   };
 

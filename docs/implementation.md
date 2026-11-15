@@ -88,8 +88,11 @@ matches again.
 
 `patchQuery` in `route-node.ts` reads the current query, merges the patch in, writes every declared
 field into the current URL, and calls `router.navigateByUrl()` with the caller's options. Angular's
-rule applies, so the newest navigation cancels any that's still running. If the URL wouldn't change
-and nothing is navigating, it resolves `true` without calling Angular at all, because Angular would
+rule applies between patches, so the newest one cancels any that's still running. Any other running
+navigation, like a link or Back, wins instead: the patch resolves `false` without calling Angular.
+The patch tells the two apart by its `UrlTree`. It adds each tree it navigates to a `WeakSet`, and
+Angular keeps that tree as the running navigation's `initialUrl`. If the URL wouldn't change and
+nothing is navigating, it resolves `true` without calling Angular at all, because Angular would
 resolve `false`, as if a guard had said no.
 
 | What happened                             | Result           |
@@ -97,7 +100,7 @@ resolve `false`, as if a guard had said no.
 | It worked                                 | Resolves `true`  |
 | The URL already held the patch            | Resolves `true`  |
 | A guard said no                           | Resolves `false` |
-| Something else navigated first            | Resolves `false` |
+| Another navigation won, or was running    | Resolves `false` |
 | The route wasn't active, or Angular threw | Rejects          |
 
 **Rule:** a write starts from the committed URL, not from a navigation still running, so two
@@ -174,7 +177,8 @@ itself.
 A Reactive Forms field can also be Waiting: its timer is running, and the input shows an edit the
 model hasn't taken yet. Waiting sits in front of the model, so it combines with any state above.
 
-A field becomes Unsent when a guard declines its write, another navigation cancels it, or
+A field becomes Unsent when a guard declines its write, another navigation cancels it or was running
+when it started, or
 `beforeWrite` throws. The form keeps the draft, and its next write carries the field again.
 
 ### Transitions

@@ -111,15 +111,38 @@ describe('query writes', () => {
     expect(runs).toBe(1);
   });
 
-  it('still navigates back to the current URL while another navigation runs', async () => {
-    const { appRouter, router } = setup();
+  // A navigation that no patch started is the user's, like a link or Back, so a patch never
+  // cancels it.
+  it("resolves false without navigating while a navigation it didn't start runs", async () => {
+    const release = deferred<boolean>();
+    const { appRouter, router } = setup((route) =>
+      route.queryParamMap.get('search') === 'oak' ? release.promise : true,
+    );
     await router.navigateByUrl('/results?search=elm');
 
     const away = router.navigateByUrl('/results?search=oak');
+    const patch = appRouter.routes.RESULTS.patchQuery({ search: 'fir' });
     const back = appRouter.routes.RESULTS.patchQuery({ search: 'elm' });
-    expect(await away).toBe(false);
-    await back;
-    expect(router.url).toBe('/results?search=elm');
+    release.resolve(true);
+
+    expect(await Promise.all([away, patch, back])).toEqual([true, false, false]);
+    expect(router.url).toBe('/results?search=oak');
+  });
+
+  it('leaves a typed navigation running', async () => {
+    const release = deferred<boolean>();
+    const { appRouter, router } = setup((route) =>
+      route.queryParamMap.get('search') === 'oak' ? release.promise : true,
+    );
+    await router.navigateByUrl('/results');
+    const results = appRouter.routes.RESULTS;
+
+    const away = results.navigate({ query: { search: 'oak' } });
+    const patch = results.patchQuery({ search: 'fir' });
+    release.resolve(true);
+
+    expect(await Promise.all([away, patch])).toEqual([true, false]);
+    expect(router.url).toBe('/results?search=oak');
   });
 
   it("passes navigation options through to Angular's router", async () => {
