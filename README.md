@@ -1,4 +1,6 @@
-# ngx-urlik
+# ngx-urlik — URL Is King
+
+![A howling mouse with the Angular logo on its body](docs/banner.gif)
 
 ngx-urlik is an Angular library that makes routing fully type-safe: the route definitions,
 path and query parameters, and the navigation between pages.
@@ -861,6 +863,11 @@ npm run release        # on a clean tree: npm ci, run release:check, then publis
 the library works the way it does, and what each choice costs.
 [Reading the code](https://github.com/tsopeh/ngx-urlik/blob/master/docs/implementation.md) shows
 where everything lives.
+
+## Why the howling mouse
+
+"URL Is King" shortens to _urlik_, which means "howl" in Serbian. The mouse comes from
+[this legendary video](https://www.youtube.com/watch?v=Bkq1PAyGuZY).
 
 ## License
 
