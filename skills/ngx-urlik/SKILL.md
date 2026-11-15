@@ -203,6 +203,8 @@ from `globalParams()` too, and fall back to the saved value where the page reads
   supported.
 - Signal Forms read the model in an effect, so updates made before it runs go out as one write.
 - URL changes never mark fields touched or dirty.
+- `createQueryParamsFormGroup()` controls reset to their field's default, or `null` without one. A
+  group you build yourself resets to whatever its controls were created with.
 - Signal Forms' `debounce()` delays input that comes through `[formField]`, not a direct
   `model.update()`.
 - A waiting debounced field survives navigations that change only other fields. It writes on top of

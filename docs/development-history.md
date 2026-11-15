@@ -326,6 +326,10 @@ asks.
 - **Codecs lose nothing** (Nov 14). The maintainer set the rule: compressing is fine, but reading
   must restore the value. No trimming or shortening. The README had shown a trimming codec, and the
   form kept the trailing space the codec dropped. Both went.
+- **`reset()` goes to the defaults** (Nov 15). A bug hunt found that `createQueryParamsFormGroup()`
+  created each control with the URL's value, so `form.reset()` on `?search=oak` put `oak` back.
+  The maintainer chose to reset to the route's defaults over documenting it. The forms entry point
+  reads them through `ɵqueryDefaults()`, a private export of `ngx-urlik`.
 
 **Where it stands:** open. The maintainer considered dropping the Reactive Forms `debounce` option
 for Angular's experimental `debounced()`, which delays reading a value instead of writing it. They

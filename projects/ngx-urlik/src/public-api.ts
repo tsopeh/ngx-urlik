@@ -22,3 +22,4 @@ export {
   type RouteStateOf,
   type UrlParamsState,
 } from './lib/app-router';
+export { ɵqueryDefaults } from './lib/route-node';

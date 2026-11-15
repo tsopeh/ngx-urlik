@@ -46,6 +46,21 @@ type GlobalDefinitions = {
   readonly query?: QueryDefinitions;
 };
 
+/**
+ * The default of each query field on a route from `AppRouter.routes`, or `null` for a field without
+ * one, and `undefined` for anything that isn't such a route. `ngx-urlik/forms` reads it, and it
+ * isn't public API.
+ */
+export function ɵqueryDefaults(route: object): AnyRecord | undefined {
+  const info = (route as Record<PropertyKey, unknown>)[routeNodeInfo] as CompiledRoute | undefined;
+  if (!info) {
+    return undefined;
+  }
+  return Object.fromEntries(
+    info.queryParams.map((param) => [param.name, param.definition.defaultValue ?? null]),
+  );
+}
+
 export function createAppRouter(
   routeNames: Readonly<Record<string, string>>,
   namedRoutes: ReadonlyMap<string, CompiledRoute>,

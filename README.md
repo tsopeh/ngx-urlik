@@ -564,8 +564,10 @@ const filters = createQueryParamsFormGroup(results);
 filters.patchValue({ search: 'elm', minRating: 0 });
 ```
 
-You get one non-nullable `FormControl` per field, with no validators. If you need validators,
-build the group yourself and call `bindQueryParamsToFormGroup(results, group, options)`.
+You get one non-nullable `FormControl` per field, with no validators. Each control resets to its
+field's default, so `filters.reset()` clears every filter, and a field without a default resets to
+`null`. If you need validators, build the group yourself and call
+`bindQueryParamsToFormGroup(results, group, options)`.
 
 ```ts
 import { createQueryParamsSignalForm } from 'ngx-urlik/forms';

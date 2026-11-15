@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup } from '@angular/forms';
 import { FieldTree, form as signalForm, SchemaOrSchemaFn } from '@angular/forms/signals';
+import { ɵqueryDefaults } from 'ngx-urlik';
 
 type QueryState = Readonly<Record<string, unknown>>;
 type QueryRoute<Q extends QueryState> = {
@@ -310,11 +311,14 @@ export function createQueryParamsFormGroup<Q extends QueryState>(
   options: QueryParamsFormGroupOptions<Q> = {},
 ): FormGroup<QueryParamsFormControls<Q>> {
   const query = route.params().query;
+  // A control resets to the value it's created with, so each starts at its field's default. The
+  // binding then shows the URL's values.
+  const defaults = ɵqueryDefaults(route);
   const controls = Object.fromEntries(
-    Object.entries(query).map(([param, value]) => [
-      param,
-      new FormControl(value, { nonNullable: true }),
-    ]),
+    Object.entries(query).map(([param, value]) => {
+      const initial = defaults && Object.hasOwn(defaults, param) ? defaults[param] : value;
+      return [param, new FormControl(initial, { nonNullable: true })];
+    }),
   ) as QueryParamsFormControls<Q>;
   const result = new FormGroup(controls);
   bindQueryParamsToFormGroup(route, result, options);

@@ -79,6 +79,16 @@ describe('query forms', () => {
     expect(form.getRawValue()).toEqual({ search: 'new', page: 1 });
   });
 
+  it("resets a created form group to the route's defaults", async () => {
+    const { results, router } = await setup();
+    await router.navigateByUrl('/results?search=oak&page=3');
+    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
+
+    form.reset();
+    expect(form.getRawValue()).toEqual({ search: '', page: 1 });
+    await vi.waitFor(() => expect(router.url).toBe('/results'));
+  });
+
   it('commits a multi-field signal form edit in one navigation', async () => {
     const { results, router } = await setup();
     const starts: string[] = [];
