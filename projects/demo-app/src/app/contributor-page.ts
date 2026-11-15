@@ -1,15 +1,15 @@
 import { Component, computed, inject } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { CatalogLinks } from './catalog-links';
+import { LoadingIndicator } from './loading-indicator';
 import { BackendApi } from './backend';
 
 @Component({
-  imports: [RouterLink],
+  imports: [LoadingIndicator, RouterLink],
   template: `
-    <section class="page-stack">
+    <section class="page-stack" [attr.aria-busy]="loaded.isLoading()">
       @if (profile()?.contributor; as person) {
         <header class="page-header">
           <div>
@@ -17,6 +17,7 @@ import { BackendApi } from './backend';
             <h1>{{ person.name }}</h1>
             <p>{{ person.description }}</p>
           </div>
+          <app-loading-indicator [active]="loaded.isLoading()" />
         </header>
         <section class="panel">
           <h2>Filmography</h2>
@@ -29,6 +30,8 @@ import { BackendApi } from './backend';
         </section>
       } @else if (profile() === null) {
         <h1>Profile not found</h1>
+      } @else {
+        <app-loading-indicator />
       }
     </section>
   `,
@@ -48,9 +51,9 @@ export class ContributorPage {
     }
     throw new Error('ContributorPage shows only person and studio routes');
   });
-  protected readonly profile = toSignal(
-    toObservable(this.contributorId).pipe(
-      switchMap((id) => this.backendApi.getContributorProfile(id)),
-    ),
-  );
+  protected readonly loaded = rxResource({
+    params: this.contributorId,
+    stream: ({ params }) => this.backendApi.getContributorProfile(params),
+  });
+  protected readonly profile = this.loaded.value;
 }

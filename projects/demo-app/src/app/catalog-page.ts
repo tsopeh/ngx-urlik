@@ -1,19 +1,20 @@
 import { Component, computed, inject } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { rxResource } from '@angular/core/rxjs-interop';
 import { debounce, FormField } from '@angular/forms/signals';
 import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
-import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { Preferences } from './preferences';
 import { BackendApi, type CatalogItem, type CatalogQuery } from './backend';
 import { CatalogLinks } from './catalog-links';
+import { LoadingIndicator } from './loading-indicator';
+import { withPreviousValue } from './with-previous-value';
 import type { PageSize } from './codecs';
 import { MediaCard } from './media-card';
 
 const headings = { episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' } as const;
 
 @Component({
-  imports: [FormField, MediaCard],
+  imports: [FormField, LoadingIndicator, MediaCard],
   template: `
     <section class="page-stack inset">
       <div class="section-heading">
@@ -27,6 +28,7 @@ const headings = { episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' } a
             }
           </p>
         </div>
+        <app-loading-indicator [active]="titles.isLoading()" />
       </div>
       <div class="filter-panel">
         <label
@@ -73,7 +75,7 @@ const headings = { episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' } a
           </button>
         }
       </div>
-      <div class="media-grid" [attr.aria-busy]="!response()">
+      <div class="media-grid" [attr.aria-busy]="titles.isLoading()">
         @if (response(); as loaded) {
           @for (card of loaded.items; track card.item.id) {
             <app-media-card
@@ -144,9 +146,13 @@ export class CatalogPage {
     };
   });
 
-  protected readonly response = toSignal(
-    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getCatalog(req))),
+  protected readonly titles = withPreviousValue(
+    rxResource({
+      params: this.request,
+      stream: ({ params }) => this.backendApi.getCatalog(params),
+    }),
   );
+  protected readonly response = this.titles.value;
 
   protected setSort(field: 'title' | 'year') {
     this.edit({ sort: { ...this.binding.model().sort, field } });

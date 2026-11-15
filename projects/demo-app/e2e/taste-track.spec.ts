@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 const movieUrl = '/movies/quillons-last-inference';
 const showUrl = '/tv/brambleworth-manor';
@@ -122,7 +122,7 @@ test('persists ratings and viewings, filters history, and resets the database', 
   await page.getByRole('combobox', { name: 'Rating', exact: true }).selectOption('9');
   await page.getByLabel('Viewing date').fill('2026-09-09');
   await page.getByRole('button', { name: 'Log viewing' }).click();
-  await expect(page.getByRole('status')).toHaveText('Viewing saved.');
+  await expect(page.getByRole('status').filter({ hasText: 'Viewing saved.' })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('combobox', { name: 'Rating', exact: true })).toHaveValue('9');
   await expect(page.getByRole('heading', { name: '3 recorded viewings' })).toBeVisible();
@@ -299,7 +299,7 @@ test("rejects a viewing date the journal can't store", async ({ page }) => {
 
   await page.getByRole('button', { name: 'Log viewing' }).click();
   await expect(page.getByRole('alert')).toHaveText('Enter a date like 2026-11-11.');
-  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: 'Viewing saved.' })).toHaveCount(0);
   await expect(viewings).toHaveText('2 recorded viewings');
 });
 
@@ -361,7 +361,7 @@ test.describe('east of UTC+4', () => {
     await page.goto(movieUrl);
     await page.getByLabel('Viewing date').fill('2026-09-09');
     await page.getByRole('button', { name: 'Log viewing' }).click();
-    await expect(page.getByRole('status')).toHaveText('Viewing saved.');
+    await expect(page.getByRole('status').filter({ hasText: 'Viewing saved.' })).toBeVisible();
     await page.goto('/history?from=2026-09-09&to=2026-09-09');
     await expect(page.locator('.history-list article time')).toHaveText('Sep 9, 2026');
   });
@@ -447,4 +447,67 @@ test('runs where the browser blocks storage', async ({ page }) => {
   await page.goto('/movies?pageSize=12');
   await expect(page.locator('app-media-card')).toHaveCount(12);
   expect(errors).toEqual([]);
+});
+
+// Records every loading indicator the page shows, even for one frame, since an answer can arrive
+// within 150 ms.
+async function watchLoading(page: Page) {
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    Object.assign(window, { seenLoading: seen });
+    new MutationObserver(() => {
+      for (const status of document.querySelectorAll('[role="status"]')) {
+        if (status.textContent?.includes('Loading')) {
+          seen.push(location.pathname);
+        }
+      }
+    }).observe(document, { childList: true, subtree: true, characterData: true });
+  });
+  return () => page.evaluate(() => (window as unknown as { seenLoading: string[] }).seenLoading);
+}
+
+test('shows a loading indicator until a page has its data', async ({ page }) => {
+  const seenLoading = await watchLoading(page);
+  const pages = [
+    ['/movies', page.locator('app-media-card').first()],
+    ['/library', page.locator('app-media-card').first()],
+    ['/history', page.locator('.history-list article').first()],
+    [movieUrl, page.getByRole('heading', { name: "Quillon's Last Inference" })],
+    ['/people', page.getByRole('link', { name: /Wendell/ })],
+    ['/people/wendell', page.getByRole('heading', { name: 'Filmography' })],
+  ] as const;
+  for (const [url, loaded] of pages) {
+    await page.goto(url);
+    await expect(loaded).toBeVisible();
+    expect(await seenLoading(), url).toContain(url);
+    await expect(page.getByRole('status').filter({ hasText: 'Loading' })).toHaveCount(0);
+  }
+});
+
+test('dims the results while they reload', async ({ page }) => {
+  const seenLoading = await watchLoading(page);
+  await page.goto('/movies');
+  const grid = page.locator('.media-grid');
+  await expect(page.locator('app-media-card').first()).toBeVisible();
+  await expect(grid).toHaveAttribute('aria-busy', 'false');
+
+  // Count the cards each time the grid turns busy: the last results stay while the next load.
+  await grid.evaluate((element) => {
+    const counts: number[] = [];
+    Object.assign(window, { busyCards: counts });
+    new MutationObserver(() => {
+      if (element.getAttribute('aria-busy') === 'true') {
+        counts.push(element.querySelectorAll('app-media-card').length);
+      }
+    }).observe(element, { attributes: true });
+  });
+  const before = (await seenLoading()).length;
+  await page.getByRole('combobox', { name: 'Sort' }).selectOption('year');
+  await expect.poll(async () => (await seenLoading()).length).toBeGreaterThan(before);
+  await expect(grid).toHaveAttribute('aria-busy', 'false');
+  const busyCards = await page.evaluate(
+    () => (window as unknown as { busyCards: number[] }).busyCards,
+  );
+  expect(busyCards.length).toBeGreaterThan(0);
+  expect(busyCards.every((count) => count > 0)).toBe(true);
 });

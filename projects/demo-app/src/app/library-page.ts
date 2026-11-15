@@ -1,11 +1,12 @@
 import { Component, computed, inject } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { rxResource } from '@angular/core/rxjs-interop';
 import { debounce, FormField, minLength } from '@angular/forms/signals';
 import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
-import { switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
 import { Preferences } from './preferences';
 import { CatalogLinks } from './catalog-links';
+import { LoadingIndicator } from './loading-indicator';
+import { withPreviousValue } from './with-previous-value';
 import { experienceCountCodec, type PageSize } from './codecs';
 import {
   BackendApi,
@@ -17,7 +18,7 @@ import {
 import { MediaCard } from './media-card';
 
 @Component({
-  imports: [FormField, MediaCard],
+  imports: [FormField, LoadingIndicator, MediaCard],
   template: `
     <section class="page-stack">
       <header class="page-header">
@@ -121,8 +122,9 @@ import { MediaCard } from './media-card';
             }
           </h2>
         </div>
+        <app-loading-indicator [active]="library.isLoading()" />
       </div>
-      <div id="favorites" class="media-grid" [attr.aria-busy]="!response()">
+      <div id="favorites" class="media-grid" [attr.aria-busy]="library.isLoading()">
         @if (response(); as loaded) {
           @for (card of loaded.items; track card.item.id) {
             <app-media-card
@@ -186,9 +188,13 @@ export class LibraryPage {
     return { ...query, pageSize: this.preferences.pageSize(query.pageSize) };
   });
 
-  protected readonly response = toSignal(
-    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getLibrary(req))),
+  protected readonly library = withPreviousValue(
+    rxResource({
+      params: this.request,
+      stream: ({ params }) => this.backendApi.getLibrary(params),
+    }),
   );
+  protected readonly response = this.library.value;
 
   protected countValue() {
     const count = this.binding.model().replayCount;

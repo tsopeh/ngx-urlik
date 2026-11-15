@@ -1,16 +1,10 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { rxResource } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { of, switchMap } from 'rxjs';
 import { AppRouter } from './app-router';
-import {
-  BackendApi,
-  isViewingDate,
-  type ItemDetailRequest,
-  type LibraryStatus,
-  type Season,
-} from './backend';
+import { BackendApi, isViewingDate, type ItemDetailRequest, type LibraryStatus } from './backend';
 import { CatalogLinks } from './catalog-links';
+import { LoadingIndicator } from './loading-indicator';
 import { Preferences } from './preferences';
 
 /** The date as `YYYY-MM-DD` in the browser's timezone. */
@@ -21,9 +15,9 @@ function localDate(date: Date): string {
 }
 
 @Component({
-  imports: [RouterLink],
+  imports: [LoadingIndicator, RouterLink],
   template: `
-    <section class="page-stack">
+    <section class="page-stack" [attr.aria-busy]="loaded.isLoading()">
       @if (item(); as title) {
         <header class="page-header">
           <div>
@@ -31,6 +25,7 @@ function localDate(date: Date): string {
             <h1>{{ heading() }}</h1>
             <p>{{ title.subtitle }}</p>
           </div>
+          <app-loading-indicator [active]="loaded.isLoading()" />
         </header>
         <nav class="anchor-links" aria-label="On this page">
           <a [routerLink]="[]" fragment="overview" queryParamsHandling="preserve">Overview</a
@@ -56,11 +51,13 @@ function localDate(date: Date): string {
             </p>
           }
           @if (seasonLinks().length) {
-            <nav class="anchor-links" aria-label="Seasons">
+            <nav class="anchor-links" aria-label="Seasons" [attr.aria-busy]="seasons.isLoading()">
               @for (link of seasonLinks(); track link.label) {
                 <a [routerLink]="link.url">{{ link.label }}</a>
               }
             </nav>
+          } @else if (seasons.isLoading()) {
+            <app-loading-indicator />
           }
         </section>
         @if (!isSeason()) {
@@ -129,6 +126,8 @@ function localDate(date: Date): string {
       } @else if (detail() === null) {
         <h1>Title not found</h1>
         <p>This movie, show, season, or episode is not in the catalog.</p>
+      } @else {
+        <app-loading-indicator />
       }
     </section>
   `,
@@ -169,9 +168,11 @@ export class DetailPage {
     throw new Error('DetailPage shows only movie, show, season, and episode routes');
   });
 
-  protected readonly detail = toSignal(
-    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getItemDetail(req))),
-  );
+  protected readonly loaded = rxResource({
+    params: this.request,
+    stream: ({ params }) => this.backendApi.getItemDetail(params),
+  });
+  protected readonly detail = this.loaded.value;
 
   protected readonly item = computed(() => this.detail()?.item);
   protected readonly isSeason = computed(() => this.detail()?.isSeason ?? false);
@@ -235,18 +236,17 @@ export class DetailPage {
       }),
     };
   });
-  private readonly seasons = toSignal(
-    toObservable(this.showId).pipe(
-      switchMap((showId) => (showId ? this.backendApi.getSeasons(showId) : of([]))),
-    ),
-    { initialValue: [] as readonly Season[] },
-  );
+  // A movie, season, or episode has no seasons to load, so the resource stays idle there.
+  protected readonly seasons = rxResource({
+    params: () => this.showId() ?? undefined,
+    stream: ({ params }) => this.backendApi.getSeasons(params),
+  });
   // A show lists its seasons; each link keeps the catalog filters.
   protected readonly seasonLinks = computed(() => {
     if (this.showId() === null) {
       return [];
     }
-    return this.seasons().map((season) => ({
+    return (this.seasons.value() ?? []).map((season) => ({
       label: season.title,
       url: this.routes.SEASON_DETAIL.createUrlTree({
         path: { showId: season.showId, seasonNumber: season.number },

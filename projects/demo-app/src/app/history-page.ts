@@ -1,18 +1,19 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { rxResource } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
-import { switchMap } from 'rxjs';
 import { BackendApi, type HistoryQuery } from './backend';
 import { AppRouter } from './app-router';
 import { Preferences } from './preferences';
 import { CatalogLinks } from './catalog-links';
+import { LoadingIndicator } from './loading-indicator';
+import { withPreviousValue } from './with-previous-value';
 import type { PageSize } from './codecs';
 
 @Component({
-  imports: [DatePipe, ReactiveFormsModule, RouterLink],
+  imports: [DatePipe, LoadingIndicator, ReactiveFormsModule, RouterLink],
   template: `
     <section class="page-stack">
       <header class="page-header">
@@ -21,6 +22,7 @@ import type { PageSize } from './codecs';
           <h1>Viewing history</h1>
           <p>Your movies, episodes, and rewatches.</p>
         </div>
+        <app-loading-indicator [active]="journal.isLoading()" />
       </header>
       <form class="filter-panel" [formGroup]="form" (submit)="$event.preventDefault()">
         <label class="search"
@@ -49,7 +51,11 @@ import type { PageSize } from './codecs';
           </select></label
         >
       </form>
-      <section class="history-list" aria-label="Journal entries" [attr.aria-busy]="!response()">
+      <section
+        class="history-list"
+        aria-label="Journal entries"
+        [attr.aria-busy]="journal.isLoading()"
+      >
         @if (response(); as loaded) {
           @for (entry of loaded.entries; track entry.event.id) {
             <article>
@@ -119,9 +125,13 @@ export class HistoryPage {
     pageSize: this.pageSize(),
   }));
 
-  protected readonly response = toSignal(
-    toObservable(this.request).pipe(switchMap((req) => this.backendApi.getHistory(req))),
+  protected readonly journal = withPreviousValue(
+    rxResource({
+      params: this.request,
+      stream: ({ params }) => this.backendApi.getHistory(params),
+    }),
   );
+  protected readonly response = this.journal.value;
 
   constructor() {
     this.form.controls.search.addValidators(Validators.minLength(3));
