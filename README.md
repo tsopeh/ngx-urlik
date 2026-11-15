@@ -1,14 +1,21 @@
 # ngx-urlik
 
-Type-safe URL parameters and navigation for Angular Router.
+ngx-urlik is an Angular library that makes routing fully type-safe: the route definitions,
+path and query parameters, and the navigation between pages.
 
-Angular Router gives you every URL value as a string or `null`. So each page parses its own
-numbers, picks its own defaults, and builds its own links, and nothing checks that two pages agree
-on what `?minRating=4` means.
+You keep writing Angular routes the way you do now, with three additions: a name for the route, a
+type for each path parameter, and a name and type for each query parameter. That's enough for
+TypeScript to check everything else. ngx-urlik turns those definitions into `AppRouter`, which has
+an entry for every named route. Through it you read parameters as typed signals, change the query,
+and build links. If you misspell a parameter or pass a string where a number goes, the code doesn't
+compile.
 
-With ngx-urlik you declare each value once, on the route it belongs to. From then on you read it as
-a typed signal, change it with one call, and build links that TypeScript checks. Angular still does
-the routing.
+You use `AppRouter` instead of Angular's `Router` and `ActivatedRoute`, because those two can't be
+made type-safe. `ActivatedRoute` gives you every parameter as a string or `null`, whatever it's
+supposed to be, and `Router` accepts any string or array as a link. TypeScript can't tell whether
+either one matches your routes, so you find out when the page runs. An
+[ESLint rule](#flag-direct-router-use) flags any code that still imports them. Angular's router
+still does the routing underneath, so guards, resolvers, and `routerLink` work the same.
 
 ## Get started
 
