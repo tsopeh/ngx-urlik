@@ -41,15 +41,6 @@ the value it was created with. On `/results?search=foo`, a "Clear filters" butto
 The fix is still open: the controls could reset to the route's defaults, or the docs could say what
 `reset()` does.
 
-### A disabled control is never written with `writeWhen: 'valid'`
-
-`bindQueryParamsToFormGroup()` in `forms/query-forms.ts`.
-
-The binding asks `control.valid`, which is `false` while a control is disabled, so a disabled field
-that differs from the URL is held forever.
-
-The fix asks whether the control is neither invalid nor pending.
-
 ### The Signal Forms binding re-reads the URL on every edit
 
 `bindQueryParamsToSignalForm()` in `forms/query-forms.ts`.

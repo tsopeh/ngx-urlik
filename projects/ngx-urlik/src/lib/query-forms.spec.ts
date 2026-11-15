@@ -286,6 +286,17 @@ describe('query forms', () => {
       await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
     });
 
+    it('writes a disabled reactive field that changes', async () => {
+      const { results, router } = await setup();
+      const form = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { writeWhen: 'valid' }),
+      );
+      form.controls.search.disable();
+
+      form.controls.search.setValue('elm');
+      await vi.waitFor(() => expect(router.url).toBe('/results?search=elm'));
+    });
+
     it('holds a signal form field until its schema passes', async () => {
       const { results, router } = await setup();
       const binding = TestBed.runInInjectionContext(() =>

@@ -8,7 +8,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
-import { FormControl, FormGroup } from '@angular/forms';
+import { AbstractControl, FormControl, FormGroup } from '@angular/forms';
 import { FieldTree, form as signalForm, SchemaOrSchemaFn } from '@angular/forms/signals';
 
 type QueryState = Readonly<Record<string, unknown>>;
@@ -288,7 +288,10 @@ export function bindQueryParamsToFormGroup<Q extends QueryState>(
     {
       reset: (query) => form.reset(query as never, { emitEvent: false }),
       write: (changes) => form.patchValue(changes as never, { emitEvent: false }),
-      valid: (param) => form.controls[param].valid,
+      valid: (param) => {
+        const control = (form.controls as Record<keyof Q, AbstractControl>)[param];
+        return !control.invalid && !control.pending;
+      },
       changes: (emit) => {
         const subscription = form.valueChanges.subscribe(() => emit(form.getRawValue() as Q));
         return () => subscription.unsubscribe();
