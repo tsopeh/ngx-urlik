@@ -17,8 +17,9 @@
     "lint:fix": "ng lint --fix && eslint --fix type-tests playwright.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "release:check": "npm run format:check && npm run lint && npm test && npm run typecheck && npm run e2e && npm run build:lib && npm pack ./dist/ngx-urlik --dry-run",
-    "release": "npm run release:check && npm publish ./dist/ngx-urlik --access public"
+    "clean": "rm -rf dist .angular out-tsc coverage test-results playwright-report type-tests/large-app.generated.test-d.ts",
+    "release:check": "npm run clean && npm run format:check && npm run lint && npm run build:lib && npm test && npm run typecheck && CI=true npm run e2e && npm pack ./dist/ngx-urlik --dry-run",
+    "release": "test -z \"$(git status --porcelain)\" || { echo 'Commit or stash every change before publishing.'; exit 1; } && npm ci && npm run release:check && npm publish ./dist/ngx-urlik --access public"
   },
   "private": true,
   "packageManager": "npm@11.17.0",

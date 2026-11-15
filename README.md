@@ -849,11 +849,12 @@ they're in the URL. Then open Brambleworth Manor, season 2, episode 1. The URL i
 
 ```sh
 npm ci
-npm run build      # library, then demo
-npm test           # unit tests for both
-npm run typecheck  # builds the library, then public type tests and a 201-route app
-npm run e2e        # Playwright against the demo
-npm run release    # run every check above, then publish the library to npm
+npm run build          # library, then demo
+npm test               # unit tests for both
+npm run typecheck      # builds the library, then public type tests and a 201-route app
+npm run e2e            # Playwright against the demo
+npm run release:check  # delete build outputs, then format, lint, build, test, and pack
+npm run release        # on a clean tree: npm ci, run release:check, then publish to npm
 ```
 
 [Design decisions](https://github.com/tsopeh/ngx-urlik/blob/master/docs/decisions.md) explains why

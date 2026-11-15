@@ -10,7 +10,9 @@ export default defineConfig({
   webServer: {
     command: 'npm start -- --host 127.0.0.1',
     url: 'http://127.0.0.1:4200',
-    reuseExistingServer: true,
+    // Locally, a running `npm start` is reused. In CI and release checks, a server already on the
+    // port fails the run, so the tests never hit a build of other code.
+    reuseExistingServer: !process.env.CI,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });
