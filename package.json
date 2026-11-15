@@ -1,6 +1,6 @@
 {
   "name": "ngx-urlik",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "scripts": {
     "ng": "ng",
     "start": "npm run build:lib && ng serve demo-app",
@@ -16,7 +16,9 @@
     "lint": "ng lint && eslint type-tests playwright.config.ts",
     "lint:fix": "ng lint --fix && eslint --fix type-tests playwright.config.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "release:check": "npm run format:check && npm run lint && npm test && npm run typecheck && npm run e2e && npm run build:lib && npm pack ./dist/ngx-urlik --dry-run",
+    "release": "npm run release:check && npm publish ./dist/ngx-urlik --access public"
   },
   "private": true,
   "packageManager": "npm@11.17.0",

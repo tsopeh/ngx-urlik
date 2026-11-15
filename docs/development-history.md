@@ -32,9 +32,8 @@ file gives the path that led there. Commit hashes point at the code for each ste
 | Nov 15, 2026    | Every doc is rewritten to open with the idea and read as connected prose            |
 | Nov 15, 2026    | `pathParam` becomes `pathParams`, and the public types get new names                |
 
-The package version is `0.2.0`. In conversation we call the design after Nov 13 "API version 3".
-The version number hasn't followed, and whether it should is open. Nothing has been published, so
-no release needs a migration guide.
+The package version is `1.0.0`. In conversation we call the design after Nov 13 "API version 3".
+The maintainer chose `1.0.0` for the first publish on Nov 15, so no release needs a migration guide.
 
 ## Step by step
 
@@ -619,11 +618,22 @@ two:
   the form binding needed extra code only so that typing `x` and deleting it didn't set the report
   off.
 
-Set aside for now: publishing, CI for the tests, a wider Angular peer range, an integer codec, a
+Set aside for now: CI for the tests, a wider Angular peer range, an integer codec, a
 default separator for `listCodec`, and README sections on testing and on how the library compares
 with input binding.
 
 **Where it stands:** decided. Don't bring the report back unless the maintainer asks.
+
+## First publish
+
+Later on Nov 15 we prepared the first publish. The README's install section became
+`npm install ngx-urlik`, and its links to `docs/`, the demo's source, and the license became full
+GitHub URLs, because the package ships the same README and npmjs.com can't follow relative paths.
+The maintainer set the version to `1.0.0`. `npm run release:check` runs formatting, lint, unit
+tests, type tests, the Playwright suite, the library build, and `npm pack --dry-run`. `npm run
+release` runs that check, then publishes `dist/ngx-urlik` publicly.
+
+**Where it stands:** ready to publish. CI for the tests is still set aside.
 
 ## Branches
 

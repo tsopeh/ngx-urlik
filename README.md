@@ -19,7 +19,11 @@ still does the routing underneath, so guards, resolvers, and `routerLink` work t
 
 ## Get started
 
-ngx-urlik needs Angular 22. It isn't on npm yet.
+ngx-urlik needs Angular 22.
+
+```sh
+npm install ngx-urlik
+```
 
 Your routes stay ordinary Angular routes. Give a name to each route your code uses, and declare the
 values that route keeps in the URL:
@@ -824,8 +828,9 @@ type SameQuery = QueryParamsOf<Routes['RESULTS']>;
 
 ## TasteTrack demo
 
-[`projects/demo-app`](projects/demo-app) is a small movie and TV journal built with ngx-urlik. Try
-it at <https://tsopeh.github.io/ngx-urlik>, or run `npm ci` and `npm start` from the repo root.
+The [demo app](https://github.com/tsopeh/ngx-urlik/tree/master/projects/demo-app) is a small movie
+and TV journal built with ngx-urlik. Try it at <https://tsopeh.github.io/ngx-urlik>, or run
+`npm ci` and `npm start` from the repo root.
 
 Change the movie genres, the sort, and the page size, then reload. The filters come back, because
 they're in the URL. Then open Brambleworth Manor, season 2, episode 1. The URL is
@@ -848,11 +853,14 @@ npm run build      # library, then demo
 npm test           # unit tests for both
 npm run typecheck  # builds the library, then public type tests and a 201-route app
 npm run e2e        # Playwright against the demo
+npm run release    # run every check above, then publish the library to npm
 ```
 
-[Design decisions](docs/decisions.md) explains why the library works the way it does, and what each
-choice costs. [Reading the code](docs/implementation.md) shows where everything lives.
+[Design decisions](https://github.com/tsopeh/ngx-urlik/blob/master/docs/decisions.md) explains why
+the library works the way it does, and what each choice costs.
+[Reading the code](https://github.com/tsopeh/ngx-urlik/blob/master/docs/implementation.md) shows
+where everything lives.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/tsopeh/ngx-urlik/blob/master/LICENSE)
