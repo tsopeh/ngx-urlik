@@ -295,6 +295,7 @@ describe('migration cookbook', () => {
     expect(await appRouter.routes.RESULTS.navigate()).toBe(true);
     expect(router.url).toBe('/results');
     await router.navigateByUrl('/catalog');
-    expect(router.url).toBe('/catalog');
+    // The catalog route matches, not the wildcard after it.
+    expect(router.routerState.snapshot.root.firstChild?.routeConfig?.path).toBe('catalog');
   });
 });

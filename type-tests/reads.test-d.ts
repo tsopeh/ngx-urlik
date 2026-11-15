@@ -33,6 +33,8 @@ describe('params()', () => {
 
   it('is a read-only signal', () => {
     expectTypeOf(MEMBER.params).toExtend<Signal<unknown>>();
+    // @ts-expect-error params can't be set
+    MEMBER.params.set(MEMBER.params());
     // @ts-expect-error values from params() are read-only
     MEMBER.params().query.page = 2;
   });
@@ -111,16 +113,22 @@ describe('globalParams()', () => {
 
 describe('helper types', () => {
   type Member = typeof MEMBER;
+  type Path = { teamId: number; memberId: number; showId: string };
+  type Query = Readonly<{
+    locale: string;
+    page: number | null;
+    tags: readonly string[];
+    ids: readonly number[];
+    labels: readonly string[] | null;
+  }>;
 
   it('name the parts of a route', () => {
-    expectTypeOf<PathParamsOf<Member>>().toEqualTypeOf<{
-      teamId: number;
-      memberId: number;
-      showId: string;
-    }>();
-    expectTypeOf<QueryParamsOf<Member>>().toEqualTypeOf<ReturnType<Member['params']>['query']>();
-    expectTypeOf<RouteStateOf<Member>>().toEqualTypeOf<ReturnType<Member['params']>>();
-    expectTypeOf<RouteQueryPatch<Member>>().toEqualTypeOf<Partial<QueryParamsOf<Member>>>();
+    expectTypeOf<PathParamsOf<Member>>().toEqualTypeOf<Path>();
+    expectTypeOf<QueryParamsOf<Member>>().toEqualTypeOf<Query>();
+    expectTypeOf<RouteStateOf<Member>>().toEqualTypeOf<
+      Readonly<{ path: Readonly<Path>; query: Query }>
+    >();
+    expectTypeOf<RouteQueryPatch<Member>>().toEqualTypeOf<Partial<Query>>();
   });
 
   it('build a node or a state from plain types', () => {

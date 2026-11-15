@@ -213,6 +213,7 @@ describe('BackendApi', () => {
         }),
       );
 
+      expect(response.total).toBeGreaterThan(0);
       expect(response.items.every((card) => card.state.status === 'completed')).toBe(true);
       expect(response.items.every((card) => (card.state.rating ?? 0) >= 9)).toBe(true);
     });

@@ -277,6 +277,12 @@ test('a double-clicked favorite ends where it started', async ({ page }) => {
   await page.waitForTimeout(300);
   await page.reload();
   await expect(favorite()).toHaveAccessibleName('Add favorite');
+
+  // One click still adds it, so the double click above toggled twice.
+  await favorite().click();
+  await expect(favorite()).toHaveAccessibleName('Remove favorite');
+  await page.reload();
+  await expect(favorite()).toHaveAccessibleName('Remove favorite');
 });
 
 test("rejects a viewing date the journal can't store", async ({ page }) => {

@@ -42,11 +42,20 @@ describe('escapeHatch', () => {
     const { escapeHatch, router } = setup();
     await router.navigateByUrl('/reports/4');
 
-    const relative = escapeHatch.createUrlTree(['..', '7'], { relativeTo: null });
-    expect(escapeHatch.serializeUrl(relative)).toBe(
-      router.serializeUrl(router.createUrlTree(['..', '7'])),
-    );
-    expect(escapeHatch.parseUrl('/home?x=1#top')).toEqual(router.parseUrl('/home?x=1#top'));
+    const report = router.routerState.root.firstChild!;
+    const sibling = escapeHatch.createUrlTree(['..', 7], {
+      relativeTo: report,
+      queryParams: { tab: 'time' },
+      fragment: 'top',
+    });
+    expect(escapeHatch.serializeUrl(sibling)).toBe('/reports/7?tab=time#top');
+
+    const parsed = escapeHatch.parseUrl('/home?x=1#top');
+    expect(parsed.root.children['primary'].segments.map((segment) => segment.path)).toEqual([
+      'home',
+    ]);
+    expect(parsed.queryParams).toEqual({ x: '1' });
+    expect(parsed.fragment).toBe('top');
   });
 
   it('keeps browserUrl, so the address bar can show a different URL', async () => {
