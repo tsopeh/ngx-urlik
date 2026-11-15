@@ -70,16 +70,6 @@ form, and Library and History already do that.
 
 The fix binds the catalog filters to a form with a debounced search.
 
-### History adds its search validator after binding
-
-The constructor in `history-page.ts`.
-
-`addValidators()` runs after the form is bound, and nothing recomputes the control's status, so a
-two-letter search from the URL counts as valid until someone edits it. The README says to build the
-group yourself when it needs validators.
-
-The fix builds the group with its validator and binds it with `bindQueryParamsToFormGroup()`.
-
 ### The theme breaks where storage is blocked
 
 `ThemeService` in `theme.ts`.
