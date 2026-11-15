@@ -66,12 +66,12 @@ results.params().query; // { search: 'oak', minRating: 4 }
 await results.patchQuery({ search: 'elm', minRating: 0 });
 // The URL is now /results?search=elm
 
-const link = results.createUrlTree({ query: { minRating: 2 } });
-// /results?minRating=2
+const link = results.createUrlTree({ query: { minRating: 4.5 } });
+// /results?minRating=4.5
 ```
 
 ```html
-<a [routerLink]="link">Rated 2 and up</a>
+<a [routerLink]="link">Rated 4.5 and up</a>
 ```
 
 `params()` is a signal, so anything that reads it updates with the URL. `patchQuery()` changes the
