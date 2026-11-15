@@ -43,15 +43,6 @@ The fix is still open: the controls could reset to the route's defaults, or the 
 
 ## TasteTrack
 
-### Viewings show a day late east of UTC+4
-
-`logViewing()` in `backend/database.ts`, the seed data, and the date in `history-page.ts`.
-
-A viewing logged on `2026-09-09` is stored as `2026-09-09T20:00:00.000Z`, and History formats it in
-the browser's timezone. In Tokyo that's `Sep 10, 2026`.
-
-The fix formats journal dates in UTC, the timezone they're stored in.
-
 ### The viewing date starts at the UTC date
 
 `viewingDate` in `detail-page.ts`.

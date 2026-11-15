@@ -353,3 +353,16 @@ test('removes a cleared History date from the URL', async ({ page }) => {
   await from.fill('');
   await expect(page).not.toHaveURL(/from=/);
 });
+
+test.describe('east of UTC+4', () => {
+  test.use({ timezoneId: 'Asia/Tokyo' });
+
+  test('shows a viewing on the day it was logged', async ({ page }) => {
+    await page.goto(movieUrl);
+    await page.getByLabel('Viewing date').fill('2026-09-09');
+    await page.getByRole('button', { name: 'Log viewing' }).click();
+    await expect(page.getByRole('status')).toHaveText('Viewing saved.');
+    await page.goto('/history?from=2026-09-09&to=2026-09-09');
+    await expect(page.locator('.history-list article time')).toHaveText('Sep 9, 2026');
+  });
+});
