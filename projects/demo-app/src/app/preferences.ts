@@ -24,7 +24,12 @@ function readPageSize(): PageSize | undefined {
 function readSeasons(): Readonly<Record<string, number>> {
   const stored = readJson(seasonsKey);
   const isRecord = typeof stored === 'object' && stored !== null;
-  return isRecord ? (stored as Record<string, number>) : {};
+  if (!isRecord) {
+    return {};
+  }
+  const isSeasonNumber = ([, value]: [string, unknown]) =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+  return Object.fromEntries(Object.entries(stored).filter(isSeasonNumber));
 }
 
 /**

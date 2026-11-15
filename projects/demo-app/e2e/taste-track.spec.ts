@@ -376,3 +376,22 @@ test.describe('late in the evening west of UTC', () => {
     await expect(page.getByLabel('Viewing date')).toHaveValue('2026-11-15');
   });
 });
+
+test('a bad remembered season leaves the show page working', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      errors.push(message.text());
+    }
+  });
+  await page.addInitScript(() =>
+    localStorage.setItem('taste-track:seasons', JSON.stringify({ 'tv_brambleworth-manor': 0 })),
+  );
+  await page.goto(showUrl);
+  await expect(
+    page.getByRole('heading', { name: 'Brambleworth Manor', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Continue with Season/ })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

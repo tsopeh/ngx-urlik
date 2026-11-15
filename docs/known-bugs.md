@@ -33,15 +33,6 @@ The fix is still open: the controls could reset to the route's defaults, or the 
 
 ## TasteTrack
 
-### A bad remembered season breaks the show page
-
-`readSeasons()` in `preferences.ts`, used by the "Continue with Season" link in `detail-page.ts`.
-
-Stored seasons are checked only for being an object. With `{ "tv_brambleworth-manor": 0 }` in
-storage, building the link throws `SEASON: can't write path parameter 'seasonNumber'`.
-
-The fix keeps only positive whole numbers when it reads the stored seasons.
-
 ### The catalog search writes every keystroke
 
 The search box in `catalog-page.ts`.
