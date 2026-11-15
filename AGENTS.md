@@ -17,3 +17,16 @@ and keep every other file in the present.
 When writing or editing documentation, use [Plainspoken Engineering](docs/writing-style.md).
 “Use Plainspoken Engineering” refers to that guide. Keep examples and behavior claims consistent
 with the implementation.
+
+# Tests
+
+A test must fail when the code it covers breaks. If it would still pass with the code deleted or
+wrong, fix the test. Watch for:
+
+- an expected value computed by the code under test
+- `every()` on a list that may be empty
+- a value the test passed in, read back
+- an end state that also holds if nothing ran
+
+When unsure, break the code, run the test, and restore the file. Type tests read `dist/`, so run
+`npm run build:lib` first.
