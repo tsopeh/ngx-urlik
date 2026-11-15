@@ -219,9 +219,10 @@ Library test paths below are relative to `projects/ngx-urlik`.
 | Public types               | `type-tests/*.test-d.ts` at the repo root |
 | Type-check speed           | `type-tests/generate-large-app.mjs`       |
 
-Build before you run the type tests. `type-tests` and the demo load `ngx-urlik` from `dist`. Test
-what a caller can see, so the tests keep passing when the internals change. Each spec reads as a
-reference for its part of the library: a test name says what happens, and its body shows it.
+`type-tests` and the demo load `ngx-urlik` from `dist`. `npm run typecheck` builds the library
+first; build it yourself before you run the demo tests. Test what a caller can see, so the tests
+keep passing when the internals change. Each spec reads as a reference for its part of the library:
+a test name says what happens, and its body shows it.
 
 Type tests run in Vitest's typecheck mode. The compiler checks each `*.test-d.ts` file, and Vitest
 reports each `it()` as a test, but never runs the code. `expectTypeOf(x).toEqualTypeOf<T>()` checks

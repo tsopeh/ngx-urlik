@@ -28,5 +28,4 @@ wrong, fix the test. Watch for:
 - a value the test passed in, read back
 - an end state that also holds if nothing ran
 
-When unsure, break the code, run the test, and restore the file. Type tests read `dist/`, so run
-`npm run build:lib` first.
+When unsure, break the code, run the test, and restore the file.

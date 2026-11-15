@@ -12,7 +12,7 @@
     "test:lib": "ng test ngx-urlik --watch=false",
     "test:demo": "ng test demo-app --watch=false",
     "e2e": "playwright test",
-    "typecheck": "node type-tests/generate-large-app.mjs && vitest run --config type-tests/vitest.config.mts",
+    "typecheck": "npm run build:lib && node type-tests/generate-large-app.mjs && vitest run --config type-tests/vitest.config.mts",
     "lint": "ng lint && eslint type-tests playwright.config.ts",
     "lint:fix": "ng lint --fix && eslint --fix type-tests playwright.config.ts",
     "format": "prettier --write .",

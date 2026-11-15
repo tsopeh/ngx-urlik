@@ -734,7 +734,7 @@ reading.
 npm ci
 npm run build      # library, then demo
 npm test           # unit tests for both
-npm run typecheck  # public type tests, and a 201-route app
+npm run typecheck  # builds the library, then public type tests and a 201-route app
 npm run e2e        # Playwright against the demo
 ```
 
