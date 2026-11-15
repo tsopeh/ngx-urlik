@@ -20,7 +20,7 @@ for (let i = 0; i < sections; i++) {
           {
             path: ':id${i}',
             routeName: RouteNames.DETAIL_${i},
-            pathParam: { id${i}: numberCodec() },
+            pathParams: { id${i}: numberCodec() },
             canActivate: [(route) => route.paramMap.has('id${i}')],
             component: Page,
             children: [

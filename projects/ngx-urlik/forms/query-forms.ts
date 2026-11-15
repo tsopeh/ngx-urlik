@@ -96,7 +96,11 @@ const bindQueryParams = <Q extends QueryState>(
   const timers = new Map<keyof Q, ReturnType<typeof setTimeout>>();
   // Each write gets the next number. `running` is the newest write, until it settles.
   let writes = 0;
-  let running: { readonly id: number; readonly fields: Changes<Q> } | null = null;
+  let running: {
+    readonly id: number;
+    readonly fields: Changes<Q>;
+    readonly written: readonly (keyof Q)[];
+  } | null = null;
   let destroyed = false;
   adapter.reset(model);
 
@@ -134,7 +138,7 @@ const bindQueryParams = <Q extends QueryState>(
     }
   };
 
-  const send = (fields: Changes<Q>) => {
+  const send = (fields: Changes<Q>, url: Q) => {
     let patch: Partial<Q> = fields;
     const hasFields = fieldsOf(fields).length > 0;
     if (options.beforeWrite && hasFields) {
@@ -146,8 +150,17 @@ const bindQueryParams = <Q extends QueryState>(
         return;
       }
     }
+    // This write cancels the one still running. Naming that write's other fields, at their URL
+    // values, says this one leaves them out on purpose.
+    const restored: Changes<Q> = {};
+    for (const param of running?.written ?? []) {
+      if (patch[param] === undefined) {
+        restored[param] = url[param];
+      }
+    }
+    patch = { ...restored, ...patch };
     const id = ++writes;
-    running = { id, fields };
+    running = { id, fields, written: fieldsOf(patch) };
     const settle = () => {
       if (running?.id === id) {
         running = null;
@@ -200,7 +213,7 @@ const bindQueryParams = <Q extends QueryState>(
     // URL, so it cancels the form's earlier write, like typing 'x' and deleting it.
     const nothingNew = running ? sameFields(running.fields, fields) : !fieldsOf(fields).length;
     if (!nothingNew) {
-      send(fields);
+      send(fields, url);
     }
   };
 

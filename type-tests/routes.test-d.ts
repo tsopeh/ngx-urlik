@@ -169,7 +169,7 @@ describe('callbacks in routes', () => {
         {
           path: 'items/:itemId',
           routeName: Names.ITEM,
-          pathParam: { itemId: numberCodec() },
+          pathParams: { itemId: numberCodec() },
           loadComponent: () => import('./fixtures').then((m) => m.Page),
           canActivateChild: [(child) => child.url.length >= 0],
         },
@@ -193,7 +193,7 @@ describe('callbacks in routes', () => {
   });
 });
 
-describe('pathParam', () => {
+describe('pathParams', () => {
   enum Names {
     SHOW = 'SHOW',
   }
@@ -204,7 +204,7 @@ describe('pathParam', () => {
         {
           path: 'shows/:showId/season/:season',
           routeName: Names.SHOW,
-          pathParam: { season: numberCodec() },
+          pathParams: { season: numberCodec() },
         },
       ],
     });
@@ -221,7 +221,7 @@ describe('pathParam', () => {
           path: 'shows/:showId',
           routeName: Names.SHOW,
           // @ts-expect-error `other` isn't a placeholder in the path
-          pathParam: { other: stringCodec() },
+          pathParams: { other: stringCodec() },
         },
       ],
     });
@@ -231,7 +231,7 @@ describe('pathParam', () => {
           path: 'shows/:showId',
           routeName: Names.SHOW,
           // @ts-expect-error keyed by placeholder name, even for one placeholder
-          pathParam: { codec: numberCodec() },
+          pathParams: { codec: numberCodec() },
         },
       ],
     });
@@ -241,7 +241,7 @@ describe('pathParam', () => {
           path: 'shows/:showId',
           routeName: Names.SHOW,
           // @ts-expect-error each entry is the codec itself
-          pathParam: { showId: { codec: numberCodec() } },
+          pathParams: { showId: { codec: numberCodec() } },
         },
       ],
     });
@@ -250,8 +250,8 @@ describe('pathParam', () => {
         {
           path: 'static',
           routeName: Names.SHOW,
-          // @ts-expect-error a path without placeholders takes no pathParam
-          pathParam: { codec: numberCodec() },
+          // @ts-expect-error a path without placeholders takes no pathParams
+          pathParams: { codec: numberCodec() },
         },
       ],
     });

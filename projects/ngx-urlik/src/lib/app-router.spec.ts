@@ -76,12 +76,12 @@ describe('defineAppRouter with Angular route arrays', () => {
           {
             path: 'shows/:showId',
             routeName: RouteNames.SHOW,
-            pathParam: { showId: numberCodec() },
+            pathParams: { showId: numberCodec() },
             children: [
               {
                 path: 'seasons/:season',
                 routeName: RouteNames.SEASON,
-                pathParam: { season: numberCodec() },
+                pathParams: { season: numberCodec() },
                 component: EmptyComponent,
               },
             ],
@@ -135,7 +135,7 @@ describe('defineAppRouter with Angular route arrays', () => {
           routes: [
             {
               path: 'users/:userId',
-              pathParam: { userID: numberCodec() } as never,
+              pathParams: { userID: numberCodec() } as never,
               component: EmptyComponent,
             },
             {
@@ -148,7 +148,7 @@ describe('defineAppRouter with Angular route arrays', () => {
       ),
     ).toThrow(
       [
-        "routes[0]: pathParam 'userID' isn't a placeholder in the path",
+        "routes[0]: pathParams.userID isn't a placeholder in the path",
         'routes[1]: no named route at or below it reads queryParams. Add a routeName, or remove queryParams.',
       ].join('\n- '),
     );
@@ -161,7 +161,7 @@ describe('defineAppRouter with Angular route arrays', () => {
         routes: [
           {
             path: 'users/:userId',
-            pathParam: { userId: numberCodec() },
+            pathParams: { userId: numberCodec() },
             component: EmptyComponent,
           },
           { path: '**', component: LayoutComponent },
@@ -206,12 +206,12 @@ describe('defineAppRouter with Angular route arrays', () => {
         routes: [
           {
             path: 'shows/:showId',
-            pathParam: { showId: numberCodec() },
+            pathParams: { showId: numberCodec() },
             children: [
               {
                 path: 'seasons/:season',
                 routeName: RouteNames.SEASON,
-                pathParam: { season: numberCodec() },
+                pathParams: { season: numberCodec() },
                 component: EmptyComponent,
               },
             ],
@@ -255,7 +255,7 @@ describe('defineAppRouter with Angular route arrays', () => {
           {
             path: 'shows/:showId/seasons/:season',
             routeName: RouteNames.SEASON,
-            pathParam: {
+            pathParams: {
               showId: numberCodec(),
               season: numberCodec(),
             },
@@ -334,13 +334,13 @@ describe('defineAppRouter with Angular route arrays', () => {
         routes: [
           {
             path: 'shows/:showId',
-            pathParam: { showId: numberCodec() },
+            pathParams: { showId: numberCodec() },
             queryParams: { showId: queryParam({ codec: stringCodec() }) },
             children: [
               {
                 path: 'episodes/:episodeId',
                 routeName: RouteNames.EPISODE,
-                pathParam: { episodeId: numberCodec() },
+                pathParams: { episodeId: numberCodec() },
                 component: EmptyComponent,
               },
             ],
@@ -367,13 +367,13 @@ describe('defineAppRouter with Angular route arrays', () => {
           {
             path: 'shows/:showId',
             routeName: RouteNames.SHOW,
-            pathParam: { showId: numberCodec() },
+            pathParams: { showId: numberCodec() },
             children: [
               { path: '', routeName: RouteNames.SHOW_LANDING, component: EmptyComponent },
               {
                 path: 'episodes/:episodeId',
                 routeName: RouteNames.EPISODE,
-                pathParam: { episodeId: numberCodec() },
+                pathParams: { episodeId: numberCodec() },
                 component: EmptyComponent,
               },
             ],
@@ -503,12 +503,12 @@ describe('defineAppRouter with Angular route arrays', () => {
           {
             path: 'teams/:teamId',
             component: LayoutComponent,
-            pathParam: { teamId: numberCodec() },
+            pathParams: { teamId: numberCodec() },
             children: [
               {
                 path: 'members/:memberId',
                 routeName: RouteNames.MEMBER,
-                pathParam: { memberId: numberCodec() },
+                pathParams: { memberId: numberCodec() },
                 queryParams: { search: queryParam({ codec: stringCodec() }) },
                 component: EmptyComponent,
               },
@@ -566,7 +566,7 @@ describe('defineAppRouter with Angular route arrays', () => {
           {
             path: 'items/:id',
             routeName: RouteNames.ITEM,
-            pathParam: { id: numberCodec() },
+            pathParams: { id: numberCodec() },
             queryParams: { page: queryParam({ codec: numberCodec(), defaultValue: 1 }) },
             component: EmptyComponent,
             canMatch: [() => true],
@@ -654,7 +654,7 @@ describe('defineAppRouter with Angular route arrays', () => {
             {
               path: 'items/:id/:id',
               routeName: RouteNames.ITEM,
-              pathParam: { id: numberCodec() },
+              pathParams: { id: numberCodec() },
               component: EmptyComponent,
             },
           ],
@@ -669,13 +669,13 @@ describe('defineAppRouter with Angular route arrays', () => {
             {
               path: 'items/:id',
               routeName: RouteNames.ITEM,
-              pathParam: { id: numberCodec(), extra: stringCodec() } as never,
+              pathParams: { id: numberCodec(), extra: stringCodec() } as never,
               component: EmptyComponent,
             },
           ],
         },
       ),
-    ).toThrow(/pathParam|placeholder/i);
+    ).toThrow(/pathParams|placeholder/i);
 
     const diagnostics: unknown[] = [];
     const definition = defineAppRouter(
@@ -685,7 +685,7 @@ describe('defineAppRouter with Angular route arrays', () => {
           {
             path: 'items/:id',
             routeName: RouteNames.ITEM,
-            pathParam: { id: numberCodec() },
+            pathParams: { id: numberCodec() },
             queryParams: {
               search: queryParam({ codec: numberCodec() }),
               page: queryParam({ codec: numberCodec() }),

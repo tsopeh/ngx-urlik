@@ -73,7 +73,7 @@ routes into that file.
 
 ## Let the Angular path name its placeholders
 
-The path `show/:showId/season/:season` already names its parameters, so `pathParam` only adds
+The path `show/:showId/season/:season` already names its parameters, so `pathParams` only adds
 codecs, as in `{ season: numberCodec() }`, and a placeholder without one is a string. Each entry is
 the codec itself, which lets an app name its routes first and pick codecs later. Path and query
 values live in separate objects, so a placeholder and a query field can share a name.
@@ -84,7 +84,7 @@ one value per name.
 
 ## Keep codecs separate from where the value sits in the URL
 
-A codec turns one string into one non-null value and back, while `pathParam` and `queryParam`
+A codec turns one string into one non-null value and back, while `pathParams` and `queryParam`
 decide where that value sits in the URL. `queryParam` also owns defaults and `required`. The split
 is what lets one `numberCodec()` serve a path segment, a query field, and the items of a list. A
 helper for each type and each placement would repeat the parsing and wouldn't combine into lists.
@@ -263,7 +263,9 @@ URL ends at `?minRating=2` without `search`. Written as one patch,
 that starts while a slow guard or resolver runs. A write that starts while the user navigates
 doesn't happen at all, and a form sends the field again with its next write. A debounced form field still writes after the user
 presses Back, if Back left that field alone. Code that changes several fields together should do it
-in one patch.
+in one patch. A lost field is silent unless the app sets `diagnostics: { replacedPatches: true }`,
+which reports each one and changes nothing else. It's off by default, because a patch that replaces
+another on purpose is ordinary code, not a mistake.
 
 ## Let forms hold drafts, and the URL hold what's written
 

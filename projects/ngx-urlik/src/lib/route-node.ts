@@ -21,7 +21,7 @@ import {
 } from './compiled-route';
 import type { UrlParamCodec } from './params';
 import { QueryDefinitions } from './route-definition';
-import { ReportParameterFailure } from './route-diagnostics';
+import { ReportParameterFailure, ReportReplacedPatch } from './route-diagnostics';
 import {
   createParameterReader,
   createParameterSerializer,
@@ -34,7 +34,7 @@ import { createRouterEscapeHatch } from './router-escape-hatch';
 import type { Simplify } from './type-utils';
 import { AnyRecord } from './type-utils';
 
-export type UrlParamsState<P, Q> = Readonly<{
+export type RouteParams<P, Q> = Readonly<{
   path: Readonly<Simplify<P>>;
   query: Readonly<Simplify<Q>>;
 }>;
@@ -61,12 +61,17 @@ export function ɵqueryDefaults(route: object): AnyRecord | undefined {
   );
 }
 
+/** Whether a query key holds the same text in two URLs. A repeated key holds an array. */
+const sameQueryText = (a: unknown, b: unknown): boolean =>
+  a === b || (Array.isArray(a) && Array.isArray(b) && a.join('&') === b.join('&'));
+
 export function createAppRouter(
   routeNames: Readonly<Record<string, string>>,
   namedRoutes: ReadonlyMap<string, CompiledRoute>,
   router: Router,
   destroyRef: DestroyRef,
   report: ReportParameterFailure,
+  reportReplacedPatch?: ReportReplacedPatch,
 ): Record<string, unknown> {
   const { readState, readQueryState, readGlobalPath } = createParameterReader(report);
   const { serializePath, serializeQuery } = createParameterSerializer(report);
@@ -186,6 +191,7 @@ export function createAppRouter(
       return Promise.resolve(false);
     }
     const tree = router.parseUrl(router.url);
+    const committed = { ...tree.queryParams };
     for (const param of info.queryParams) {
       const output = serializeQuery(param, next[param.name]);
       if (output === null) {
@@ -199,6 +205,18 @@ export function createAppRouter(
     const urlUnchanged = router.serializeUrl(tree) === router.url;
     if (urlUnchanged && running === null) {
       return Promise.resolve(true);
+    }
+    if (reportReplacedPatch && running !== null) {
+      // The running patch is about to be cancelled. Its fields are the keys it would have changed,
+      // and the ones this patch doesn't set are lost.
+      const cancelled = running.initialUrl.queryParams;
+      const set = new Set(supplied.map(([name]) => name));
+      const lost = Object.keys({ ...committed, ...cancelled }).filter(
+        (key) => !sameQueryText(cancelled[key], committed[key]) && !set.has(key),
+      );
+      if (lost.length) {
+        reportReplacedPatch(info.label, lost);
+      }
     }
     patchTrees.add(tree);
     return router.navigateByUrl(tree, options);

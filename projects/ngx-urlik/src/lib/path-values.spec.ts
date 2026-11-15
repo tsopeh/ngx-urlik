@@ -12,7 +12,7 @@ function setup(codec: UrlParamCodec<string>) {
     { ITEM: 'ITEM', FALLBACK: 'FALLBACK' },
     {
       routes: [
-        { path: 'items/:id', routeName: 'ITEM', pathParam: { id: codec }, component: Page },
+        { path: 'items/:id', routeName: 'ITEM', pathParams: { id: codec }, component: Page },
         { path: 'items/:slug', routeName: 'FALLBACK', component: Page },
       ],
     },
@@ -92,7 +92,7 @@ describe('path values', () => {
             {
               path: 'items/:id',
               routeName: 'ITEM',
-              pathParam: { id: numberCodec() },
+              pathParams: { id: numberCodec() },
               component: Page,
             },
             { path: 'items/:slug', routeName: 'FALLBACK', component: Page },

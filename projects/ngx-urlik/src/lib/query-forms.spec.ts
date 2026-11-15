@@ -11,13 +11,13 @@ import { Validators } from '@angular/forms';
 import { debounce, minLength } from '@angular/forms/signals';
 import { NavigationEnd, NavigationStart, Router } from '@angular/router';
 import { createQueryParamsFormGroup, createQueryParamsSignalForm } from 'ngx-urlik/forms';
-import { defineAppRouter } from './app-router';
+import { AppRouterDiagnostic, defineAppRouter } from './app-router';
 import { numberCodec, queryParam, stringCodec, UrlParamCodec } from './params';
 
 @Component({ template: '' })
 class Page {}
 
-async function setup() {
+async function setup(diagnostics: AppRouterDiagnostic[] = []) {
   const definition = defineAppRouter(
     { RESULTS: RouteNames.RESULTS },
     {
@@ -38,6 +38,7 @@ async function setup() {
           loadComponent: () => new Promise((resolve) => setTimeout(() => resolve(Page), 50)),
         },
       ],
+      diagnostics: { replacedPatches: true, warn: (diagnostic) => diagnostics.push(diagnostic) },
     },
   );
   TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
@@ -247,6 +248,36 @@ describe('query forms', () => {
       await vi.waitFor(() => expect(router.url).toBe('/results?sort=year:desc&page=2'));
       expect(written).toEqual([['sort'], ['page']]);
     });
+  });
+
+  it("doesn't report a replaced patch when an edit goes back before its write ends", async () => {
+    const diagnostics: AppRouterDiagnostic[] = [];
+    const { results, router } = await setup(diagnostics);
+    await router.navigateByUrl('/results?page=3');
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(results, {
+        beforeWrite: (patch) => ('search' in patch ? { page: 1, ...patch } : patch),
+      }),
+    );
+    form.controls.search.setValue('x');
+    form.controls.search.setValue('');
+
+    await vi.waitFor(() => expect(router.currentNavigation()).toBeNull());
+    expect(router.url).toBe('/results?page=3');
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('reports a replaced patch when page code patches while a form write runs', async () => {
+    const diagnostics: AppRouterDiagnostic[] = [];
+    const { results, router } = await setup(diagnostics);
+    const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
+    form.controls.search.setValue('elm');
+    await results.patchQuery({ page: 2 });
+
+    expect(router.url).toBe('/results?page=2');
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ code: 'PATCH_REPLACED', route: 'RESULTS', fields: ['search'] }),
+    ]);
   });
 
   it("doesn't write a form edit that goes back to the URL's value", async () => {

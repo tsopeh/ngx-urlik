@@ -20,13 +20,13 @@ export const definition = defineAppRouter(RouteNames, {
     { path: 'home', routeName: RouteNames.HOME, component: Page },
     {
       path: 'teams/:teamId',
-      pathParam: { teamId: numberCodec() },
+      pathParams: { teamId: numberCodec() },
       queryParams: { locale: queryParam({ codec: stringCodec(), defaultValue: 'en' }) },
       children: [
         {
           path: 'members/:memberId/show/:showId',
           routeName: RouteNames.MEMBER,
-          pathParam: { memberId: numberCodec(), showId: stringCodec() },
+          pathParams: { memberId: numberCodec(), showId: stringCodec() },
           queryParams: {
             page: queryParam({ codec: numberCodec(), required: true }),
             tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),

@@ -49,7 +49,7 @@ const itemRouter = (resolve?: ResolveFn<unknown>) =>
         {
           path: 'items/:id',
           routeName: RouteNames.ITEM,
-          pathParam: { id: numberCodec() },
+          pathParams: { id: numberCodec() },
           queryParams: { tab: queryParam({ codec: stringCodec(), defaultValue: 'info' }) },
           component: Item,
           ...(resolve ? { resolve: { probe: resolve } } : {}),
@@ -162,13 +162,13 @@ describe('paramsSnapshot()', () => {
           {
             path: 'shows/:showId',
             routeName: RouteNames.SHOW,
-            pathParam: { showId: numberCodec() },
+            pathParams: { showId: numberCodec() },
             queryParams: { sort: queryParam({ codec: stringCodec(), defaultValue: 'new' }) },
             children: [
               {
                 path: 'seasons/:season',
                 routeName: RouteNames.SEASON,
-                pathParam: { season: numberCodec() },
+                pathParams: { season: numberCodec() },
                 component: Home,
                 canActivate: [
                   (route) => {
@@ -225,7 +225,7 @@ describe('paramsSnapshot()', () => {
           {
             path: 'items/:id',
             routeName: RouteNames.ITEM,
-            pathParam: { id: numberCodec() },
+            pathParams: { id: numberCodec() },
             component: Home,
           },
         ],

@@ -120,7 +120,7 @@ A route is an Angular route with up to three extra fields:
 | Field         | What it does                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------ |
 | `routeName`   | Adds the route to `AppRouter.routes`                                                       |
-| `pathParam`   | A codec for each `:placeholder` in the route's path. A placeholder without one is a string |
+| `pathParams`  | A codec for each `:placeholder` in the route's path. A placeholder without one is a string |
 | `queryParams` | The query fields the route owns. Its children inherit them                                 |
 
 Everything else works as it does in Angular. Write `path` and `routeName` as literals inside the
@@ -143,7 +143,7 @@ its part, doesn't need a component.
     {
       path: 'seasons/:season',
       routeName: RouteNames.SEASON,
-      pathParam: { season: numberCodec() },
+      pathParams: { season: numberCodec() },
       component: SeasonPage,
     },
   ],
@@ -536,7 +536,9 @@ void results.patchQuery({ search: 'elm' });
 void results.patchQuery({ minRating: 4.5 }); // cancels the first: only minRating=4.5 is left
 ```
 
-Put fields that change together in one patch.
+Put fields that change together in one patch. While you're tracking one down, turn on
+[`replacedPatches`](#diagnostics-and-errors), which reports each field a cancelled patch didn't
+write.
 
 A patch never cancels a navigation it didn't start, like a link click, `navigate()`, or Back. While
 one of those runs, the patch resolves `false` without navigating. A form writes after its debounce,
@@ -674,11 +676,24 @@ A codec that fails to write reports `PARAM_SERIALIZE_FAILED`, and when a codec t
 in `cause`. Warnings go to `console.warn` unless you pass `diagnostics: { warn }` to
 `defineAppRouter()`.
 
+One more diagnostic is off until you ask for it. With `diagnostics: { replacedPatches: true }`, a
+patch that cancels a running patch reports the fields that patch didn't get to write:
+
+```ts
+void results.patchQuery({ search: 'elm' });
+void results.patchQuery({ minRating: 4.5 });
+// { code: 'PATCH_REPLACED', route: 'RESULTS', fields: ['search'], message: '…' }
+```
+
+It only reports, so the patches run exactly as they do without it, and you can leave it on in
+production. A patch that sets the cancelled patch's fields itself reports nothing, which is why a
+bound form never sets it off.
+
 Only two things throw, because neither has a sensible fallback: reading an inactive route, and
 building a link with a bad path value.
 
 When the app starts, `defineAppRouter()` checks every named route, every route above one, and every
-route with `pathParam` or `queryParams`. It then throws one error that lists every problem it
+route with `pathParams` or `queryParams`. It then throws one error that lists every problem it
 found:
 
 - Repeated or empty route names.
@@ -687,7 +702,7 @@ found:
 - `loadChildren` on or above a named route.
 - Paths that aren't plain strings in the primary outlet, or that have empty segments or reserved
   characters.
-- `pathParam` maps that don't match the placeholders.
+- `pathParams` maps that don't match the placeholders.
 - `queryParams` values that `queryParam()` didn't make.
 - `queryParams` on a route with no named route at or below it, because nothing could read them.
 - A placeholder or query key declared twice in a route and its parents.
@@ -744,10 +759,14 @@ When a use is deliberate, keep it with an `eslint-disable-next-line` comment tha
 
 ## Types
 
-The helper types take a route's type:
+The helper types take a route's type. Inside a component that's `typeof results`. Anywhere else,
+`RoutesOf` gets the routes from the `AppRouter` token:
 
 ```ts
 type ResultsQuery = QueryParamsOf<typeof results>; // { search: string; minRating: number }
+
+type Routes = RoutesOf<typeof AppRouter>;
+type SameQuery = QueryParamsOf<Routes['RESULTS']>;
 ```
 
 | Type                      | What it is                                 |
@@ -755,16 +774,17 @@ type ResultsQuery = QueryParamsOf<typeof results>; // { search: string; minRatin
 | `RouteNode<P, Q, R>`      | A typed route                              |
 | `PathParamsOf<Node>`      | Its path values, inherited ones included   |
 | `QueryParamsOf<Node>`     | Its query values, inherited ones included  |
-| `RouteStateOf<Node>`      | What `params()` returns: `{ path, query }` |
+| `ParamsOf<Node>`          | What `params()` returns: `{ path, query }` |
 | `RouteQueryPatch<Node>`   | What `patchQuery()` accepts                |
-| `UrlParamsState<P, Q>`    | `{ path, query }` with those value types   |
-| `GeneratedAppRouter`      | What the `AppRouter` token gives you       |
+| `RoutesOf<Token>`         | The routes behind an `AppRouter` token     |
+| `RouteParams<P, Q>`       | `{ path, query }` with those value types   |
+| `TypedAppRouter`          | What the `AppRouter` token gives you       |
 | `RouteDefinition`         | One route: Angular's fields plus ours      |
 | `RouteDefinitions`        | A route array                              |
 | `UrlParamCodec<T>`        | A codec                                    |
 | `AppRouterDiagnostic`     | A diagnostic passed to `diagnostics.warn`  |
 | `AppRouterDiagnosticCode` | `diagnostic.code`                          |
-| `AppRouterDiagnostics`    | The `diagnostics` option: `{ warn }`       |
+| `AppRouterDiagnostics`    | The `diagnostics` option                   |
 
 `ngx-urlik/forms` exports the option types, `QueryParamsFormControls`, and `QueryWriteFailure`.
 

@@ -56,14 +56,14 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
     location = 'routes',
   ): Routes =>
     definitions.map((definition, index) => {
-      const { routeName, pathParam, queryParams, children, ...angularFields } = definition;
+      const { routeName, pathParams, queryParams, children, ...angularFields } = definition;
       const angularRoute: Route = { ...angularFields };
       const parsed = parseRoutePath(definition.path ?? '');
       const at = `${location}[${index}]`;
       const owner = { label: routeName ?? at };
       const ownPath = parsed.placeholders.map((name): CompiledPathParam => ({
         name,
-        codec: pathParam?.[name] ?? defaultPathCodec,
+        codec: pathParams?.[name] ?? defaultPathCodec,
         owner,
         placement: 'path',
       }));
@@ -87,7 +87,7 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
       };
 
       const codecs = parsed.segments.map((segment) =>
-        segment.kind === 'param' ? pathParam?.[segment.name] : undefined,
+        segment.kind === 'param' ? pathParams?.[segment.name] : undefined,
       );
       if (codecs.some(Boolean)) {
         angularRoute.canMatch = [matchPathCodecs(codecs), ...(angularRoute.canMatch ?? [])];

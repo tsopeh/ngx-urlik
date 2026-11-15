@@ -15,9 +15,9 @@ export interface RouteDefinition extends Omit<Route, 'children'> {
   readonly routeName?: string;
   /**
    * A codec for each placeholder in this route's `path`, such as `{ showId: numberCodec() }`.
-   * Without `pathParam`, every placeholder is a string.
+   * Without `pathParams`, every placeholder is a string.
    */
-  readonly pathParam?: PathParamOptions;
+  readonly pathParams?: PathParamOptions;
   /** Query fields this route owns. Named routes below it inherit them. */
   readonly queryParams?: QueryDefinitions;
   readonly children?: readonly RouteDefinition[];
@@ -91,10 +91,10 @@ const hasNamedRoute = (route: RouteDefinition): boolean =>
   someRoute(route, (candidate) => 'routeName' in candidate);
 
 const usesLibraryFields = (route: RouteDefinition): boolean =>
-  someRoute(route, (candidate) => 'pathParam' in candidate || 'queryParams' in candidate);
+  someRoute(route, (candidate) => 'pathParams' in candidate || 'queryParams' in candidate);
 
 /**
- * Checks every named route, every route above one, and every route that uses `pathParam` or
+ * Checks every named route, every route above one, and every route that uses `pathParams` or
  * `queryParams`, and returns every problem it finds. Other routes are Angular's to check. Also
  * checks that each route name has a route.
  */
@@ -177,7 +177,7 @@ export function validateRouteDefinitions(
         route.path === '**' ||
         (route.outlet && route.outlet !== 'primary')
       );
-      const needsPlainPath = readByName || route.pathParam !== undefined;
+      const needsPlainPath = readByName || route.pathParams !== undefined;
       if (needsPlainPath && !plainPath) {
         report('needs a plain path in the primary outlet');
       }
@@ -186,16 +186,16 @@ export function validateRouteDefinitions(
         report(error);
       }
 
-      if (route.pathParam !== undefined) {
-        if (!isRecord(route.pathParam)) {
-          report('pathParam must map each placeholder name to its codec');
+      if (route.pathParams !== undefined) {
+        if (!isRecord(route.pathParams)) {
+          report('pathParams must map each placeholder name to its codec');
         } else {
-          for (const [name, codec] of Object.entries(route.pathParam)) {
+          for (const [name, codec] of Object.entries(route.pathParams)) {
             if (!parsed.placeholders.includes(name)) {
-              report(`pathParam '${name}' isn't a placeholder in the path`);
+              report(`pathParams.${name} isn't a placeholder in the path`);
             }
             if (!isCodec(codec)) {
-              report(`pathParam '${name}' must be a codec`);
+              report(`pathParams.${name} must be a codec`);
             }
           }
         }

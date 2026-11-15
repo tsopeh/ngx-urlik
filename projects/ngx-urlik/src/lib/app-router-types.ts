@@ -1,8 +1,8 @@
-import type { Signal } from '@angular/core';
+import type { InjectionToken, Signal } from '@angular/core';
 import type { ActivatedRouteSnapshot, Route, UrlTree } from '@angular/router';
 import type { QueryParamDefinition, UrlParamCodec } from './params';
 import type { QueryDefinitions } from './route-definition';
-import type { NavigateOptions, UrlParamsState } from './route-node';
+import type { NavigateOptions, RouteParams } from './route-node';
 import type { routeNodeInfo } from './route-symbols';
 import type { AppRouterEscapeHatch } from './router-escape-hatch';
 import type { Simplify } from './type-utils';
@@ -46,20 +46,23 @@ export type RouteNode<P = unknown, Q = unknown, Required extends PropertyKey = n
    * it returns, so the read goes to the route you checked: `EPISODE.ifActive()?.params()`.
    */
   readonly ifActive: Signal<RouteNode<P, Q, Required> | null>;
-  readonly params: Signal<UrlParamsState<P, Q>>;
+  readonly params: Signal<RouteParams<P, Q>>;
   patchQuery(patch: Partial<Readonly<Q>>, options?: NavigateOptions): Promise<boolean>;
 };
 
 type AnyRouteNode = {
   readonly [routeNodeInfo]: unknown;
-  readonly params: Signal<UrlParamsState<unknown, unknown>>;
+  readonly params: Signal<RouteParams<unknown, unknown>>;
   patchQuery(patch: never, options?: NavigateOptions): Promise<boolean>;
 };
 
 export type QueryParamsOf<N> = N extends { params: Signal<{ query: infer Q }> } ? Q : never;
 export type PathParamsOf<N> = N extends RouteNode<infer P, infer _Q, infer _R> ? P : never;
-export type RouteStateOf<N> = N extends { params: Signal<infer S> } ? S : never;
+export type ParamsOf<N> = N extends { params: Signal<infer S> } ? S : never;
 export type RouteQueryPatch<N> = Partial<Readonly<QueryParamsOf<N>>>;
+/** The routes of an `AppRouter` token, for naming a route's types outside an injection context. */
+export type RoutesOf<Token> =
+  Token extends InjectionToken<{ readonly routes: infer R }> ? R : never;
 
 // Lets TypeScript infer each field's literal type, nested objects included, before the checks apply.
 type InferDefinition<T> = {
@@ -82,7 +85,7 @@ type PathConfig<Names extends string, Supplied> = [Names] extends [never]
   ? never
   : { readonly [K in keyof Supplied]: K extends Names ? UrlParamCodec<unknown> : never };
 type OwnPath<D> = {
-  [K in OwnPathNames<D>]: D extends { pathParam: infer P }
+  [K in OwnPathNames<D>]: D extends { pathParams: infer P }
     ? K extends keyof P
       ? CodecValue<P[K]>
       : string
@@ -90,7 +93,7 @@ type OwnPath<D> = {
 };
 type AccumulatedPath<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
 type AccumulatedQuery<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
-type RouteKey = keyof Route | 'routeName' | 'pathParam' | 'queryParams';
+type RouteKey = keyof Route | 'routeName' | 'pathParams' | 'queryParams';
 
 // What a field must be: only known keys, a literal routeName, codecs only for real placeholders,
 // and no query key a parent already declares.
@@ -107,7 +110,7 @@ type FieldCheck<D, K extends keyof D, AncestorQuery> = K extends RouteKey
             ? never
             : D[K]
           : never
-      : K extends 'pathParam'
+      : K extends 'pathParams'
         ? PathConfig<OwnPathNames<D>, D[K]>
         : K extends 'queryParams'
           ? D[K] extends QueryDefinitions
@@ -190,7 +193,7 @@ type GlobalDefinitions<P extends PathCodecs, Q extends QueryDefinitions> = {
 };
 
 /** What the `AppRouter` token gives you. `routes` has one entry per named route. */
-export type GeneratedAppRouter<E extends Record<string, string>, R> = {
+export type TypedAppRouter<E extends Record<string, string>, R> = {
   readonly routes: {
     readonly [K in keyof E]: E[K] extends keyof NamedRoutes<R> ? NamedRoutes<R>[E[K]] : never;
   };
@@ -220,6 +223,6 @@ export type GeneratedAppRouter<E extends Record<string, string>, R> = {
   paramsSnapshot<const N extends AnyRouteNode>(
     route: N,
     snapshot: ActivatedRouteSnapshot,
-  ): RouteStateOf<N>;
+  ): ParamsOf<N>;
   readonly escapeHatch: AppRouterEscapeHatch;
 };

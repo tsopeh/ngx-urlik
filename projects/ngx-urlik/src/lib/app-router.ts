@@ -6,9 +6,13 @@ import {
   makeEnvironmentProviders,
 } from '@angular/core';
 import { provideRouter, Router, RouterFeatures } from '@angular/router';
-import type { GeneratedAppRouter, RouteArrayInput } from './app-router-types';
+import type { TypedAppRouter, RouteArrayInput } from './app-router-types';
 import { RouteDefinitions, validateRouteDefinitions } from './route-definition';
-import { AppRouterDiagnostics, createDiagnosticReporter } from './route-diagnostics';
+import {
+  AppRouterDiagnostics,
+  createDiagnosticReporter,
+  createReplacedPatchReporter,
+} from './route-diagnostics';
 import { compileRoutes } from './compiled-route';
 import { createAppRouter } from './route-node';
 
@@ -18,15 +22,16 @@ export type {
   AppRouterDiagnostics,
 } from './route-diagnostics';
 export type {
-  GeneratedAppRouter,
+  TypedAppRouter,
   PathParamsOf,
   QueryParamsOf,
   RouteNode,
   RouteQueryPatch,
-  RouteStateOf,
+  RoutesOf,
+  ParamsOf,
 } from './app-router-types';
 export type { RouteDefinition, RouteDefinitions } from './route-definition';
-export type { UrlParamsState } from './route-node';
+export type { RouteParams } from './route-node';
 
 /**
  * Gives Angular Router your routes, and gives you a typed entry in `AppRouter.routes` for each
@@ -56,7 +61,7 @@ export function defineAppRouter<
     diagnostics?: AppRouterDiagnostics;
   },
 ): {
-  AppRouter: InjectionToken<GeneratedAppRouter<E, R>>;
+  AppRouter: InjectionToken<TypedAppRouter<E, R>>;
   provideAppRouter: (...features: RouterFeatures[]) => EnvironmentProviders;
 } {
   const definitions = options.routes as RouteDefinitions;
@@ -66,8 +71,9 @@ export function defineAppRouter<
   }
 
   const report = createDiagnosticReporter(options.diagnostics);
+  const reportReplacedPatch = createReplacedPatchReporter(options.diagnostics);
   const { routes, namedRoutes } = compileRoutes(definitions);
-  const AppRouter = new InjectionToken<GeneratedAppRouter<E, R>>('AppRouter');
+  const AppRouter = new InjectionToken<TypedAppRouter<E, R>>('AppRouter');
 
   function provideAppRouter(...features: RouterFeatures[]): EnvironmentProviders {
     return makeEnvironmentProviders([
@@ -81,7 +87,8 @@ export function defineAppRouter<
             inject(Router),
             inject(DestroyRef),
             report,
-          ) as GeneratedAppRouter<E, R>,
+            reportReplacedPatch,
+          ) as TypedAppRouter<E, R>,
       },
     ]);
   }

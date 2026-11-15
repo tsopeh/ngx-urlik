@@ -17,7 +17,7 @@ Work in the order below. Each step ends with a check you can run before moving o
 When you move a component off `ActivatedRoute`, start by declaring everything it reads from the
 URL.
 
-- Find the `defineAppRouter()` call. Put path placeholders in `pathParam` and query fields in
+- Find the `defineAppRouter()` call. Put path placeholders in `pathParams` and query fields in
   `queryParams`, and give optional fields a `defaultValue`. Never read a value the route doesn't
   declare.
 - Remove `ActivatedRoute` and `Router` from the component, and inject `AppRouter` instead.
@@ -224,6 +224,9 @@ from `globalParams()` too, and fall back to the saved value where the page reads
 
 **Diagnostics and the router**
 
+- `diagnostics: { replacedPatches: true }` in `defineAppRouter()` reports `PATCH_REPLACED`, with
+  the lost `fields`, when a patch cancels a running patch whose fields it doesn't set. It's off by
+  default, changes nothing about how patches run, and bound forms never set it off.
 - A diagnostic's `route` is the route that declares the field, which can be a parent. Unnamed
   parents are named by position, like `routes[0].children[1]`.
 - `escapeHatch.isActive(url, matchOptions?)` returns a `Signal<boolean>`. The escape hatch leaves

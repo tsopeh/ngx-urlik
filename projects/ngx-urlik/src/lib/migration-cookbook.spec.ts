@@ -101,7 +101,7 @@ describe('migration cookbook', () => {
         routes: [
           {
             path: 'teams/:teamId',
-            pathParam: { teamId: numberCodec() },
+            pathParams: { teamId: numberCodec() },
             component: Layout,
             children: [
               { path: 'members/:memberId', routeName: RouteNames.MEMBER, component: Page },
@@ -131,7 +131,7 @@ describe('migration cookbook', () => {
         routes: [
           {
             path: 'teams/:id',
-            pathParam: { id: numberCodec() },
+            pathParams: { id: numberCodec() },
             queryParams: { id: queryParam({ codec: stringCodec() }) },
             children: [
               {

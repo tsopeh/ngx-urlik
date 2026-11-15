@@ -110,14 +110,14 @@ describe('startup checks', () => {
     });
   });
 
-  describe('pathParam and queryParams', () => {
-    it('needs pathParam to map placeholder names to codecs', () => {
+  describe('pathParams and queryParams', () => {
+    it('needs pathParams to map placeholder names to codecs', () => {
       expect(
-        define([{ path: 'items/:id', routeName: 'A', pathParam: [numberCodec()] }], { A: 'A' }),
-      ).toThrow('A: pathParam must map each placeholder name to its codec');
+        define([{ path: 'items/:id', routeName: 'A', pathParams: [numberCodec()] }], { A: 'A' }),
+      ).toThrow('A: pathParams must map each placeholder name to its codec');
       expect(
-        define([{ path: 'items/:id', routeName: 'A', pathParam: { id: 'number' } }], { A: 'A' }),
-      ).toThrow("A: pathParam 'id' must be a codec");
+        define([{ path: 'items/:id', routeName: 'A', pathParams: { id: 'number' } }], { A: 'A' }),
+      ).toThrow('A: pathParams.id must be a codec');
     });
 
     it('needs queryParams to be an object', () => {
@@ -127,8 +127,8 @@ describe('startup checks', () => {
     });
 
     it('checks these fields on routes with no named route below, too', () => {
-      expect(define([{ path: 'items/:id', pathParam: { slug: numberCodec() } }])).toThrow(
-        "routes[0]: pathParam 'slug' isn't a placeholder in the path",
+      expect(define([{ path: 'items/:id', pathParams: { slug: numberCodec() } }])).toThrow(
+        "routes[0]: pathParams.slug isn't a placeholder in the path",
       );
       expect(
         define([{ path: 'a', queryParams: { page: queryParam({ codec: numberCodec() }) } }]),

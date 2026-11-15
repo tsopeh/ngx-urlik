@@ -79,7 +79,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                 {
                   path: ':movieId',
                   routeName: RouteNames.MOVIE_DETAIL,
-                  pathParam: { movieId: prefixedIdCodec('mov') },
+                  pathParams: { movieId: prefixedIdCodec('mov') },
                   loadComponent: loadDetail,
                 },
               ],
@@ -95,7 +95,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                 },
                 {
                   path: ':showId',
-                  pathParam: { showId: prefixedIdCodec('tv') },
+                  pathParams: { showId: prefixedIdCodec('tv') },
                   children: [
                     {
                       path: '',
@@ -106,7 +106,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                     {
                       path: 's/:seasonNumber',
                       routeName: RouteNames.SEASON,
-                      pathParam: { seasonNumber: positiveIntegerCodec() },
+                      pathParams: { seasonNumber: positiveIntegerCodec() },
                       children: [
                         {
                           path: '',
@@ -126,7 +126,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
                             {
                               path: ':episodeNumber',
                               routeName: RouteNames.EPISODE_DETAIL,
-                              pathParam: { episodeNumber: positiveIntegerCodec() },
+                              pathParams: { episodeNumber: positiveIntegerCodec() },
                               loadComponent: loadDetail,
                             },
                           ],
@@ -151,7 +151,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
             {
               path: ':personId',
               routeName: RouteNames.PERSON_DETAIL,
-              pathParam: { personId: prefixedIdCodec('per') },
+              pathParams: { personId: prefixedIdCodec('per') },
               loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
             },
           ],
@@ -168,7 +168,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
             {
               path: ':studioId',
               routeName: RouteNames.STUDIO_DETAIL,
-              pathParam: { studioId: prefixedIdCodec('st') },
+              pathParams: { studioId: prefixedIdCodec('st') },
               loadComponent: () => import('./contributor-page').then((m) => m.ContributorPage),
             },
           ],

@@ -6,12 +6,13 @@ import {
   type QueryParamsOf,
   type RouteNode,
   type RouteQueryPatch,
-  type RouteStateOf,
+  type RoutesOf,
+  type ParamsOf,
   stringCodec,
-  type UrlParamsState,
+  type RouteParams,
 } from 'ngx-urlik';
 import { describe, expectTypeOf, it } from 'vitest';
-import { appRouter, snapshot } from './fixtures';
+import { appRouter, definition, snapshot } from './fixtures';
 
 const { MEMBER, TEAMS } = appRouter.routes;
 
@@ -125,14 +126,21 @@ describe('helper types', () => {
   it('name the parts of a route', () => {
     expectTypeOf<PathParamsOf<Member>>().toEqualTypeOf<Path>();
     expectTypeOf<QueryParamsOf<Member>>().toEqualTypeOf<Query>();
-    expectTypeOf<RouteStateOf<Member>>().toEqualTypeOf<
+    expectTypeOf<ParamsOf<Member>>().toEqualTypeOf<
       Readonly<{ path: Readonly<Path>; query: Query }>
     >();
     expectTypeOf<RouteQueryPatch<Member>>().toEqualTypeOf<Partial<Query>>();
   });
 
+  it('name a route from the token, with no injected router', () => {
+    type Routes = RoutesOf<typeof definition.AppRouter>;
+    expectTypeOf<keyof Routes>().toEqualTypeOf<'MEMBER' | 'TEAMS' | 'HOME'>();
+    expectTypeOf<Routes['MEMBER']>().toEqualTypeOf<Member>();
+    expectTypeOf<QueryParamsOf<Routes['MEMBER']>>().toEqualTypeOf<Query>();
+  });
+
   it('build a node or a state from plain types', () => {
-    expectTypeOf<UrlParamsState<{ id: number }, { q: string }>>().toEqualTypeOf<
+    expectTypeOf<RouteParams<{ id: number }, { q: string }>>().toEqualTypeOf<
       Readonly<{ path: Readonly<{ id: number }>; query: Readonly<{ q: string }> }>
     >();
     expectTypeOf(MEMBER).toExtend<RouteNode<PathParamsOf<Member>, QueryParamsOf<Member>, 'page'>>();

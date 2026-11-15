@@ -27,7 +27,7 @@ const { AppRouter, provideAppRouter } = defineAppRouter(
       {
         path: 'items/:id',
         routeName: RouteNames.ITEM,
-        pathParam: { id: numberCodec() },
+        pathParams: { id: numberCodec() },
         queryParams: {
           tab: queryParam({ codec: stringCodec(), defaultValue: 'info' }),
           view: queryParam({ codec: stringCodec(), defaultValue: 'grid' }),

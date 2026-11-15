@@ -1,7 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CanActivateFn, NavigationStart, Router } from '@angular/router';
-import { defineAppRouter } from './app-router';
+import { AppRouterDiagnostic, AppRouterDiagnostics, defineAppRouter } from './app-router';
 import { queryParam, stringCodec } from './params';
 
 @Component({ template: '' })
@@ -15,7 +15,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function setup(guard: CanActivateFn = () => true) {
+function setup(guard: CanActivateFn = () => true, diagnostics?: AppRouterDiagnostics) {
   const definition = defineAppRouter(
     { ROOT: RouteNames.ROOT, RESULTS: RouteNames.RESULTS, OTHER: RouteNames.OTHER },
     {
@@ -37,6 +37,7 @@ function setup(guard: CanActivateFn = () => true) {
           ],
         },
       ],
+      diagnostics,
     },
   );
   TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
@@ -220,5 +221,84 @@ describe('query writes', () => {
 
     expect(await Promise.all([redirected, second])).toEqual([false, true]);
     expect(router.url).toBe('/results?search=old&locale=fr');
+  });
+
+  describe('diagnostics.replacedPatches', () => {
+    const collect = () => {
+      const diagnostics: AppRouterDiagnostic[] = [];
+      const options: AppRouterDiagnostics = {
+        replacedPatches: true,
+        warn: (diagnostic) => diagnostics.push(diagnostic),
+      };
+      return { diagnostics, options };
+    };
+
+    it('reports the fields of a cancelled patch that the next patch leaves out', async () => {
+      const { diagnostics, options } = collect();
+      const { appRouter, router } = setup(() => true, options);
+      await router.navigateByUrl('/results?locale=en&search=old');
+      const first = appRouter.routes.RESULTS.patchQuery({ search: 'new' });
+      const second = appRouter.routes.ROOT.patchQuery({ locale: 'fr' });
+
+      expect(await Promise.all([first, second])).toEqual([false, true]);
+      expect(router.url).toBe('/results?locale=fr&search=old');
+      expect(diagnostics).toEqual([
+        {
+          code: 'PATCH_REPLACED',
+          route: 'ROOT',
+          fields: ['search'],
+          message:
+            "ROOT: patchQuery() cancelled a patch that was still running, so 'search' never reached the URL. Put fields that change together in one patch.",
+        },
+      ]);
+    });
+
+    it('counts a field passed as undefined as left out', async () => {
+      const { diagnostics, options } = collect();
+      const { appRouter, router } = setup(() => true, options);
+      await router.navigateByUrl('/results?search=old');
+      void appRouter.routes.RESULTS.patchQuery({ search: 'new' });
+      await appRouter.routes.RESULTS.patchQuery({ search: undefined, locale: 'fr' });
+
+      expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(['PATCH_REPLACED']);
+    });
+
+    it('stays quiet when the next patch sets the same field', async () => {
+      const { diagnostics, options } = collect();
+      const { appRouter, router } = setup(() => true, options);
+      await router.navigateByUrl('/results?search=a');
+      void appRouter.routes.RESULTS.patchQuery({ search: 'ab' });
+      await appRouter.routes.RESULTS.patchQuery({ search: 'ac' });
+
+      expect(router.url).toBe('/results?search=ac');
+      expect(diagnostics).toEqual([]);
+    });
+
+    it('is off unless the app turns it on', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const diagnostics: AppRouterDiagnostic[] = [];
+      const { appRouter, router } = setup(() => true, {
+        warn: (diagnostic) => diagnostics.push(diagnostic),
+      });
+      await router.navigateByUrl('/results?locale=en&search=old');
+      void appRouter.routes.RESULTS.patchQuery({ search: 'new' });
+      await appRouter.routes.ROOT.patchQuery({ locale: 'fr' });
+
+      expect(router.url).toBe('/results?locale=fr&search=old');
+      expect(diagnostics).toEqual([]);
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('warns on the console when there is no warn function', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { appRouter, router } = setup(() => true, { replacedPatches: true });
+      await router.navigateByUrl('/results?locale=en&search=old');
+      void appRouter.routes.RESULTS.patchQuery({ search: 'new' });
+      await appRouter.routes.ROOT.patchQuery({ locale: 'fr' });
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("so 'search' never reached"));
+      warn.mockRestore();
+    });
   });
 });

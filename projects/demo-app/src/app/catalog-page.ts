@@ -1,6 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { debounce, FormField } from '@angular/forms/signals';
+import type { RouteQueryPatch, RoutesOf } from 'ngx-urlik';
 import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
 import { AppRouter } from './app-router';
 import { Preferences } from './preferences';
@@ -10,6 +11,8 @@ import { LoadingIndicator } from './loading-indicator';
 import { withPreviousValue } from './with-previous-value';
 import type { PageSize } from './codecs';
 import { MediaCard } from './media-card';
+
+type Routes = RoutesOf<typeof AppRouter>;
 
 const headings = { episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' } as const;
 
@@ -179,7 +182,7 @@ export class CatalogPage {
   }
 
   // Every control changes the model, and the binding decides when the URL follows.
-  private edit(change: Partial<ReturnType<typeof this.binding.model>>) {
+  private edit(change: RouteQueryPatch<Routes['BROWSE']>) {
     this.binding.model.update((query) => ({ ...query, ...change }));
   }
 }
