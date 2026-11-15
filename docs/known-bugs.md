@@ -30,16 +30,6 @@ covers the whole separator, so an item that ends with part of it runs into the n
 
 The fix accepts only one-character separators, which is what the error message already asks for.
 
-### `numberCodec` reads `-0`, which it writes as `0`
-
-`numberCodec()` in `src/lib/params.ts`.
-
-`deserialize('-0')` gives `-0`, but `serialize(-0)` gives `'0'`, which reads back as `0`. The two
-aren't `Object.is` equal, so the codec breaks its own rule that reading what it wrote gives back the
-same value.
-
-The fix reads `-0` as `0`.
-
 ### `enumCodec` drops a member of a record with numeric keys
 
 `enumCodec()` in `src/lib/params.ts`.

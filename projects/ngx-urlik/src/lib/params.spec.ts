@@ -40,6 +40,11 @@ describe('parameter codecs and definitions', () => {
     expect(numberCodec().deserialize(raw)).toBeNull();
   });
 
+  it.each(['-0', '-0.0', '-0e5'])('numberCodec reads %j as 0, the value it writes', (raw) => {
+    expect(Object.is(numberCodec().deserialize(raw), 0)).toBe(true);
+    expect(numberCodec().serialize(-0)).toBe('0');
+  });
+
   it('rejects NaN serialization while retaining infinities', () => {
     expect(numberCodec().serialize(Number.NaN)).toBeNull();
     expect(numberCodec().serialize(Infinity)).toBe('Infinity');
