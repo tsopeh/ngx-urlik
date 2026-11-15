@@ -224,9 +224,6 @@ from `globalParams()` too, and fall back to the saved value where the page reads
 
 **Diagnostics and the router**
 
-- `diagnostics: { replacedPatches: true }` in `defineAppRouter()` reports `PATCH_REPLACED`, with
-  the lost `fields`, when a patch cancels a running patch whose fields it doesn't set. It's off by
-  default, changes nothing about how patches run, and bound forms never set it off.
 - A diagnostic's `route` is the route that declares the field, which can be a parent. Unnamed
   parents are named by position, like `routes[0].children[1]`.
 - `escapeHatch.isActive(url, matchOptions?)` returns a `Signal<boolean>`. The escape hatch leaves

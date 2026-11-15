@@ -263,9 +263,7 @@ URL ends at `?minRating=2` without `search`. Written as one patch,
 that starts while a slow guard or resolver runs. A write that starts while the user navigates
 doesn't happen at all, and a form sends the field again with its next write. A debounced form field still writes after the user
 presses Back, if Back left that field alone. Code that changes several fields together should do it
-in one patch. A lost field is silent unless the app sets `diagnostics: { replacedPatches: true }`,
-which reports each one and changes nothing else. It's off by default, because a patch that replaces
-another on purpose is ordinary code, not a mistake.
+in one patch.
 
 ## Let forms hold drafts, and the URL hold what's written
 

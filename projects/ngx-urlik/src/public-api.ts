@@ -18,9 +18,8 @@ export {
   type RouteDefinition,
   type RouteDefinitions,
   type RouteNode,
-  type RouteQueryPatch,
+  type QueryPatchOf,
   type RoutesOf,
   type ParamsOf,
-  type RouteParams,
 } from './lib/app-router';
 export { ɵqueryDefaults } from './lib/route-node';

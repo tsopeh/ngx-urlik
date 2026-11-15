@@ -6,14 +6,10 @@ import {
   makeEnvironmentProviders,
 } from '@angular/core';
 import { provideRouter, Router, RouterFeatures } from '@angular/router';
-import type { TypedAppRouter, RouteArrayInput } from './app-router-types';
-import { RouteDefinitions, validateRouteDefinitions } from './route-definition';
-import {
-  AppRouterDiagnostics,
-  createDiagnosticReporter,
-  createReplacedPatchReporter,
-} from './route-diagnostics';
+import type { RouteArrayInput, TypedAppRouter } from './app-router-types';
 import { compileRoutes } from './compiled-route';
+import { RouteDefinitions, validateRouteDefinitions } from './route-definition';
+import { AppRouterDiagnostics, createDiagnosticReporter } from './route-diagnostics';
 import { createAppRouter } from './route-node';
 
 export type {
@@ -26,12 +22,11 @@ export type {
   PathParamsOf,
   QueryParamsOf,
   RouteNode,
-  RouteQueryPatch,
+  QueryPatchOf,
   RoutesOf,
   ParamsOf,
 } from './app-router-types';
 export type { RouteDefinition, RouteDefinitions } from './route-definition';
-export type { RouteParams } from './route-node';
 
 /**
  * Gives Angular Router your routes, and gives you a typed entry in `AppRouter.routes` for each
@@ -71,7 +66,6 @@ export function defineAppRouter<
   }
 
   const report = createDiagnosticReporter(options.diagnostics);
-  const reportReplacedPatch = createReplacedPatchReporter(options.diagnostics);
   const { routes, namedRoutes } = compileRoutes(definitions);
   const AppRouter = new InjectionToken<TypedAppRouter<E, R>>('AppRouter');
 
@@ -87,7 +81,6 @@ export function defineAppRouter<
             inject(Router),
             inject(DestroyRef),
             report,
-            reportReplacedPatch,
           ) as TypedAppRouter<E, R>,
       },
     ]);

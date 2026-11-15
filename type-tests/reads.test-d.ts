@@ -1,15 +1,14 @@
 import type { Signal } from '@angular/core';
 import {
   numberCodec,
+  type ParamsOf,
   type PathParamsOf,
   queryParam,
   type QueryParamsOf,
+  type QueryPatchOf,
   type RouteNode,
-  type RouteQueryPatch,
   type RoutesOf,
-  type ParamsOf,
   stringCodec,
-  type RouteParams,
 } from 'ngx-urlik';
 import { describe, expectTypeOf, it } from 'vitest';
 import { appRouter, definition, snapshot } from './fixtures';
@@ -129,7 +128,7 @@ describe('helper types', () => {
     expectTypeOf<ParamsOf<Member>>().toEqualTypeOf<
       Readonly<{ path: Readonly<Path>; query: Query }>
     >();
-    expectTypeOf<RouteQueryPatch<Member>>().toEqualTypeOf<Partial<Query>>();
+    expectTypeOf<QueryPatchOf<Member>>().toEqualTypeOf<Partial<Query>>();
   });
 
   it('name a route from the token, with no injected router', () => {
@@ -139,10 +138,7 @@ describe('helper types', () => {
     expectTypeOf<QueryParamsOf<Routes['MEMBER']>>().toEqualTypeOf<Query>();
   });
 
-  it('build a node or a state from plain types', () => {
-    expectTypeOf<RouteParams<{ id: number }, { q: string }>>().toEqualTypeOf<
-      Readonly<{ path: Readonly<{ id: number }>; query: Readonly<{ q: string }> }>
-    >();
+  it('build a node from plain types', () => {
     expectTypeOf(MEMBER).toExtend<RouteNode<PathParamsOf<Member>, QueryParamsOf<Member>, 'page'>>();
   });
 });

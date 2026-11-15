@@ -9,18 +9,12 @@ import { describe, expectTypeOf, it } from 'vitest';
 describe('diagnostics', () => {
   it('names the code, the route, the parameter, and the operation', () => {
     expectTypeOf<AppRouterDiagnosticCode>().toEqualTypeOf<
-      'PARAM_DESERIALIZE_FAILED' | 'PARAM_SERIALIZE_FAILED' | 'PATCH_REPLACED'
+      'PARAM_DESERIALIZE_FAILED' | 'PARAM_SERIALIZE_FAILED'
     >();
     expectTypeOf<AppRouterDiagnostic['route']>().toEqualTypeOf<string>();
-    type Parameter = Exclude<AppRouterDiagnostic, { code: 'PATCH_REPLACED' }>;
-    expectTypeOf<Parameter['parameter']>().toEqualTypeOf<string>();
-    expectTypeOf<Parameter['operation']>().toEqualTypeOf<'serialize' | 'deserialize'>();
-    expectTypeOf<Parameter['cause']>().toEqualTypeOf<unknown>();
-  });
-
-  it('names the fields a replaced patch never wrote', () => {
-    type Replaced = Extract<AppRouterDiagnostic, { code: 'PATCH_REPLACED' }>;
-    expectTypeOf<Replaced['fields']>().toEqualTypeOf<readonly string[]>();
+    expectTypeOf<AppRouterDiagnostic['parameter']>().toEqualTypeOf<string>();
+    expectTypeOf<AppRouterDiagnostic['operation']>().toEqualTypeOf<'serialize' | 'deserialize'>();
+    expectTypeOf<AppRouterDiagnostic['cause']>().toEqualTypeOf<unknown>();
   });
 
   it('go to the warn function you pass to defineAppRouter()', () => {
@@ -29,6 +23,5 @@ describe('diagnostics', () => {
       warn: (diagnostic) => expectTypeOf(diagnostic).toEqualTypeOf<AppRouterDiagnostic>(),
     };
     defineAppRouter(Names, { routes: [], diagnostics });
-    defineAppRouter(Names, { routes: [], diagnostics: { replacedPatches: true } });
   });
 });

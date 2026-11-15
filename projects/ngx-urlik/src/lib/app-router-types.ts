@@ -59,7 +59,7 @@ type AnyRouteNode = {
 export type QueryParamsOf<N> = N extends { params: Signal<{ query: infer Q }> } ? Q : never;
 export type PathParamsOf<N> = N extends RouteNode<infer P, infer _Q, infer _R> ? P : never;
 export type ParamsOf<N> = N extends { params: Signal<infer S> } ? S : never;
-export type RouteQueryPatch<N> = Partial<Readonly<QueryParamsOf<N>>>;
+export type QueryPatchOf<N> = Partial<Readonly<QueryParamsOf<N>>>;
 /** The routes of an `AppRouter` token, for naming a route's types outside an injection context. */
 export type RoutesOf<Token> =
   Token extends InjectionToken<{ readonly routes: infer R }> ? R : never;

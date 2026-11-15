@@ -30,7 +30,7 @@ file gives the path that led there. Commit hashes point at the code for each ste
 | Nov 14, 2026    | The README is rewritten at 60% of its length. Finer rules move to the agent skill   |
 | Nov 14, 2026    | `enumCodec()` takes numeric and mixed enums, and arrays of numbers                  |
 | Nov 15, 2026    | Every doc is rewritten to open with the idea and read as connected prose            |
-| Nov 15, 2026    | `pathParam` becomes `pathParams`. Public types get new names. `replacedPatches`     |
+| Nov 15, 2026    | `pathParam` becomes `pathParams`, and the public types get new names                |
 
 The package version is `0.2.0`. In conversation we call the design after Nov 13 "API version 3".
 The version number hasn't followed, and whether it should is open. Nothing has been published, so
@@ -599,28 +599,31 @@ Three more could happen but weren't fixed that day. We fixed them on Nov 13:
 ## Names, and a report for lost patches
 
 On Nov 15 we went through the repo asking what would help Angular developers pick the library up.
-The maintainer took three of the findings, all cheaper to change before a first release:
+The maintainer took three of the findings, all cheaper to change before a first release, and kept
+two:
 
 - **`pathParam` became `pathParams`.** It has been a map of codecs since `e840d12`, and it sits next
   to `queryParams`. The singular name dated from 2025, when a route took one path parameter.
 - **Public types got names that say what they are.** `GeneratedAppRouter` became `TypedAppRouter`,
-  because nothing is generated. `RouteStateOf` became `ParamsOf`, and `UrlParamsState` became
-  `RouteParams`, so both carry the name of `params()`. `RoutesOf<typeof AppRouter>` is new. A
-  route's types could be named only from an injected variable, so TasteTrack's catalog page wrote
-  `Partial<ReturnType<typeof this.binding.model>>`.
-- **`diagnostics.replacedPatches`.** Two patches in one tick still lose the first one's fields, and
-  that rule stands. The proposal was a warning in development mode. The maintainer asked for a
-  setting instead, off by default, that an app can turn on while debugging or in production, and
-  that never changes the order anything runs in. It reports `PATCH_REPLACED` with the fields the
-  cancelled patch didn't write. A form's write that cancels its own earlier write now names that
-  write's fields at their URL values, so a bound form doesn't set the report off. `warn` became
-  optional, so the setting can be turned on alone.
+  because nothing is generated. `RouteStateOf` became `ParamsOf`, after `params()`, and
+  `RouteQueryPatch` became `QueryPatchOf`, so every helper that takes a route ends in `Of`.
+  `UrlParamsState` stopped being exported, because `ParamsOf` names the same thing.
+  `RoutesOf<typeof AppRouter>` is new. A route's types could be named only from an injected
+  variable, so TasteTrack's catalog page wrote `Partial<ReturnType<typeof this.binding.model>>`.
+- **A report for lost patches was built and removed the same day** (`64c4263` has the code). Two
+  patches in one tick lose the first one's fields. `diagnostics: { replacedPatches: true }`, off by
+  default, reported those fields as `PATCH_REPLACED`. The maintainer had asked for a setting rather
+  than a warning in development mode, one that works in production and never changes the order
+  anything runs in. It went because the app can already see a lost patch, whose promise resolves
+  `false`. It also cost too much for that: `AppRouterDiagnostic` became a union of two shapes, and
+  the form binding needed extra code only so that typing `x` and deleting it didn't set the report
+  off.
 
 Set aside for now: publishing, CI for the tests, a wider Angular peer range, an integer codec, a
 default separator for `listCodec`, and README sections on testing and on how the library compares
 with input binding.
 
-**Where it stands:** decided.
+**Where it stands:** decided. Don't bring the report back unless the maintainer asks.
 
 ## Branches
 

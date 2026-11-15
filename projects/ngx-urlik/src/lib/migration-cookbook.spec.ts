@@ -51,8 +51,11 @@ enum RouteNames {
   USER = 'USER',
 }
 
-describe('migration cookbook', () => {
-  it('1. accepts ordinary Angular Routes without naming anything', async () => {
+// How to move an Angular app to ngx-urlik, one step per test, in the order you'd do them. The app
+// works after every step.
+describe('moving an app over', () => {
+  // Start here. Nothing has a name yet, so every route behaves exactly as it did.
+  it('1. takes your Angular routes as they are', async () => {
     const routes: Routes = [
       { path: '', pathMatch: 'full', redirectTo: 'catalog' },
       { path: 'catalog', component: Page },
@@ -71,8 +74,9 @@ describe('migration cookbook', () => {
     expect(router.url).toBe('/missing');
   });
 
-  it('2. names one route without changing its Angular neighbors', async () => {
-    // Keep this array literal so TypeScript can infer CATALOG from routeName.
+  // A name adds the route to AppRouter.routes. Write the array inside the call, because that's
+  // where TypeScript reads CATALOG from.
+  it('2. names one route, and leaves the routes around it alone', async () => {
     const definition = defineAppRouter(
       { CATALOG: RouteNames.CATALOG },
       {
@@ -94,7 +98,8 @@ describe('migration cookbook', () => {
     expect(catalog.params()).toEqual({ path: {}, query: {} });
   });
 
-  it('3. reads a typed path value from an unnamed parent', async () => {
+  // The parent has no name, and MEMBER still reads its teamId as a number.
+  it('3. gives a path value a codec, on a parent without a name', async () => {
     const definition = defineAppRouter(
       { MEMBER: RouteNames.MEMBER },
       {
@@ -124,7 +129,8 @@ describe('migration cookbook', () => {
     member.params().path.memberId satisfies string;
   });
 
-  it('4. adds query fields without taking over unrelated URL keys', async () => {
+  // A link holds only what you pass. A patch changes its own fields and keeps `unknown=keep`.
+  it('4. declares query fields, and leaves every other URL key alone', async () => {
     const definition = defineAppRouter(
       { MEMBERS: RouteNames.MEMBERS },
       {
@@ -172,7 +178,8 @@ describe('migration cookbook', () => {
     });
   });
 
-  it('5. uses the matched Angular route, then the deepest named child', async () => {
+  // ADMIN and USER have the same path. Angular picks USER, so USER and its child are active.
+  it('5. lets Angular pick between two routes with the same path', async () => {
     const definition = defineAppRouter(
       { ADMIN: RouteNames.ADMIN, USER: RouteNames.USER, LANDING: RouteNames.LANDING },
       {
@@ -202,7 +209,8 @@ describe('migration cookbook', () => {
     expect(() => ADMIN.params()).toThrow(/isn't active/);
   });
 
-  it('6. reports route names and path names that cannot be typed safely', () => {
+  // Both mistakes throw when the app starts, with a message that names the routes.
+  it('6. refuses a route name used twice, and a placeholder used twice on the way down', () => {
     expect(() =>
       defineAppRouter(
         { DETAIL: RouteNames.DETAIL },
@@ -234,13 +242,14 @@ describe('migration cookbook', () => {
     );
   });
 
-  it('7. runs from an NgModule next to a lazy feature that is not converted yet', async () => {
+  // `settings` still loads with loadChildren, and the typed link to `results` works beside it.
+  it("7. works in an NgModule app, next to a lazy feature you haven't moved yet", async () => {
     // This step shows an NgModule app, so the component isn't standalone on purpose.
     // eslint-disable-next-line @angular-eslint/prefer-standalone
     @Component({ standalone: false, template: '<a [routerLink]="link">Results</a>' })
     class Nav {
       readonly link = inject(definition.AppRouter).routes.RESULTS.createUrlTree({
-        query: { page: 2 },
+        query: { minRating: 4 },
       });
     }
 
@@ -251,7 +260,7 @@ describe('migration cookbook', () => {
           {
             path: 'results',
             routeName: RouteNames.RESULTS,
-            queryParams: { page: queryParam({ codec: numberCodec(), defaultValue: 1 }) },
+            queryParams: { minRating: queryParam({ codec: numberCodec(), defaultValue: 0 }) },
             component: Page,
           },
           { path: 'settings', loadChildren: async () => [{ path: '', component: Page }] },
@@ -271,12 +280,15 @@ describe('migration cookbook', () => {
     const fixture = TestBed.createComponent(Nav);
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('a').getAttribute('href')).toBe('/results?page=2');
+    expect(fixture.nativeElement.querySelector('a').getAttribute('href')).toBe(
+      '/results?minRating=4',
+    );
     await router.navigateByUrl('/settings');
     expect(router.url).toBe('/settings');
   });
 
-  it('8. names routes in front of an existing Routes array', async () => {
+  // The spread routes work, but TypeScript can't check them, so move them over when you can.
+  it("8. puts named routes in front of a Routes array you haven't moved yet", async () => {
     const existingRoutes: Routes = [
       { path: 'catalog', component: Page },
       { path: '**', component: Page },

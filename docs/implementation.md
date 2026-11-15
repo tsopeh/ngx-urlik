@@ -95,11 +95,6 @@ Angular keeps that tree as the running navigation's `initialUrl`. If the URL wou
 nothing is navigating, it resolves `true` without calling Angular at all, because Angular would
 resolve `false`, as if a guard had said no.
 
-With `diagnostics: { replacedPatches: true }`, a patch that's about to cancel a running patch
-compares that patch's tree with the committed URL. Each query key the running patch would have
-changed, and the new patch doesn't set, goes into one `PATCH_REPLACED` diagnostic. The check reads
-and reports, and the navigation that follows is the same with it on or off.
-
 | What happened                             | Result           |
 | ----------------------------------------- | ---------------- |
 | It worked                                 | Resolves `true`  |
@@ -141,25 +136,23 @@ before their model, so there the model is simply the form's value. In Reactive F
 a `debounce` entry moves into the model when its delay ends, and every other field moves in right
 away.
 
-| Variable    | Holds                                                      |
-| ----------- | ---------------------------------------------------------- |
-| `model`     | The values the binding compares with the URL               |
-| `shown`     | What the form showed after the last change the binding saw |
-| `lastUrl`   | The URL values the form last took in                       |
-| `held`      | Fields `writeWhen: 'valid'` held back                      |
-| `timers`    | Per field, the Reactive Forms debounce timer               |
-| `writes`    | How many writes the binding has started                    |
-| `running`   | The newest write, its fields, and the keys it patched      |
-| `destroyed` | Whether the injection context was destroyed                |
+| Variable    | Holds                                                        |
+| ----------- | ------------------------------------------------------------ |
+| `model`     | The values the binding compares with the URL                 |
+| `shown`     | What the form showed after the last change the binding saw   |
+| `lastUrl`   | The URL values the form last took in                         |
+| `held`      | Fields `writeWhen: 'valid'` held back                        |
+| `timers`    | Per field, the Reactive Forms debounce timer                 |
+| `writes`    | How many writes the binding has started                      |
+| `running`   | The newest write and the fields it carries, until it settles |
+| `destroyed` | Whether the injection context was destroyed                  |
 
 **Model to URL.** When the model changes, the binding writes every field that differs from the URL,
 except the ones `writeWhen` holds back. The newest navigation wins, so a write that carries all of
 them can't lose one to an older write. If the same write is already running, nothing happens. If no
-field differs but an earlier write is still running, the binding still writes, and `patchQuery()`
-navigates to the URL as it is, which cancels the earlier write. `beforeWrite` runs only for a write
-that has fields. A write that cancels a running one also patches that write's other keys, at their
-URL values. The URL comes out the same, and the patch says it leaves those fields out on purpose,
-so `replacedPatches` reports nothing.
+field differs but an earlier write is still running, the binding writes an empty patch, and
+`patchQuery()` navigates to the URL as it is, which cancels the earlier write. `beforeWrite` runs
+only for a write that has fields.
 
 **URL to model.** When `params()` changes, a field takes the URL's value only if three things hold:
 the URL value changed since `lastUrl`, it differs from the model, and the field isn't held. Taking
