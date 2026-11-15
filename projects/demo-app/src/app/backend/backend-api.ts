@@ -1,6 +1,6 @@
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, InjectionToken } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
-import { delay, filter, map, type Observable } from 'rxjs';
+import { filter, map, type Observable, switchMap, timer } from 'rxjs';
 import { TasteTrackRepository } from './database';
 import type {
   CatalogItem,
@@ -121,22 +121,39 @@ export interface ContributorProfile {
 }
 
 /**
+ * How long the fake backend takes to answer, in milliseconds. Three answers in four take 150 to
+ * 500 ms, and the rest take 500 to 1000 ms.
+ */
+export const BACKEND_LATENCY = new InjectionToken<() => number>('BACKEND_LATENCY', {
+  providedIn: 'root',
+  factory: () => () =>
+    Math.random() < 0.75 ? 150 + Math.random() * 350 : 500 + Math.random() * 500,
+});
+
+/**
  * The fake backend. Every page reads and changes data through it.
  *
- * Each query returns an Observable that emits on the next tick, like a real network call would, so
- * pages don't come to depend on data arriving at once. After any change, open queries emit again.
+ * Each query returns an Observable that emits after a `BACKEND_LATENCY` delay, like a real network
+ * call would, so pages show their loading states. After any change, open queries emit again, and a
+ * change that arrives while an answer is on its way replaces that answer.
  */
 @Injectable({ providedIn: 'root' })
 export class BackendApi {
   private readonly repository = inject(TasteTrackRepository);
+  private readonly latency = inject(BACKEND_LATENCY);
   private readonly dataVersion$ = toObservable(this.repository.dataVersion).pipe(
     filter(() => this.repository.ready()),
   );
 
+  /** Waits a fresh latency for each data version before the query reads the data. */
+  private respond() {
+    return switchMap((version: number) => timer(this.latency()).pipe(map(() => version)));
+  }
+
   /** One page of catalog titles that match the search, genres, and sort order. */
   getCatalog(query: CatalogQuery): Observable<CatalogResponse> {
     return this.dataVersion$.pipe(
-      delay(0),
+      this.respond(),
       map(() => {
         const items = this.repository.items();
         const personalStates = this.repository.personalStates();
@@ -179,7 +196,7 @@ export class BackendApi {
   /** The detail page for a movie, show, season, or episode, or `null` if there's no such title. */
   getItemDetail(request: ItemDetailRequest): Observable<ItemDetail | null> {
     return this.dataVersion$.pipe(
-      delay(0),
+      this.respond(),
       map(() => {
         const items = this.repository.items();
         let item: CatalogItem | undefined;
@@ -241,7 +258,7 @@ export class BackendApi {
   /** Every season of a show. */
   getSeasons(showId: string): Observable<readonly Season[]> {
     return this.dataVersion$.pipe(
-      delay(0),
+      this.respond(),
       map(() => this.repository.seasons().filter((season) => season.showId === showId)),
     );
   }
@@ -249,7 +266,7 @@ export class BackendApi {
   /** One page of library titles, filtered by search, kind, status, viewing count, and rating. */
   getLibrary(query: LibraryQuery): Observable<LibraryResponse> {
     return this.dataVersion$.pipe(
-      delay(0),
+      this.respond(),
       map(() => {
         const stateMap = new Map(
           this.repository.personalStates().map((state) => [state.itemId, state]),
@@ -295,7 +312,7 @@ export class BackendApi {
   /** One page of viewings, filtered by title and date range. */
   getHistory(query: HistoryQuery): Observable<HistoryResponse> {
     return this.dataVersion$.pipe(
-      delay(0),
+      this.respond(),
       map(() => {
         const itemMap = new Map(this.repository.items().map((item) => [item.id, item]));
         const matched = this.repository.events().filter((event) => {
@@ -331,7 +348,7 @@ export class BackendApi {
   /** Every person, or every studio. */
   getContributors(kind: 'person' | 'studio'): Observable<readonly Contributor[]> {
     return this.dataVersion$.pipe(
-      delay(0),
+      this.respond(),
       map(() => this.repository.contributors().filter((c) => c.kind === kind)),
     );
   }
@@ -339,7 +356,7 @@ export class BackendApi {
   /** A person or studio with their credits, or `null` if the ID is unknown. */
   getContributorProfile(id: string): Observable<ContributorProfile | null> {
     return this.dataVersion$.pipe(
-      delay(0),
+      this.respond(),
       map(() => {
         const contributor = this.repository.contributors().find((c) => c.id === id);
         if (!contributor) {

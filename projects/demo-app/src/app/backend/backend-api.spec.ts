@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { BackendApi } from './backend-api';
+import { BACKEND_LATENCY, BackendApi } from './backend-api';
 import { TasteTrackRepository } from './database';
 import type { CatalogItem, PersonalState } from './domain';
 import { tasteTrackSeed } from './seed';
@@ -79,7 +79,10 @@ class MockTasteTrackRepository {
 describe('BackendApi', () => {
   function setup() {
     TestBed.configureTestingModule({
-      providers: [{ provide: TasteTrackRepository, useClass: MockTasteTrackRepository }],
+      providers: [
+        { provide: TasteTrackRepository, useClass: MockTasteTrackRepository },
+        { provide: BACKEND_LATENCY, useValue: () => 0 },
+      ],
     });
 
     const repository = TestBed.inject(TasteTrackRepository) as unknown as MockTasteTrackRepository;
@@ -106,7 +109,7 @@ describe('BackendApi', () => {
         resolvedSynchronously = true;
       });
 
-      // delay(0) holds the value until the next tick.
+      // Even with no latency, the timer holds the value until the next tick.
       expect(resolvedSynchronously).toBe(false);
 
       const response = await firstValueFrom(obs$);
