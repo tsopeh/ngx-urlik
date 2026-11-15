@@ -344,3 +344,12 @@ test('resetting TasteTrack returns to the movie catalog', async ({ page }) => {
   await page.getByRole('button', { name: 'Reset TasteTrack' }).click();
   await expect(page).toHaveURL(/\/movies$/);
 });
+
+test('removes a cleared History date from the URL', async ({ page }) => {
+  await page.goto('/history');
+  const from = page.getByLabel('From', { exact: true });
+  await from.fill('2026-09-01');
+  await expect(page).toHaveURL(/from=2026-09-01/);
+  await from.fill('');
+  await expect(page).not.toHaveURL(/from=/);
+});

@@ -10,6 +10,17 @@ export type SortValue<Field extends string> = Readonly<{
 
 const nonNegativeInteger = /^\d+$/;
 
+const calendarDate = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A date such as `2026-09-01`. Text that isn't a real date is neither read nor written. */
+export function dateCodec(): UrlParamCodec<string> {
+  const isDate = (value: string) => calendarDate.test(value) && Number.isFinite(Date.parse(value));
+  return {
+    serialize: (value) => (typeof value === 'string' && isDate(value) ? value : null),
+    deserialize: (raw) => (isDate(raw) ? raw : null),
+  };
+}
+
 export function experienceCountCodec(): UrlParamCodec<ExperienceCount> {
   return {
     serialize(value) {

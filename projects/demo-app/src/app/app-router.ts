@@ -7,6 +7,7 @@ import {
   stringCodec,
 } from 'ngx-urlik';
 import {
+  dateCodec,
   experienceCountCodec,
   paginationParams,
   positiveIntegerCodec,
@@ -194,8 +195,8 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
           routeName: RouteNames.HISTORY,
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
-            from: queryParam({ codec: stringCodec() }),
-            to: queryParam({ codec: stringCodec() }),
+            from: queryParam({ codec: dateCodec() }),
+            to: queryParam({ codec: dateCodec() }),
             ...paginationParams({ pageSizes: [12, 24, 48] }),
             sort: queryParam({
               codec: sortCodec(['date', 'rating'] as const),

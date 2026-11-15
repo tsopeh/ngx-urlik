@@ -43,16 +43,6 @@ The fix is still open: the controls could reset to the route's defaults, or the 
 
 ## TasteTrack
 
-### Clearing a History date leaves `?from=` in the URL
-
-`history-page.ts`, with the `from` and `to` fields in `app-router.ts`.
-
-A cleared date input gives `''`, not `null`, so the form writes `?from=` instead of removing the
-field. The fields also use `stringCodec()`, so any text counts as a date.
-
-The fix writes `null` for an empty date and gives `from` and `to` a codec that reads only dates like
-`2026-09-01`.
-
 ### Viewings show a day late east of UTC+4
 
 `logViewing()` in `backend/database.ts`, the seed data, and the date in `history-page.ts`.
