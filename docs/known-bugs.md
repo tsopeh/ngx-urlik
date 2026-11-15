@@ -1,6 +1,6 @@
 # Known bugs
 
-These are bugs we know about and haven't fixed yet, in the library first and then in TasteTrack.
+These are bugs we know about and haven't fixed yet.
 Each entry says where the bug lives, what happens, how to see it, and the fix we have in mind. A fix
 removes its entry, in the same commit.
 
@@ -30,15 +30,3 @@ the value it was created with. On `/results?search=foo`, a "Clear filters" butto
 
 The fix is still open: the controls could reset to the route's defaults, or the docs could say what
 `reset()` does.
-
-## TasteTrack
-
-### The theme breaks where storage is blocked
-
-`ThemeService` in `theme.ts`.
-
-`localStorage` throws where the browser blocks storage, and the theme service reads and writes it
-without a `try`. The shell injects the service, so the whole app fails to start. `Preferences`
-already guards its reads.
-
-The fix guards the theme's reads and writes the same way.

@@ -16,6 +16,23 @@ function readJson(key: string): unknown {
   }
 }
 
+// Storage can be blocked, and then nothing is remembered between visits.
+function writeJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Not remembered.
+  }
+}
+
+function removeKey(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Nothing was remembered.
+  }
+}
+
 function readPageSize(): PageSize | undefined {
   const stored = readJson(pageSizeKey);
   return pageSizes.includes(stored as PageSize) ? (stored as PageSize) : undefined;
@@ -59,7 +76,7 @@ export class Preferences {
         return;
       }
       this.savedPageSize.set(pageSize);
-      localStorage.setItem(pageSizeKey, JSON.stringify(pageSize));
+      writeJson(pageSizeKey, pageSize);
     });
     effect(() => {
       const { showId, seasonNumber } = current().path;
@@ -69,7 +86,7 @@ export class Preferences {
         return;
       }
       this.seasons.update((seasons) => ({ ...seasons, [showId]: seasonNumber }));
-      localStorage.setItem(seasonsKey, JSON.stringify(this.seasons()));
+      writeJson(seasonsKey, this.seasons());
     });
   }
 
@@ -84,8 +101,8 @@ export class Preferences {
   }
 
   clear(): void {
-    localStorage.removeItem(pageSizeKey);
-    localStorage.removeItem(seasonsKey);
+    removeKey(pageSizeKey);
+    removeKey(seasonsKey);
     this.savedPageSize.set(undefined);
     this.seasons.set({});
   }

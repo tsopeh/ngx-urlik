@@ -418,3 +418,33 @@ test('writes a typed catalog search to the URL once, not per keystroke', async (
   const writes = await page.evaluate(() => (window as unknown as { writes: string[] }).writes);
   expect(writes.filter((url) => url.includes('search='))).toHaveLength(1);
 });
+
+test('runs where the browser blocks storage', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      errors.push(message.text());
+    }
+  });
+  await page.addInitScript(() =>
+    Object.defineProperty(window, 'localStorage', {
+      get() {
+        throw new DOMException('blocked', 'SecurityError');
+      },
+    }),
+  );
+  await page.goto('/movies');
+  await expect(page.getByRole('heading', { name: 'Movies', exact: true })).toBeVisible();
+  await expect(page.locator('app-media-card').first()).toBeVisible();
+
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: /Settings/ })
+    .click();
+  await page.locator('#main-content').getByRole('button', { name: 'dark', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.goto('/movies?pageSize=12');
+  await expect(page.locator('app-media-card')).toHaveCount(12);
+  expect(errors).toEqual([]);
+});
