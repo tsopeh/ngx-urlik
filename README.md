@@ -9,11 +9,11 @@
   URL.</em>
 </p>
 
-A URL is just a string, so Angular's router exposes path and query parameters as `string | null`.
-That isn't ergonomic, and it's error-prone, because each page has to parse every value and check
-that it's valid. Angular has no way to declare a type for a path or query parameter, so navigation
-isn't type-safe, and you can't refactor a route with confidence. Without these, keeping a form in
-sync with the URL is hard.
+A URL is just a string, and Angular's router exposes path and query parameters as `string | null`.
+That isn't ergonomic because each page has to parse every value and check that it's valid. Angular
+has no way to declare types for path or query parameters, so navigation isn't type-safe, and the
+routes can't be refactored with confidence. Angular offers no first-party API for keeping a form's
+values in sync with the URL's query parameters.
 
 ngx-urlik allows you to name a route and then declare type-safe query and path parameters.
 TypeScript checks every link and navigation against these declarations. This library offers helpers
