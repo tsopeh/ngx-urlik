@@ -16,8 +16,7 @@ import type { CatalogItem, PersonalState } from './backend';
         @if (item().id === 'mov_quillons-last-inference') {
           <img src="artwork/quillons-last-inference.png" alt="" />
         }
-        <span>{{ item().kind }}</span
-        ><strong>{{ initials() }}</strong
+        <span>{{ item().kind }}</span><strong>{{ initials() }}</strong
         ><small>{{ item().year }}</small>
       </a>
       <div class="card-copy">

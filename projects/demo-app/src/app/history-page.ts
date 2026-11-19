@@ -61,8 +61,7 @@ import type { PageSize } from './codecs';
             <article>
               <time [attr.datetime]="entry.event.occurredAt">{{
                 entry.event.occurredAt | date: 'mediumDate' : 'UTC'
-              }}</time
-              ><span class="history-icon">▶</span>
+              }}</time><span class="history-icon">▶</span>
               <div>
                 <p class="eyebrow">{{ entry.event.kind }}</p>
                 <h3>
