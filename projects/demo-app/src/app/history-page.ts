@@ -27,10 +27,10 @@ import type { PageSize } from './codecs';
       <form class="filter-panel" [formGroup]="form" (submit)="$event.preventDefault()">
         <label class="search"
           ><span>Search history</span
-          ><input type="search" formControlName="search" placeholder="Search titles…"
+          ><input type="search" [formControl]="form.controls.search" placeholder="Search titles…"
         /></label>
-        <label><span>From</span><input type="date" formControlName="from" /></label>
-        <label><span>To</span><input type="date" formControlName="to" /></label>
+        <label><span>From</span><input type="date" [formControl]="form.controls.from" /></label>
+        <label><span>To</span><input type="date" [formControl]="form.controls.to" /></label>
         <label
           ><span>Page size</span
           ><select [value]="pageSize()" (change)="setPageSize($any($event.target).value)">
@@ -103,7 +103,6 @@ export class HistoryPage {
   private readonly preferences = inject(Preferences);
   protected readonly form = createQueryParamsFormGroup(this.routes.HISTORY, {
     debounce: { search: 250 },
-    writeWhen: 'valid',
     // A cleared date input gives '', which leaves the URL as null. A new filter or order starts
     // from the first page, in the same navigation.
     beforeWrite: (patch) => {
@@ -116,7 +115,7 @@ export class HistoryPage {
       const changesFilter = filters.some((field) => field in patch);
       return changesFilter ? { page: 1, ...patch } : patch;
     },
-  });
+  }).form;
   protected readonly query = computed(() => this.routes.HISTORY.params().query);
   protected readonly pageSize = computed(() => this.preferences.pageSize(this.query().pageSize));
 

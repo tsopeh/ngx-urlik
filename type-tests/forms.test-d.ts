@@ -4,8 +4,10 @@ import type { FieldTree } from '@angular/forms/signals';
 import type { QueryParamsOf } from 'ngx-urlik';
 import {
   bindQueryParamsToFormGroup,
+  bindQueryParamsToSignalForm,
   createQueryParamsFormGroup,
   createQueryParamsSignalForm,
+  type QueryParamsBinding,
   type QueryParamsFormControls,
   type QueryWriteFailure,
 } from 'ngx-urlik/forms';
@@ -17,8 +19,9 @@ type MemberQuery = QueryParamsOf<typeof MEMBER>;
 
 describe('createQueryParamsFormGroup()', () => {
   it("gives one control per query field, typed like the field's value", () => {
-    const form = createQueryParamsFormGroup(MEMBER);
+    const { form, write } = createQueryParamsFormGroup(MEMBER);
     expectTypeOf(form).toEqualTypeOf<FormGroup<QueryParamsFormControls<MemberQuery>>>();
+    expectTypeOf(write).toEqualTypeOf<() => Promise<void>>();
     expectTypeOf(form.controls.page).toEqualTypeOf<FormControl<number | null>>();
     expectTypeOf(form.controls.locale).toEqualTypeOf<FormControl<string>>();
     expectTypeOf(form.controls.tags).toEqualTypeOf<FormControl<readonly string[]>>();
@@ -32,15 +35,22 @@ describe('createQueryParamsFormGroup()', () => {
 
   it('binds an existing group whose controls match the fields', () => {
     const group = {} as FormGroup<QueryParamsFormControls<MemberQuery>>;
-    expectTypeOf(bindQueryParamsToFormGroup(MEMBER, group)).toEqualTypeOf<void>();
+    expectTypeOf(bindQueryParamsToFormGroup(MEMBER, group)).toEqualTypeOf<QueryParamsBinding>();
   });
 });
 
 describe('createQueryParamsSignalForm()', () => {
   it('gives a writable model of the query and its field tree', () => {
-    const { model, form } = createQueryParamsSignalForm(MEMBER);
+    const { model, form, write } = createQueryParamsSignalForm(MEMBER);
     expectTypeOf(model).toEqualTypeOf<WritableSignal<MemberQuery>>();
     expectTypeOf(form).toEqualTypeOf<FieldTree<MemberQuery>>();
+    expectTypeOf(write).toEqualTypeOf<() => Promise<void>>();
+  });
+
+  it('binds an existing form, and returns a write for its submit action', () => {
+    const form = {} as FieldTree<MemberQuery>;
+    const binding = bindQueryParamsToSignalForm(MEMBER, form);
+    expectTypeOf(binding).toEqualTypeOf<QueryParamsBinding>();
   });
 });
 
@@ -55,10 +65,11 @@ describe('binding options', () => {
     });
   });
 
-  it('writeWhen is always or valid', () => {
-    createQueryParamsSignalForm(MEMBER, { writeWhen: 'valid' });
-    // @ts-expect-error only 'always' and 'valid'
-    createQueryParamsSignalForm(MEMBER, { writeWhen: 'blur' });
+  it('writeOn is change or submit', () => {
+    createQueryParamsSignalForm(MEMBER, { writeOn: 'change' });
+    createQueryParamsFormGroup(MEMBER, { writeOn: 'submit' });
+    // @ts-expect-error only 'change' and 'submit'
+    createQueryParamsSignalForm(MEMBER, { writeOn: 'blur' });
   });
 
   it('onWriteFailure tells a decline from an error', () => {

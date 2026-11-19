@@ -662,11 +662,13 @@ describe('defineAppRouter with Angular route arrays', () => {
     );
     const { appRouter, router } = setup(definition);
     await router.navigateByUrl('/results?unknown=keep');
-    const form = TestBed.runInInjectionContext(() =>
+    const { form, write } = TestBed.runInInjectionContext(() =>
       createQueryParamsFormGroup(appRouter.routes.RESULTS),
     );
     form.patchValue({ search: 'new' });
-    await vi.waitFor(() => expect(router.url).toBe('/results?unknown=keep&search=new'));
+    // The edit is already on its way, so write() only waits for it to settle.
+    await write();
+    expect(router.url).toBe('/results?unknown=keep&search=new');
   });
 
   it('uses a default for malformed URL query data but does not match an invalid path value', async () => {

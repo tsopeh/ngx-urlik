@@ -169,7 +169,6 @@ export class LibraryPage {
       debounce(fields.search, 300);
       minLength(fields.search, 3);
     },
-    writeWhen: 'valid',
     // Any change other than the page itself starts from the first page, in the same navigation.
     beforeWrite: (patch) => {
       const changesMoreThanPage = Object.keys(patch).some((field) => field !== 'page');

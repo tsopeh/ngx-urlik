@@ -8,7 +8,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
-import { AbstractControl, FormControl, FormGroup } from '@angular/forms';
+import { AbstractControl, FormControl, FormGroup, FormSubmittedEvent } from '@angular/forms';
 import { FieldTree, form as signalForm, SchemaOrSchemaFn } from '@angular/forms/signals';
 import { ɵqueryDefaults } from 'ngx-urlik';
 
@@ -28,24 +28,38 @@ export type QueryWriteFailure =
 export interface QueryParamsBindingOptions<Q extends QueryState> {
   readonly replaceUrl?: boolean;
   /**
-   * `'valid'` holds a field's draft until its validators pass, including async ones. The default,
-   * `'always'`, writes every change.
+   * `'change'`, the default, writes each edited field once its validators pass, async ones
+   * included. Until then, the URL keeps the field's old value. `'submit'` writes every edit, typed
+   * or set by code, only when the form is submitted without errors.
    */
-  readonly writeWhen?: 'always' | 'valid';
+  readonly writeOn?: 'change' | 'submit';
   /**
-   * Changes a write right before it navigates. Gets the fields about to be written and the whole
-   * draft. Returns the fields to write, such as the same patch plus `page: 1`.
+   * Runs right before a write navigates. Gets the fields about to be written and the whole draft.
+   * Returns the fields to write, such as the patch plus `minRating: 0`.
    */
   readonly beforeWrite?: (patch: Partial<Q>, draft: Q) => Partial<Q>;
   readonly onWriteFailure?: (failure: QueryWriteFailure) => void;
+}
+
+export interface QueryParamsBinding {
+  /**
+   * Does what a submit does. It writes typing still waiting for its debounce. With
+   * `writeOn: 'change'`, it writes each field whose validators pass. With `writeOn: 'submit'`, it
+   * writes the whole draft, unless the form has errors. Resolves once the form's newest write
+   * settles, even one that was already running.
+   *
+   * As a Signal Form's submit action, it resolves once the write starts. Angular ignores a submit
+   * while the last one runs, so waiting longer would drop the user's next submit.
+   */
+  readonly write: () => Promise<void>;
 }
 
 export interface QueryParamsFormGroupOptions<
   Q extends QueryState,
 > extends QueryParamsBindingOptions<Q> {
   /**
-   * Milliseconds a field waits after its last change before it writes. Signal Forms use the
-   * schema's `debounce()` rule instead.
+   * Milliseconds a field waits after the user's last keystroke before it writes. A value set by
+   * code writes right away. Signal Forms use the schema's `debounce()` rule instead.
    */
   readonly debounce?: { readonly [K in keyof Q]?: number };
 }
@@ -56,8 +70,19 @@ type BindingAdapter<Q extends QueryState> = {
   write(changes: Changes<Q>): void;
   /** Whether a field's validators pass, with no async validator still running. */
   valid(param: keyof Q): boolean;
-  changes(emit: (query: Q) => void): () => void;
+  /** Reports each change, with the fields that code set rather than the user typed. */
+  changes(emit: (query: Q, setByCode?: ReadonlySet<keyof Q>) => void): () => void;
+  /**
+   * The form's value right now. Signal Forms report changes from an effect, and a submit action runs
+   * before that effect sees the latest value.
+   */
+  current?(): Q;
   validityChanges(notify: () => void): () => void;
+  /**
+   * Reports each submit, and whether the form had errors. Signal Forms leave this out: their
+   * submit() ends any wait, and runs the form's submit action only without errors.
+   */
+  submits?(notify: (hasErrors: boolean) => void): () => void;
 };
 
 const fieldsOf = <Q extends QueryState>(query: Q) => Object.keys(query) as (keyof Q)[];
@@ -68,11 +93,14 @@ const sameFields = <Q extends QueryState>(a: Changes<Q>, b: Changes<Q>) =>
   Object.keys(a).length === Object.keys(b).length &&
   fieldsOf(a).every((param) => param in b && Object.is(a[param], b[param]));
 
+/** Does what a submit does, and resolves once the form's newest write settles. */
+type SubmitWrite = (hasErrors: boolean) => Promise<void>;
+
 const bindQueryParams = <Q extends QueryState>(
   route: QueryRoute<Q>,
   adapter: BindingAdapter<Q>,
   options: QueryParamsFormGroupOptions<Q>,
-): void => {
+): SubmitWrite => {
   const destroyRef = inject(DestroyRef);
   const errorHandler = inject(ErrorHandler);
   // The route can go inactive before the binding is destroyed. The form then keeps its values.
@@ -83,26 +111,37 @@ const bindQueryParams = <Q extends QueryState>(
       return undefined;
     }
   };
-  // The values the binding compares with the URL. A Reactive Forms field with a debounce moves
-  // into the model when its delay ends. Signal Forms run debounce() before their model.
+  // The values the binding compares with the query parameters. Typing into a Reactive Forms field
+  // with a debounce moves into the model when its delay ends. Signal Forms run debounce() before
+  // their model.
   let model = route.params().query;
   // What the form showed after the last change the binding saw.
   let shown = model;
-  // The URL values the form last took in. A field follows the URL only when its URL value changes,
-  // so a navigation that changes other fields leaves a draft alone.
+  // The query parameter values the form last took in. A field follows its query parameter only
+  // when that parameter changes, so a navigation that changes other query parameters leaves a
+  // draft alone.
   let lastUrl = model;
-  // Fields that writeWhen held back. They try again when the form's validity changes.
-  const held = new Set<keyof Q>();
+  // Fields whose validators failed with writeOn: 'change'. They try again when the form's validity
+  // changes.
+  const invalid = new Set<keyof Q>();
   const timers = new Map<keyof Q, ReturnType<typeof setTimeout>>();
   // Each write gets the next number. `running` is the newest write, until it settles.
   let writes = 0;
   let running: { readonly id: number; readonly patch: Partial<Q> } | null = null;
+  // Settles after the newest write does. An older write resolves as the newer one that carried it,
+  // so waiting for the newest covers them all.
+  let newestWrite: Promise<void> = Promise.resolve();
   let destroyed = false;
   adapter.reset(model);
 
   const reportFailure = (failure: QueryWriteFailure) => {
     if (options.onWriteFailure) {
-      options.onWriteFailure(failure);
+      // An error the callback throws goes to ErrorHandler, so write() still resolves.
+      try {
+        options.onWriteFailure(failure);
+      } catch (error) {
+        errorHandler.handleError(error);
+      }
     } else if (failure.kind === 'error') {
       errorHandler.handleError(failure.error);
     }
@@ -114,8 +153,8 @@ const bindQueryParams = <Q extends QueryState>(
     adapter.write(changes);
   };
 
-  // A field the user hasn't touched since the write takes the URL's value. So a value that writes
-  // the same text, like a sort picked again, stops differing from the URL.
+  // A field the user hasn't touched since the write takes its query parameter's value. So a value
+  // that writes the same text, like a sort picked again, stops differing from its query parameter.
   const takeWrittenValues = (fields: Changes<Q>) => {
     const url = read();
     if (!url) {
@@ -143,7 +182,7 @@ const bindQueryParams = <Q extends QueryState>(
         running = null;
       }
     };
-    void route.patchQuery(patch, { replaceUrl: options.replaceUrl ?? true }).then(
+    newestWrite = route.patchQuery(patch, { replaceUrl: options.replaceUrl ?? true }).then(
       (result) => {
         if (destroyed) {
           return;
@@ -166,23 +205,24 @@ const bindQueryParams = <Q extends QueryState>(
     );
   };
 
-  // Writes every field whose model value differs from the URL, unless writeWhen holds it back.
+  // Writes every field whose model value differs from the URL. With writeOn: 'change', a field
+  // whose validators fail waits. With writeOn: 'submit', the submit already checked the whole form.
   const writeDraft = () => {
     if (destroyed) {
       return;
     }
-    // Take in URL changes the effect hasn't brought yet, so a field nobody edited isn't written back
-    // over a patch that just landed.
+    // Take in URL changes the effect hasn't seen yet. Otherwise a field nobody edited would be
+    // written back over a patch that just reached the URL.
     followUrl();
     const url = read() ?? lastUrl;
     const fields: Changes<Q> = {};
     for (const param of fieldsOf(model)) {
       const differs = !Object.is(model[param], url[param]);
-      const holdBack = differs && options.writeWhen === 'valid' && !adapter.valid(param);
+      const holdBack = differs && options.writeOn !== 'submit' && !adapter.valid(param);
       if (holdBack) {
-        held.add(param);
+        invalid.add(param);
       } else {
-        held.delete(param);
+        invalid.delete(param);
       }
       if (differs && !holdBack) {
         fields[param] = model[param];
@@ -193,13 +233,13 @@ const bindQueryParams = <Q extends QueryState>(
       try {
         patch = options.beforeWrite(fields, shown);
       } catch (error) {
-        // Nothing is written, so the form keeps the draft and a later change can write it.
+        // The URL doesn't change, so the form keeps the draft and a later change can write it.
         errorHandler.handleError(error);
         return;
       }
     }
     // A patch builds on the one still running, so a field the running write set and this one
-    // leaves out goes back to its URL value, like typing 'x' and deleting it.
+    // leaves out goes back to its query parameter's value, like typing 'x' and deleting it.
     if (running) {
       const undo: Changes<Q> = {};
       for (const param of fieldsOf(running.patch as Changes<Q>)) {
@@ -220,7 +260,10 @@ const bindQueryParams = <Q extends QueryState>(
     const changed = fieldsOf(changes).some((param) => !Object.is(model[param], changes[param]));
     if (changed) {
       model = { ...model, ...changes };
-      writeDraft();
+      // With writeOn: 'submit', the edit waits in the model until the form is submitted.
+      if (options.writeOn !== 'submit') {
+        writeDraft();
+      }
     }
   };
 
@@ -233,8 +276,10 @@ const bindQueryParams = <Q extends QueryState>(
     for (const param of fieldsOf(incoming)) {
       const urlChanged = !Object.is(lastUrl[param], incoming[param]);
       const differs = !Object.is(model[param], incoming[param]);
-      if (urlChanged && differs && !held.has(param)) {
-        // A new URL value replaces an edit still waiting for its debounce, as in Signal Forms.
+      if (urlChanged && differs && !invalid.has(param)) {
+        // A new query parameter value replaces an edit still waiting for its debounce, as in Signal
+        // Forms. If the timer kept running, it would write `shown`, which show() sets to the new
+        // value, so no test can see this clear. Clearing it drops the edit without relying on that.
         clearTimeout(timers.get(param));
         timers.delete(param);
         changes[param] = incoming[param];
@@ -246,14 +291,22 @@ const bindQueryParams = <Q extends QueryState>(
     }
   };
 
-  const stopFormChanges = adapter.changes((next) => {
+  const formChanged = (next: Q, setByCode?: ReadonlySet<keyof Q>) => {
     const changes: Changes<Q> = {};
     for (const param of fieldsOf(next)) {
-      if (Object.is(shown[param], next[param])) {
+      const fromCode = setByCode?.has(param) ?? false;
+      if (!fromCode && Object.is(shown[param], next[param])) {
         continue;
       }
-      const delay = options.debounce?.[param];
+      // As with Signal Forms' debounce(), only typing waits. A value set by code moves in right
+      // away and replaces typing still waiting.
+      const delay = fromCode ? undefined : options.debounce?.[param];
       if (delay === undefined) {
+        // A value set by code replaces typing still waiting. Left running, the timer would write
+        // `shown`, which already holds the new value, so no test can see this clear. Clearing it
+        // drops the typing without relying on that, as followUrl() does.
+        clearTimeout(timers.get(param));
+        timers.delete(param);
         changes[param] = next[param];
         continue;
       }
@@ -267,12 +320,35 @@ const bindQueryParams = <Q extends QueryState>(
       );
     }
     shown = next;
-    // Fields that changed together, and have no delay, go out in one navigation.
     updateModel(changes);
-  });
+  };
+  const stopFormChanges = adapter.changes(formChanged);
+
+  // Submitting ends every debounce wait, as Signal Forms' submit() does. With writeOn: 'change',
+  // each field whose validators pass is then written. With writeOn: 'submit', the whole draft is
+  // written, unless the form has errors. It resolves once the form's newest write settles, whether
+  // the submit started it or not.
+  const submitted = async (hasErrors: boolean) => {
+    const latest = adapter.current?.();
+    if (latest) {
+      formChanged(latest);
+    }
+    const waiting: Changes<Q> = {};
+    for (const [param, timer] of timers) {
+      clearTimeout(timer);
+      waiting[param] = shown[param];
+    }
+    timers.clear();
+    updateModel(waiting);
+    if (options.writeOn === 'submit' && !hasErrors) {
+      writeDraft();
+    }
+    await newestWrite;
+  };
+  const stopSubmits = adapter.submits?.((hasErrors) => void submitted(hasErrors));
 
   const stopValidityChanges = adapter.validityChanges(() => {
-    const released = [...held].some((param) => adapter.valid(param));
+    const released = [...invalid].some((param) => adapter.valid(param));
     if (released) {
       writeDraft();
     }
@@ -286,17 +362,38 @@ const bindQueryParams = <Q extends QueryState>(
       clearTimeout(timer);
     }
     stopFormChanges();
+    stopSubmits?.();
     stopValidityChanges();
     urlEffect.destroy();
   });
+  return submitted;
+};
+
+// Angular calls a control's change listeners when code sets it, to show the value in its input, but
+// not when the user types. They run before valueChanges. Angular has no public way to remove one,
+// so each control gets a single listener for its life, and bindings add and remove theirs behind it.
+const listenersByControl = new WeakMap<FormControl<unknown>, Set<(value: unknown) => void>>();
+const setByCodeListeners = (control: FormControl<unknown>) => {
+  const existing = listenersByControl.get(control);
+  if (existing) {
+    return existing;
+  }
+  const listeners = new Set<(value: unknown) => void>();
+  control.registerOnChange((value: unknown) => {
+    for (const listener of listeners) {
+      listener(value);
+    }
+  });
+  listenersByControl.set(control, listeners);
+  return listeners;
 };
 
 export function bindQueryParamsToFormGroup<Q extends QueryState>(
   route: QueryRoute<Q>,
   form: FormGroup<QueryParamsFormControls<Q>>,
   options: QueryParamsFormGroupOptions<Q> = {},
-): void {
-  bindQueryParams(
+): QueryParamsBinding {
+  const submitted = bindQueryParams(
     route,
     {
       reset: (query) => form.reset(query as never, { emitEvent: false }),
@@ -306,25 +403,60 @@ export function bindQueryParamsToFormGroup<Q extends QueryState>(
         return !control.invalid && !control.pending;
       },
       changes: (emit) => {
-        const subscription = form.valueChanges.subscribe(() => emit(form.getRawValue() as Q));
-        return () => subscription.unsubscribe();
+        const setByCode = new Map<keyof Q, unknown>();
+        const controls = form.controls as Record<string, FormControl<unknown>>;
+        const stopListening = Object.entries(controls).map(([param, control]) => {
+          const listeners = setByCodeListeners(control);
+          const listener = (value: unknown) => setByCode.set(param, value);
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        });
+        const subscription = form.valueChanges.subscribe(() => {
+          const query = form.getRawValue() as Q;
+          // A set with emitEvent: false leaves its entry behind, so only a matching value counts.
+          const fromCode = new Set(
+            fieldsOf(query).filter(
+              (param) => setByCode.has(param) && Object.is(setByCode.get(param), query[param]),
+            ),
+          );
+          setByCode.clear();
+          emit(query, fromCode);
+        });
+        return () => {
+          subscription.unsubscribe();
+          for (const stop of stopListening) {
+            stop();
+          }
+        };
       },
       validityChanges: (notify) => {
         const subscription = form.statusChanges.subscribe(() => notify());
         return () => subscription.unsubscribe();
       },
+      // A <form [formGroup]> sends this event when it's submitted. Like Signal Forms' submit(), a
+      // pending async validator doesn't count as an error.
+      submits: (notify) => {
+        const subscription = form.events.subscribe((event) => {
+          if (event instanceof FormSubmittedEvent) {
+            notify(form.invalid);
+          }
+        });
+        return () => subscription.unsubscribe();
+      },
     },
     options,
   );
+  // A pending async validator doesn't count as an error, as on submit.
+  return { write: () => submitted(form.invalid) };
 }
 
 export function createQueryParamsFormGroup<Q extends QueryState>(
   route: QueryRoute<Q>,
   options: QueryParamsFormGroupOptions<Q> = {},
-): FormGroup<QueryParamsFormControls<Q>> {
+): QueryParamsBinding & Readonly<{ form: FormGroup<QueryParamsFormControls<Q>> }> {
   const query = route.params().query;
   // A control resets to the value it's created with, so each starts at its field's default. The
-  // binding then shows the URL's values.
+  // binding then shows the query parameters' values.
   const defaults = ɵqueryDefaults(route);
   const controls = Object.fromEntries(
     Object.entries(query).map(([param, value]) => {
@@ -332,21 +464,25 @@ export function createQueryParamsFormGroup<Q extends QueryState>(
       return [param, new FormControl(initial, { nonNullable: true })];
     }),
   ) as QueryParamsFormControls<Q>;
-  const result = new FormGroup(controls);
-  bindQueryParamsToFormGroup(route, result, options);
-  return result;
+  const form = new FormGroup(controls);
+  return { form, ...bindQueryParamsToFormGroup(route, form, options) };
 }
 
 type QueryFieldState = () => Readonly<{ valid(): boolean }>;
 
+/**
+ * Binds a Signal Form you created to the route's query. With `writeOn: 'submit'`, make the
+ * returned `write` the form's submit action, as in
+ * `form(model, { submission: { action: () => binding.write() } })`.
+ */
 export function bindQueryParamsToSignalForm<Q extends QueryState>(
   route: QueryRoute<Q>,
   form: FieldTree<Q>,
   options: QueryParamsBindingOptions<Q> = {},
-): void {
+): QueryParamsBinding {
   const field = (param: keyof Q) =>
     (form as unknown as Record<PropertyKey, QueryFieldState>)[param]();
-  bindQueryParams(
+  const submitted = bindQueryParams(
     route,
     {
       reset: (query) => form().reset(query as never),
@@ -361,6 +497,7 @@ export function bindQueryParamsToSignalForm<Q extends QueryState>(
         });
         return () => watcher.destroy();
       },
+      current: () => untracked(() => form().value()),
       validityChanges: (notify) => {
         const watcher = effect(() => {
           for (const param of Object.keys(form().value())) {
@@ -373,6 +510,22 @@ export function bindQueryParamsToSignalForm<Q extends QueryState>(
     },
     options,
   );
+  return {
+    write: () => {
+      const state = untracked(form);
+      // Inside Angular's submit(), its validator rules already allowed the write.
+      const insideSubmit = untracked(state.submitting);
+      // As submit() does, this ends every debounce() wait, so typing still waiting is written.
+      // Inside submit(), it has already run, and running it again has no effect.
+      state.markAsTouched();
+      // With writeOn: 'submit', the form's errors block the write, as in Reactive Forms. Read after
+      // markAsTouched(), so the validators have seen the typing it moved into the model.
+      const written = submitted(!insideSubmit && untracked(state.invalid));
+      // Angular ignores a submit while the last one runs, so the user's next submit would be lost
+      // while a slow page loads. The submit ends once the write has started.
+      return insideSubmit ? Promise.resolve() : written;
+    },
+  };
 }
 
 export interface CreateQueryParamsSignalFormOptions<
@@ -385,9 +538,15 @@ export interface CreateQueryParamsSignalFormOptions<
 export function createQueryParamsSignalForm<Q extends QueryState>(
   route: QueryRoute<Q>,
   options: CreateQueryParamsSignalFormOptions<Q> = {},
-): Readonly<{ model: WritableSignal<Q>; form: FieldTree<Q> }> {
+): QueryParamsBinding & Readonly<{ model: WritableSignal<Q>; form: FieldTree<Q> }> {
   const model = signal(route.params().query) as WritableSignal<Q>;
-  const result = options.schema ? signalForm(model, options.schema) : signalForm(model);
-  bindQueryParamsToSignalForm(route, result, options);
-  return { model, form: result };
+  // With writeOn: 'submit', submitting a <form [formRoot]>, or calling submit(), writes the draft.
+  // The action runs only once the binding below exists.
+  const formOptions =
+    options.writeOn === 'submit' ? { submission: { action: () => binding.write() } } : {};
+  const result = options.schema
+    ? signalForm(model, options.schema, formOptions)
+    : signalForm(model, formOptions);
+  const binding: QueryParamsBinding = bindQueryParamsToSignalForm(route, result, options);
+  return { model, form: result, ...binding };
 }
