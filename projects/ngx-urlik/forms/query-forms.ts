@@ -96,7 +96,7 @@ const bindQueryParams = <Q extends QueryState>(
   const timers = new Map<keyof Q, ReturnType<typeof setTimeout>>();
   // Each write gets the next number. `running` is the newest write, until it settles.
   let writes = 0;
-  let running: { readonly id: number; readonly fields: Changes<Q> } | null = null;
+  let running: { readonly id: number; readonly patch: Partial<Q> } | null = null;
   let destroyed = false;
   adapter.reset(model);
 
@@ -134,20 +134,10 @@ const bindQueryParams = <Q extends QueryState>(
     }
   };
 
-  const send = (fields: Changes<Q>) => {
-    let patch: Partial<Q> = fields;
+  const send = (fields: Changes<Q>, patch: Partial<Q>) => {
     const hasFields = fieldsOf(fields).length > 0;
-    if (options.beforeWrite && hasFields) {
-      try {
-        patch = options.beforeWrite(fields, shown);
-      } catch (error) {
-        // Nothing is written, so the form keeps the draft and a later change can write it.
-        errorHandler.handleError(error);
-        return;
-      }
-    }
     const id = ++writes;
-    running = { id, fields };
+    running = { id, patch };
     const settle = () => {
       if (running?.id === id) {
         running = null;
@@ -177,11 +167,13 @@ const bindQueryParams = <Q extends QueryState>(
   };
 
   // Writes every field whose model value differs from the URL, unless writeWhen holds it back.
-  // The newest navigation wins, so each write carries all of them.
   const writeDraft = () => {
     if (destroyed) {
       return;
     }
+    // Take in URL changes the effect hasn't brought yet, so a field nobody edited isn't written back
+    // over a patch that just landed.
+    followUrl();
     const url = read() ?? lastUrl;
     const fields: Changes<Q> = {};
     for (const param of fieldsOf(model)) {
@@ -196,11 +188,31 @@ const bindQueryParams = <Q extends QueryState>(
         fields[param] = model[param];
       }
     }
-    // The same write again would change nothing. With no fields, a write still navigates to the
-    // URL, so it cancels the form's earlier write, like typing 'x' and deleting it.
-    const nothingNew = running ? sameFields(running.fields, fields) : !fieldsOf(fields).length;
+    let patch: Partial<Q> = fields;
+    if (options.beforeWrite && fieldsOf(fields).length) {
+      try {
+        patch = options.beforeWrite(fields, shown);
+      } catch (error) {
+        // Nothing is written, so the form keeps the draft and a later change can write it.
+        errorHandler.handleError(error);
+        return;
+      }
+    }
+    // A patch builds on the one still running, so a field the running write set and this one
+    // leaves out goes back to its URL value, like typing 'x' and deleting it.
+    if (running) {
+      const undo: Changes<Q> = {};
+      for (const param of fieldsOf(running.patch as Changes<Q>)) {
+        if (!(param in patch)) {
+          undo[param] = url[param];
+        }
+      }
+      patch = { ...undo, ...patch };
+    }
+    // The same write again would change nothing.
+    const nothingNew = running ? sameFields(running.patch, patch) : !fieldsOf(patch).length;
     if (!nothingNew) {
-      send(fields);
+      send(fields, patch);
     }
   };
 

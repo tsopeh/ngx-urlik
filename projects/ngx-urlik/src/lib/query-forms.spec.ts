@@ -120,7 +120,7 @@ describe('query forms', () => {
     expect(form.controls.search.value).toBe('draft');
   });
 
-  it('keeps the draft and reports a decline when a same-turn patch cancels the write', async () => {
+  it('adds up a form edit and a patch made in the same step', async () => {
     const { results, router } = await setup();
     const onWriteFailure = vi.fn();
     const form = TestBed.runInInjectionContext(() =>
@@ -128,6 +128,31 @@ describe('query forms', () => {
     );
     form.controls.search.setValue('first');
     const direct = results.patchQuery({ page: 2 });
+
+    expect(await direct).toBe(true);
+    expect(router.url).toBe('/results?search=first&page=2');
+    expect(onWriteFailure).not.toHaveBeenCalled();
+  });
+
+  it('writes only the edited field over a patch that just landed', async () => {
+    const { results, router } = await setup();
+    const { model } = TestBed.runInInjectionContext(() => createQueryParamsSignalForm(results));
+    model.update((query) => ({ ...query, search: 'elm' }));
+    await results.patchQuery({ page: 2 });
+
+    // The patch lands before the form writes. The form still shows page 1, but nobody edited it.
+    await vi.waitFor(() => expect(router.url).toBe('/results?page=2&search=elm'));
+    expect(model()).toEqual({ search: 'elm', page: 2 });
+  });
+
+  it('keeps the draft and reports a decline when a navigation cancels the write', async () => {
+    const { results, router } = await setup();
+    const onWriteFailure = vi.fn();
+    const form = TestBed.runInInjectionContext(() =>
+      createQueryParamsFormGroup(results, { onWriteFailure }),
+    );
+    form.controls.search.setValue('first');
+    const direct = router.navigateByUrl('/results?page=2');
 
     expect(await direct).toBe(true);
     expect(router.url).toBe('/results?page=2');
@@ -147,18 +172,18 @@ describe('query forms', () => {
     form.controls.search.setValue('e');
     form.controls.search.setValue('el');
 
-    // The first write is cancelled, but the second one carries the newer value.
-    expect(await write.mock.results[0].value).toBe(false);
+    // The second write overtakes the first and carries its field, so both resolve true.
+    expect(await write.mock.results[0].value).toBe(true);
     expect(await write.mock.results[1].value).toBe(true);
     expect(router.url).toBe('/results?search=el');
     expect(onWriteFailure).not.toHaveBeenCalled();
   });
 
-  it('writes a draft that another write cancelled with the next change', async () => {
+  it('writes a draft that a navigation cancelled with the next change', async () => {
     const { results, router } = await setup();
     const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
     form.controls.search.setValue('first');
-    await results.patchQuery({ page: 2 });
+    await router.navigateByUrl('/results?page=2');
     TestBed.flushEffects();
     expect(router.url).toBe('/results?page=2');
 
@@ -546,8 +571,8 @@ describe('query forms', () => {
         createQueryParamsFormGroup(results, { beforeWrite: resetPage }),
       );
 
-      // The 'elm' write is still running. Going back to 'oak' navigates to the URL as it is, which
-      // cancels that write, page reset and all.
+      // The 'elm' write is still running. Going back to 'oak' writes the search, and the page the
+      // reset changed, back to their URL values.
       form.controls.search.setValue('elm');
       form.controls.search.setValue('oak');
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -589,7 +614,7 @@ describe('query forms', () => {
       const form = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
 
       form.controls.search.setValue('first');
-      await results.patchQuery({ page: 2 });
+      await router.navigateByUrl('/results?page=2');
       await vi.waitFor(() => expect(router.url).toBe('/results?page=2'));
       expect(handleError).not.toHaveBeenCalled();
 
@@ -650,8 +675,11 @@ describe('query forms', () => {
         createQueryParamsFormGroup(results, { onWriteFailure }),
       );
 
+      const write = vi.spyOn(results, 'patchQuery');
+
       form.controls.search.setValue('elm');
-      const cancelling = results.patchQuery({ page: 2 });
+      expect(write).toHaveBeenCalledWith({ search: 'elm' }, { replaceUrl: true });
+      const cancelling = router.navigateByUrl('/results?page=2');
       injector.destroy();
       await cancelling;
       await new Promise((resolve) => setTimeout(resolve, 20));

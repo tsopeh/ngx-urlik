@@ -164,27 +164,97 @@ describe('query writes', () => {
     ]);
   });
 
-  // Like router.navigate(), a patch starts from the URL when you call it, and the newest
-  // navigation wins.
-  it('cancels the first of two writes started in the same turn', async () => {
+  it('adds the history entry a carried write asked for, and takes the other options from the later write', async () => {
+    const { appRouter, router } = setup();
+    await router.navigateByUrl('/results');
+    const extras: unknown[] = [];
+    router.events.subscribe((event) => {
+      if (event instanceof NavigationStart) {
+        extras.push(router.currentNavigation()?.extras);
+      }
+    });
+
+    // Both writes replace, so the second replaces too.
+    const first = appRouter.routes.RESULTS.patchQuery({ search: 'elm' }, { replaceUrl: true });
+    const second = appRouter.routes.ROOT.patchQuery({ locale: 'fr' }, { replaceUrl: true });
+    await Promise.all([first, second]);
+    // The first write adds an entry, so the second, which carries it, adds one too.
+    const third = appRouter.routes.RESULTS.patchQuery({ search: 'oak' });
+    const fourth = appRouter.routes.ROOT.patchQuery(
+      { locale: 'de' },
+      { replaceUrl: true, state: { from: 'sidebar' } },
+    );
+    await Promise.all([third, fourth]);
+
+    expect(extras).toEqual([
+      expect.objectContaining({ replaceUrl: true }),
+      expect.objectContaining({ replaceUrl: true }),
+      expect.not.objectContaining({ replaceUrl: true }),
+      expect.objectContaining({ replaceUrl: false, state: { from: 'sidebar' } }),
+    ]);
+    expect(router.url).toBe('/results?search=oak&locale=de');
+  });
+
+  // A patch made while another runs builds on where that one is going, so patches add up, and the
+  // later one wins on a field they share.
+  it('lets the later of two writes in the same turn win on a field they share', async () => {
     const { appRouter, router } = setup();
     await router.navigateByUrl('/results?search=a');
     const results = appRouter.routes.RESULTS;
     const first = results.patchQuery({ search: `${results.params().query.search}b` });
     const second = results.patchQuery({ search: `${results.params().query.search}c` });
 
-    expect(await Promise.all([first, second])).toEqual([false, true]);
+    expect(await Promise.all([first, second])).toEqual([true, true]);
     expect(router.url).toBe('/results?search=ac');
   });
 
-  it('cancels a child route write when a parent route writes in the same turn', async () => {
+  it('fails an overtaken write when a guard declines the write that carried it', async () => {
+    const { appRouter, router } = setup((route) => route.queryParamMap.get('locale') !== 'fr');
+    await router.navigateByUrl('/results?search=old');
+    const first = appRouter.routes.RESULTS.patchQuery({ search: 'new' });
+    const second = appRouter.routes.ROOT.patchQuery({ locale: 'fr' });
+
+    // The guard declines the second write, so the search it carried doesn't reach the URL either.
+    expect(await Promise.all([first, second])).toEqual([false, false]);
+    expect(router.url).toBe('/results?search=old');
+  });
+
+  it('writes a field back to its URL value while another write runs', async () => {
+    const { appRouter, router } = setup();
+    await router.navigateByUrl('/results?search=old');
+    const results = appRouter.routes.RESULTS;
+    const first = results.patchQuery({ search: 'new' });
+    const second = results.patchQuery({ search: 'old' });
+
+    expect(await Promise.all([first, second])).toEqual([true, true]);
+    expect(router.url).toBe('/results?search=old');
+  });
+
+  it('joins a running write that goes to the same URL', async () => {
+    const { appRouter, router } = setup();
+    await router.navigateByUrl('/results');
+    const starts: string[] = [];
+    router.events.subscribe((event) => {
+      if (event instanceof NavigationStart) {
+        starts.push(event.url);
+      }
+    });
+    const results = appRouter.routes.RESULTS;
+    const first = results.patchQuery({ search: 'new' });
+    const second = results.patchQuery({ search: 'new' });
+
+    expect(await Promise.all([first, second])).toEqual([true, true]);
+    expect(starts).toEqual(['/results?search=new']);
+  });
+
+  it('adds up a child route write and a parent route write in the same turn', async () => {
     const { appRouter, router } = setup();
     await router.navigateByUrl('/results?locale=en&search=old');
     const first = appRouter.routes.RESULTS.patchQuery({ search: 'new' });
     const second = appRouter.routes.ROOT.patchQuery({ locale: 'fr' });
 
-    expect(await Promise.all([first, second])).toEqual([false, true]);
-    expect(router.url).toBe('/results?locale=fr&search=old');
+    expect(await Promise.all([first, second])).toEqual([true, true]);
+    expect(router.url).toBe('/results?locale=fr&search=new');
   });
 
   it('cancels running writes when a router navigation starts', async () => {
@@ -210,7 +280,7 @@ describe('query writes', () => {
     expect(router.url).toBe('/other');
   });
 
-  it('cancels a redirected write when a later write starts', async () => {
+  it('carries a redirected write into a later write, which the guard redirects too', async () => {
     const { appRouter, router } = setup((route) =>
       route.queryParamMap.get('search') === 'redirect' ? inject(Router).parseUrl('/other') : true,
     );
@@ -218,7 +288,8 @@ describe('query writes', () => {
     const redirected = appRouter.routes.RESULTS.patchQuery({ search: 'redirect' });
     const second = appRouter.routes.ROOT.patchQuery({ locale: 'fr' });
 
-    expect(await Promise.all([redirected, second])).toEqual([false, true]);
-    expect(router.url).toBe('/results?search=old&locale=fr');
+    // Angular resolves a redirected navigation as the redirect resolves.
+    expect(await Promise.all([redirected, second])).toEqual([true, true]);
+    expect(router.url).toBe('/other');
   });
 });

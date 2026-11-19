@@ -167,25 +167,39 @@ export function createAppRouter(
     return readActiveState(info, active, values);
   };
 
-  // The URLs patches navigated to. Angular keeps the tree a navigation started from, so a running
-  // navigation whose tree is here came from a patch.
-  const patchTrees = new WeakSet<UrlTree>();
+  // Maps each patch's target tree to the patch's result. Angular keeps a navigation's starting tree
+  // as `initialUrl`, so a running navigation whose tree is in this map came from a patch.
+  const patchResults = new WeakMap<UrlTree, Promise<boolean>>();
+  // Maps an overtaken patch's tree to the result of the newer patch that carried its fields.
+  const carriedBy = new WeakMap<UrlTree, Promise<boolean>>();
+  // The trees of patches that add a history entry, rather than replace the current one.
+  const pushingPatches = new WeakSet<UrlTree>();
 
-  // Like router.navigate(), a patch starts from the URL at the moment you call it.
+  // A patch changes only the fields you pass. One made while another patch runs starts from where
+  // that patch is going, so patches add up, and the later one wins on a field they share.
   const patchQuery = (
     info: CompiledRoute,
     patch: Partial<AnyRecord>,
     options?: NavigateOptions,
-  ) => {
-    const supplied = Object.entries(patch).filter(([, value]) => value !== undefined);
-    const next = { ...readCurrent(info).query, ...Object.fromEntries(supplied) };
-    // A navigation no patch started is the user's, like a link or Back, so a patch gives way to it.
+  ): Promise<boolean> => {
+    // Reading the query first also throws when the route isn't active.
+    const current = readCurrent(info).query;
     const running = router.currentNavigation();
-    const userNavigating = running !== null && !patchTrees.has(running.initialUrl);
-    if (userNavigating) {
+    const runningPatch =
+      running !== null && patchResults.has(running.initialUrl) ? running.initialUrl : null;
+    // A navigation no patch started is the user's, like a link or Back, so a patch gives way to it.
+    if (running !== null && runningPatch === null) {
       return Promise.resolve(false);
     }
-    const tree = router.parseUrl(router.url);
+    const runningUrl = runningPatch ? router.serializeUrl(runningPatch) : null;
+    // Each read of router.url serializes the whole URL, so read it once.
+    const currentUrl = router.url;
+    const from = runningPatch
+      ? readQueryState(info.queryParams, runningPatch.queryParamMap)
+      : current;
+    const supplied = Object.entries(patch).filter(([, value]) => value !== undefined);
+    const next = { ...from, ...Object.fromEntries(supplied) };
+    const tree = router.parseUrl(runningUrl ?? currentUrl);
     for (const param of info.queryParams) {
       const output = serializeQuery(param, next[param.name]);
       if (output === null) {
@@ -194,14 +208,34 @@ export function createAppRouter(
         tree.queryParams[param.name] = output;
       }
     }
-    // Angular skips a navigation to the URL it's on and resolves false, like a declined one. A
-    // patch that's still running needs this one to cancel it.
-    const urlUnchanged = router.serializeUrl(tree) === router.url;
-    if (urlUnchanged && running === null) {
+    const target = router.serializeUrl(tree);
+    if (runningPatch) {
+      if (target === runningUrl) {
+        return patchResults.get(runningPatch) as Promise<boolean>;
+      }
+    } else if (target === currentUrl) {
       return Promise.resolve(true);
     }
-    patchTrees.add(tree);
-    return router.navigateByUrl(tree, options);
+    // The navigation carries the running patch, so it adds the history entry that patch asked for.
+    // Its other options are this patch's.
+    const carriesPush = runningPatch !== null && pushingPatches.has(runningPatch);
+    const extras: NavigateOptions = {
+      ...options,
+      ...(carriesPush ? { replaceUrl: false } : {}),
+      // Angular skips a navigation to the current URL and resolves false, as for a decline. With
+      // onSameUrlNavigation: 'reload' it still overtakes the running patch and resolves true.
+      ...(target === currentUrl ? { onSameUrlNavigation: 'reload' as const } : {}),
+    };
+    const navigation = router.navigateByUrl(tree, extras);
+    const result = navigation.then((done) => done || (carriedBy.get(tree) ?? false));
+    patchResults.set(tree, result);
+    if (!extras.replaceUrl) {
+      pushingPatches.add(tree);
+    }
+    if (runningPatch) {
+      carriedBy.set(runningPatch, result);
+    }
+    return result;
   };
 
   const createNode = (info: CompiledRoute) => {
