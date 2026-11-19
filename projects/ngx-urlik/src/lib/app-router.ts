@@ -29,22 +29,22 @@ export type {
 export type { RouteDefinition, RouteDefinitions } from './route-definition';
 
 /**
- * Gives Angular Router your routes, and gives you a typed entry in `AppRouter.routes` for each
- * route with a `routeName`.
+ * Returns the `AppRouter` token and `provideAppRouter()`, which passes the routes to Angular's
+ * `provideRouter()`. `AppRouter.routes` has one typed entry per route with a `routeName`.
  *
- * Pass your route names enum first. Give each named route one of its values, such as
- * `routeName: RouteNames.MOVIE_DETAIL`. Then Go to Definition on `routes.MOVIE_DETAIL` opens the
- * enum member, and Find References and Rename reach the route too. Keep the enum in this file and
- * don't export it: pages use `AppRouter.routes`. `AppRouter.routes` uses member names, so
- * `Movie = 'movie'` gives `routes.Movie`.
+ * Pass the route names enum first. Set each named route's `routeName` to one of its values, such
+ * as `RouteNames.MOVIE_DETAIL`. Go to Definition on `routes.MOVIE_DETAIL` then opens the enum
+ * member, and Find References and Rename reach the route. Keep the enum in this file and don't
+ * export it. Pages use `AppRouter.routes`. Its keys are member names: `Movie = 'movie'` gives
+ * `routes.Movie`.
  *
- * Write `path` and `routeName` as literals, so TypeScript can read them. A named route, and every
- * route above it, needs a plain path in the primary outlet: fixed segments and `:name`
- * placeholders. It can't use `matcher`, `redirectTo`, `**`, `loadChildren`, or a named outlet.
- * Those routes still work without a name.
+ * Write `path` and `routeName` as literals. TypeScript can't read them otherwise. A named route and
+ * every route above it need a plain path in the primary outlet: fixed segments and `:name`
+ * placeholders. They can't use `matcher`, `redirectTo`, `**`, `loadChildren`, or a named outlet.
+ * Unnamed routes can.
  *
- * Throws one error listing every problem, such as a repeated name. The route list is fixed once
- * this runs, so don't replace it with `Router.resetConfig()`.
+ * Throws one error that lists every problem, such as a repeated name. The route list is fixed after
+ * this call, so don't call `Router.resetConfig()`.
  */
 export function defineAppRouter<
   const E extends Record<string, string>,

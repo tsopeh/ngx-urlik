@@ -61,7 +61,7 @@ export class Preferences {
   // one.
   private readonly savedPageSize = signal(readPageSize());
 
-  // Saved from the URL on every navigation. A path value is always in the URL, so that's exact.
+  // Saved from the URL on every navigation. A path parameter is always in the URL, so that's exact.
   private readonly seasons = signal(readSeasons());
 
   constructor() {

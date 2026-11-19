@@ -52,7 +52,6 @@ export interface ItemCredit {
   readonly role: 'Actor' | 'Director' | 'Writer' | 'Production';
 }
 
-/** Everything a detail page shows. */
 export interface ItemDetail {
   readonly item: CatalogItem;
   readonly heading: string;
@@ -62,7 +61,6 @@ export interface ItemDetail {
   readonly credits: readonly ItemCredit[];
 }
 
-/** Filters for the user's library. */
 export interface LibraryQuery {
   readonly search: string;
   readonly media: readonly MediaKind[];
@@ -86,7 +84,6 @@ export interface LibraryResponse {
   readonly total: number;
 }
 
-/** Filters for the viewing history. */
 export interface HistoryQuery {
   readonly search: string;
   readonly from?: string | null;
@@ -133,9 +130,9 @@ export const BACKEND_LATENCY = new InjectionToken<() => number>('BACKEND_LATENCY
 /**
  * The fake backend. Every page reads and changes data through it.
  *
- * Each query returns an Observable that emits after a `BACKEND_LATENCY` delay, like a real network
- * call would, so pages show their loading states. After any change, open queries emit again, and a
- * change that arrives while an answer is on its way replaces that answer.
+ * Each query returns an Observable that emits after a `BACKEND_LATENCY` delay, as a network call
+ * would, so pages show their loading states. After any change, open queries emit again. A change
+ * that arrives while an answer is pending replaces that answer.
  */
 @Injectable({ providedIn: 'root' })
 export class BackendApi {
@@ -255,7 +252,6 @@ export class BackendApi {
     );
   }
 
-  /** Every season of a show. */
   getSeasons(showId: string): Observable<readonly Season[]> {
     return this.dataVersion$.pipe(
       this.respond(),
@@ -345,7 +341,6 @@ export class BackendApi {
     );
   }
 
-  /** Every person, or every studio. */
   getContributors(kind: 'person' | 'studio'): Observable<readonly Contributor[]> {
     return this.dataVersion$.pipe(
       this.respond(),
@@ -381,7 +376,6 @@ export class BackendApi {
     );
   }
 
-  /** Marks a title as a favorite, or unmarks it. */
   async toggleFavorite(itemId: CatalogItem['id']): Promise<void> {
     await this.repository.toggleFavorite(itemId);
   }
@@ -394,7 +388,6 @@ export class BackendApi {
     await this.repository.updatePersonal(itemId, patch);
   }
 
-  /** Logs a viewing of the title on the given date. */
   async logViewing(item: CatalogItem, date: string): Promise<void> {
     await this.repository.logViewing(item, date);
   }

@@ -33,7 +33,7 @@ export const compileQueryParam = (
 
 export interface CompiledRoute {
   readonly routeName?: string;
-  // What errors call this route: its routeName, or its position, such as `routes[0].children[1]`.
+  // The route's name in errors: its routeName, or its position, such as `routes[0].children[1]`.
   readonly label: string;
   readonly pathParams: readonly CompiledPathParam[];
   readonly queryParams: readonly CompiledQueryParam[];
@@ -105,7 +105,7 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
   return { routes: compile(definitions), namedRoutes };
 }
 
-/** Rejects a match whose path values don't decode, so Angular tries the next route. */
+/** Rejects a match whose path parameters don't decode, so Angular tries the next route. */
 function matchPathCodecs(
   codecs: readonly (UrlParamCodec<unknown> | undefined)[],
 ): (_route: unknown, segments: readonly UrlSegment[]) => boolean {
@@ -126,8 +126,8 @@ function matchPathCodecs(
     });
 }
 
-// One router state has one snapshot tree, so its chain and active routes are found once and shared
-// by every signal that reads them.
+// Keyed by root snapshot. A router state has one snapshot tree, so its chain and active routes are
+// computed once and shared by every signal.
 const chains = new WeakMap<ActivatedRouteSnapshot, readonly ActivatedRouteSnapshot[]>();
 const activeRoutes = new WeakMap<
   ActivatedRouteSnapshot,

@@ -2,7 +2,7 @@ import type { CompiledParam } from './compiled-route';
 
 export type AppRouterDiagnosticCode = 'PARAM_DESERIALIZE_FAILED' | 'PARAM_SERIALIZE_FAILED';
 
-/** A problem with one parameter's value. */
+/** A codec that failed to read or write one parameter's value. */
 export interface AppRouterDiagnostic {
   readonly code: AppRouterDiagnosticCode;
   readonly message: string;

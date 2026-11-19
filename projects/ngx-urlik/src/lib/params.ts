@@ -5,14 +5,14 @@ export interface UrlParamCodec<T> {
 
 type NonNullish<T> = null extends T ? never : undefined extends T ? never : unknown;
 
-/** Whether a codec gave a value. `null` and `undefined` both mean it couldn't convert. */
+/** A codec result of `null` or `undefined` means the codec couldn't convert. */
 export const isConverted = <T>(value: T | null | undefined): value is T =>
   value !== null && value !== undefined;
 
 export interface QueryParamDefinition<
   T,
   Required extends boolean = false,
-  // Only types read it, through `infer`: it records whether the field has a default.
+  // Records whether the field has a default. Only types read it, through `infer`.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   Defaulted extends boolean = false,
 > {
@@ -62,8 +62,8 @@ export function numberCodec(): UrlParamCodec<number> {
       const isNumber = typeof value === 'number' && !Number.isNaN(value);
       return isNumber ? String(value) : null;
     },
-    // The pattern accepts only text Number() reads in full, so the result is never NaN. Adding 0
-    // turns -0 into 0, the value serialize writes for it.
+    // The pattern accepts only text that Number() reads in full, so the result is never NaN.
+    // `+ 0` turns -0 into 0, because serialize writes -0 as '0'.
     deserialize: (raw) => (numberPattern.test(raw) ? Number(raw) + 0 : null),
   };
 }
@@ -85,9 +85,9 @@ type EnumValue<Values> = Values extends readonly EnumLiteral[]
     ? Values[Extract<keyof Values, string>]
     : never;
 
-// TypeScript adds a reverse entry, `Status[0] = 'Active'`, for each numeric member. A key is one
-// when its value names a member whose number writes as that key. Member names can't be numeric, so
-// this never drops a member.
+// TypeScript adds a reverse entry, `Status[0] = 'Active'`, for each numeric member. A key is a
+// reverse entry when its value names a member whose number writes as that key. Member names can't
+// be numeric, so this never drops a member.
 function isReverseMapping(values: EnumRecord, key: string): boolean {
   const name = values[key];
   return (
@@ -106,13 +106,12 @@ function describeValue(value: unknown): string {
 }
 
 /**
- * Accepts the values of an array, a record, or a string, numeric, or mixed enum. Strings and finite
- * numbers each write as their text: `Status.Archived = 1` writes `1`. Two values can't share a
- * text, like `1` and `'1'`.
+ * Takes the values of an array, a record, or a string, numeric, or mixed enum. Each value is a
+ * string or a finite number and writes as its text: `Status.Archived = 1` writes `1`. Two values
+ * can't write the same text, like `1` and `'1'`.
  *
- * A record whose keys are numbers, like `{ '1': 'one', one: 1 }`, is read like a numeric enum, so
- * `'1'` counts as a reverse entry and is skipped. For a record like that, pass an array of its
- * values instead.
+ * A record with numeric keys, like `{ '1': 'one', one: 1 }`, reads like a numeric enum. Its `'1'`
+ * key counts as a reverse entry and is skipped. Pass an array of its values instead.
  */
 export function enumCodec<const Values extends readonly EnumLiteral[] | EnumRecord>(
   values: Values,
@@ -150,9 +149,9 @@ export function enumCodec<const Values extends readonly EnumLiteral[] | EnumReco
 }
 
 /**
- * Joins items with `separator`, one character, into one string, such as `a,b`. `''` is the empty
- * list. Inside an item, a backslash escapes the separator and itself: `['red, green', 'blue']`
- * writes `red\, green,blue`. An empty item fails to convert.
+ * Joins items with a one-character `separator`, as in `a,b`. `''` is the empty list. Inside an
+ * item, a backslash escapes the separator and itself: `['red, green', 'blue']` writes
+ * `red\, green,blue`. An empty item fails to convert.
  */
 export function listCodec<T>(
   item: UrlParamCodec<T>,

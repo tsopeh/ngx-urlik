@@ -9,16 +9,16 @@ export type PathParamOptions = Readonly<Record<string, UrlParamCodec<unknown>>>;
 /** An Angular route, plus optional ngx-urlik fields. */
 export interface RouteDefinition extends Omit<Route, 'children'> {
   /**
-   * Adds this route to `AppRouter.routes` under this name. Each name must be unique, or
-   * `defineAppRouter()` throws.
+   * Adds this route to `AppRouter.routes`, under the enum member that has this value. Each name
+   * must be unique, or `defineAppRouter()` throws.
    */
   readonly routeName?: string;
   /**
-   * A codec for each placeholder in this route's `path`, such as `{ showId: numberCodec() }`.
-   * Without `pathParams`, every placeholder is a string.
+   * A codec for each placeholder in this route's `path`, such as `{ showId: numberCodec() }`. A
+   * placeholder without a codec reads as a string.
    */
   readonly pathParams?: PathParamOptions;
-  /** Query fields this route owns. Named routes below it inherit them. */
+  /** Query parameters this route owns. Named routes below it inherit them. */
   readonly queryParams?: QueryDefinitions;
   readonly children?: readonly RouteDefinition[];
 }
@@ -94,9 +94,9 @@ const usesLibraryFields = (route: RouteDefinition): boolean =>
   someRoute(route, (candidate) => 'pathParams' in candidate || 'queryParams' in candidate);
 
 /**
- * Checks every named route, every route above one, and every route that uses `pathParams` or
- * `queryParams`, and returns every problem it finds. Other routes are Angular's to check. Also
- * checks that each route name has a route.
+ * Returns every problem in the routes ngx-urlik reads: named routes, routes above them, and routes
+ * with `pathParams` or `queryParams`. Angular checks the other routes. Also reports enum members
+ * that no route uses.
  */
 export function validateRouteDefinitions(
   routes: RouteDefinitions,
@@ -112,7 +112,7 @@ export function validateRouteDefinitions(
   const usedNames = new Map<string, string>();
   const errors: string[] = [];
 
-  // `pathOwners` and `queryOwners` map each name the routes above declare to the path that does.
+  // `pathOwners` and `queryOwners` map each name declared above to the path that declares it.
   const visit = (
     siblings: RouteDefinitions,
     location: string,
@@ -125,7 +125,7 @@ export function validateRouteDefinitions(
         errors.push(`${at} must be a route object`);
         return;
       }
-      // A route with no named route below it only matters if it uses ngx-urlik fields.
+      // A route with no named route at or below it is checked only if it uses ngx-urlik fields.
       const readByName = hasNamedRoute(route);
       const nothingToCheck = !readByName && !usesLibraryFields(route);
       if (nothingToCheck) {
