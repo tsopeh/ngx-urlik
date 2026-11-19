@@ -8,16 +8,19 @@ Engineering.”**
 
 - **Start with the idea**, then show it.
 - **Put one idea in each sentence**, and link related sentences with “because”, “so”, or “but”.
-  Write “Angular gives you every query parameter as a string, so each page parses its own numbers
-  and picks its own defaults”, not “Angular gives you strings. So you parse them. Then you pick a
+  Write “Angular returns every query parameter as a string, so each page parses its own numbers and
+  picks its own defaults”, not “Angular returns strings. So you parse them. Then you pick a
   default.”
 - **Use plain words, active voice, and the present tense:** “use”, not “utilize”. Keep a technical
   term like codec when it's more exact, and explain it once.
 - **Give each thing one name.** A “query parameter” stays a “query parameter” everywhere. Write the
   noun wherever “it” could mean two things.
 - **Be exact:** “after 300 ms”, not “soon”.
-- **Describe the mechanism with real values:** “`write()` leaves the URL alone while the form has
-  errors”, not “makes forms reliable”.
+- **Describe the mechanism with real values:** “`write()` doesn't change the URL while the form
+  has errors”, not “makes forms reliable”.
+- **Name the operation in the verb:** “returns”, “parses”, “writes”, “removes”. Write “the router
+  returns every parameter as `string | null`”, not “the router gives you strings”. “Gives”,
+  “holds”, “keeps”, “reaches”, and “follows” name no operation, so the reader has to guess one.
 - **Say what happens, then why.** A design choice also gets its cost.
 - **Use words a newcomer knows.** Write “none of the three checks ran”, not “the gates are
   unchecked”.
