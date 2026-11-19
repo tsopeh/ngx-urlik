@@ -39,7 +39,7 @@ gives the path to it. Commit hashes point to the code for each step.
 | Nov 19, 2026    | `writeWhen` becomes `writeOn: 'change' \| 'submit'`. Validators always apply        |
 | Nov 19, 2026    | Version 2.1.0 needs Angular 22.2.6, the first release where Signal Forms work       |
 
-The package version is `2.0.0`. In conversation we call the design after Nov 13 "API version 3".
+The package version is `2.1.0`. In conversation we call the design after Nov 13 "API version 3".
 The maintainer chose `1.0.0` for the first publish on Nov 15. Version `2.0.0` follows on Nov 19,
 because the branch `feat/submit-writes-and-ifactive-values` broke the public API:
 `createQueryParamsFormGroup()` returns `{ form, write }`, `ifActive` is a function instead of a
@@ -847,8 +847,8 @@ passes on 22.0.8. npm can't give one entry point a different range, so the maint
 `^22.2.6` for every Angular peer. Apps on an older 22.x update Angular before they install `2.1.0`,
 even when they don't use Signal Forms.
 
-**Where it stands:** `2.0.0` is published, and the next release declares `^22.2.6`. CI for the
-tests, which could run them on the lowest supported Angular, is still set aside.
+**Where it stands:** `2.0.0` is published, and `2.1.0` declares `^22.2.6`. CI for the tests, which
+could run them on the lowest supported Angular, is still set aside.
 
 ## Branches
 
