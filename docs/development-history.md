@@ -37,6 +37,7 @@ gives the path to it. Commit hashes point to the code for each step.
 | Nov 19, 2026    | The writing guide takes stricter rules, then shrinks from 142 lines to 47           |
 | Nov 19, 2026    | Version 2.0.0, for the breaking changes in forms, `ifActive`, and patches           |
 | Nov 19, 2026    | `writeWhen` becomes `writeOn: 'change' \| 'submit'`. Validators always apply        |
+| Nov 19, 2026    | Version 2.1.0 needs Angular 22.2.6, the first release where Signal Forms work       |
 
 The package version is `2.0.0`. In conversation we call the design after Nov 13 "API version 3".
 The maintainer chose `1.0.0` for the first publish on Nov 15. Version `2.0.0` follows on Nov 19,
@@ -835,7 +836,19 @@ On Nov 19 a review of the whole branch for the first GitHub issues proposed the 
 branch changed the public API in ways that break code written for `1.0.0`, so semver calls for a
 major version, and the maintainer chose `2.0.0`.
 
-**Where it stands:** `2.0.0` is ready to publish. CI for the tests is still set aside.
+Later on Nov 19, while preparing `2.1.0`, the maintainer asked for a peer range of any Angular 22
+release. The library's tests, run against several Angular releases, showed that the `^22.1.0` range
+`2.0.0` declared was already too wide. On 22.0.8, 22.1.0, 22.1.8, and every 22.2 patch through
+22.2.5, six Signal Forms tests fail: submits, and typing still waiting for `debounce()` when the form
+writes. 22.2.6 and 22.3.0 pass all 197. Up to 22.2.5, a form's `markAsTouched()`, which `submit()`
+also calls, ends only the form's own wait. From 22.2.6 it ends the `debounce()` wait of every field,
+and `bindQueryParamsToSignalForm()` relies on that. Everything else, Reactive Forms included,
+passes on 22.0.8. npm can't give one entry point a different range, so the maintainer chose
+`^22.2.6` for every Angular peer. Apps on an older 22.x update Angular before they install `2.1.0`,
+even when they don't use Signal Forms.
+
+**Where it stands:** `2.0.0` is published, and the next release declares `^22.2.6`. CI for the
+tests, which could run them on the lowest supported Angular, is still set aside.
 
 ## Branches
 

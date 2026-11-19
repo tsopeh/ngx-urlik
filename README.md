@@ -20,7 +20,7 @@ parameters, where a reload, a shared link, or Back restores them.
 ## Get started
 
 ```ts
-// 1. Install ngx-urlik. It needs Angular 22.1 or a later 22.x release.
+// 1. Install ngx-urlik. It needs Angular 22.2.6 or a later 22.x release.
 //
 //      npm install ngx-urlik
 //
@@ -1062,7 +1062,7 @@ type SameQuery = QueryParamsOf<Routes['RESULTS']>;
 
 | Not supported                                       | Instead                                               |
 | --------------------------------------------------- | ----------------------------------------------------- |
-| Angular versions outside `^22.1.0`                  | Use Angular 22.1 or a later 22.x release              |
+| Angular versions outside `^22.2.6`                  | Use Angular 22.2.6 or a later 22.x release            |
 | Named redirects, wildcards, matchers, named outlets | Leave them unnamed                                    |
 | Route arrays split across files                     | One literal array in `defineAppRouter()`              |
 | Named routes inside `loadChildren`                  | Keep definitions in the router file. Lazy-load pages  |

@@ -21,9 +21,9 @@
     "url": "git+https://github.com/tsopeh/ngx-urlik.git"
   },
   "peerDependencies": {
-    "@angular/core": "^22.1.0",
-    "@angular/forms": "^22.1.0",
-    "@angular/router": "^22.1.0",
+    "@angular/core": "^22.2.6",
+    "@angular/forms": "^22.2.6",
+    "@angular/router": "^22.2.6",
     "rxjs": "^7.4.0"
   },
   "peerDependenciesMeta": {
