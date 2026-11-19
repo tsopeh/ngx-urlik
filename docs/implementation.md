@@ -1,77 +1,85 @@
 # Reading the code
 
 Start with `projects/ngx-urlik/src/lib/app-router.ts`. Its `defineAppRouter()` checks the route
-array, compiles it for Angular, and returns the `AppRouter` token with its provider. The public
-types live in `app-router-types.ts`, where they read route names and values from the literal route
-array and use the `RouteNames` members as the keys of `AppRouter.routes`.
+array, compiles it for Angular, and returns the `AppRouter` token and its provider.
 
-`RouteArrayInput` types the `routes` option, and it does two jobs in one walk of the literal: it
-lets TypeScript infer each route, and it checks each field where it's written. The checks sit in
-`NoInfer`, so they never change what TypeScript infers. Each route array is one mapped type, which
-makes TypeScript compare the literal element by element. `RouteEntries` then collects one entry per
-named route, as a union, and `NamedRoutes` turns that union into `AppRouter.routes`. Both recurse
-only as deep as the routes nest, however many siblings each level has.
+The public types live in `app-router-types.ts`. They read route names and values from the literal
+route array. The `RouteNames` members become the keys of `AppRouter.routes`.
 
-The sections below follow one job each: defining routes, reading, writing, round trips, and forms.
-Where the code moves between states, a section lists the states, the rules that always hold, and
-what each event does. TasteTrack's own states, and the cases we've checked, come last.
+`RouteArrayInput` types the `routes` option. It infers each route and checks each field in one walk
+of the literal. The checks are wrapped in `NoInfer`, so they never change what TypeScript infers.
+Each route array is one mapped type, so TypeScript compares the literal element by element.
+
+`RouteEntries` collects one entry per named route, as a union. `NamedRoutes` turns that union into
+`AppRouter.routes`. Both recurse only as deep as the routes nest, whatever the number of siblings.
+
+Each section below covers one job: defining routes, reading, writing, round trips, and forms. Where
+code moves between states, the section lists the states, the invariants (rules that hold in every
+state), and what each event does. TasteTrack's states and the cases already checked come last.
 
 ## Define
 
-`route-definition.ts` parses paths and checks every named route, and every route above one, in a
-single walk down the tree, with each level passing on the path and query names declared above it.
-`compiled-route.ts` then copies each route's Angular fields into a plain Angular route and marks it
-with `compiledRouteKey`, which points back to the compiled route. It also builds `namedRoutes`, a
+`route-definition.ts` parses paths and checks routes in one walk down the tree. It checks named
+routes, routes above them, and routes with `pathParams` or `queryParams`. Each level passes down the
+path and query names declared above it.
+
+`compiled-route.ts` copies each route's Angular fields into a plain Angular route. It marks that
+route with `compiledRouteKey`, which points to the compiled route. It also builds `namedRoutes`, a
 map from route name to compiled route.
 
-A compiled route holds the path and query fields of every route above it, named or not, and both
-building links and reading values start from there.
+A compiled route has the path and query parameters of every route above it, named or not. Links
+and reads both start from it.
 
 ## Read and build links
 
 `route-node.ts` builds `AppRouter.routes` and `globalParams()`.
 
-`createUrlTree` writes each value the caller passed into the route's segments and builds the
-`UrlTree` directly. A typed link is absolute, so it needs none of Angular's command parsing, and a
-test checks that the tree matches Angular's `createUrlTree(['/', ...segments])`.
+`createUrlTree` writes each passed value into the route's segments and builds the `UrlTree`
+directly. A typed link is absolute, so it needs none of Angular's command parsing. A test checks
+that the tree matches Angular's `createUrlTree(['/', ...segments])`.
 
-`params` finds the active Angular snapshot by its `compiledRouteKey` and decodes its values, and
-`ifActive` looks for the same snapshot and returns the node or `null`. `compiled-route.ts` walks a
-router state's snapshot tree once, and every signal that reads that state shares the result.
-`route-params-runtime.ts` runs codecs and defaults and handles broken input, and
+`params` finds the active Angular snapshot by its `compiledRouteKey` and decodes its values.
+`ifActive()` looks for the same snapshot and returns the node or `null`. Given values, it also reads
+`params()`. It compares each passed parameter by the text its codec writes in the URL, with defaults
+left out, as a link writes them.
+
+`compiled-route.ts` walks a router state's snapshot tree once. Every signal that reads that state
+shares the result.
+
+`route-params-runtime.ts` runs codecs and defaults and handles broken input.
 `route-diagnostics.ts` turns failures into `AppRouterDiagnostic` values.
 
-Each signal keeps a `ValueCache` holding every field's last value and the URL text it came from.
-When the text is the same on the next read, the field keeps its old value, which is what lets the
-signal compare fields with `Object.is`. A query value leaves the URL when it serializes to the same
-text as its default.
+Each signal keeps a `ValueCache` with every parameter's last value and its text in the URL. When the
+text is unchanged on the next read, the parameter keeps its old value. That is what lets the signal
+compare parameters with `Object.is`. A query parameter leaves the URL when its value writes its
+default's text.
 
 Angular does the matching. For a route with `pathParams` codecs, `compiled-route.ts` adds a
-`canMatch` check, so a path value its codec rejects makes Angular try the next route.
+`canMatch` check. A path parameter its codec rejects makes Angular try the next route.
 
 Angular switches to the new router state, and creates the new page, before it emits
-`NavigationEnd`. To keep reads honest in that gap, each signal remembers which router state it
-read, and reads again once Angular has switched to a newer one. Guards and resolvers run before
-the switch, so `paramsSnapshot()` and `globalParamsSnapshot()` read the snapshot they're given
-instead.
+`NavigationEnd`. In that gap, each signal still reads the current state: it remembers which router
+state it read and reads again once Angular has a newer one. Guards and resolvers run before the
+switch, so `paramsSnapshot()` and `globalParamsSnapshot()` read the snapshot they get.
 
 ### Router signal states
 
-`routerSignal()` in `route-node.ts` backs `params`, `globalParams()`, and `ifActive`. Each signal
-keeps a cached `computed()` and remembers `source`, the `router.routerState` it last read.
+`routerSignal()` in `route-node.ts` provides `params`, `globalParams()`, and the route check inside
+`ifActive()`. Each signal keeps a cached `computed()`. It also keeps `source`, the
+`router.routerState` it last read.
 
 | State   | Meaning                                                                       |
 | ------- | ----------------------------------------------------------------------------- |
 | Current | `source === router.routerState`. A read returns the cached value.             |
 | Lagging | Angular switched to a new router state, and `NavigationEnd` hasn't fired yet. |
 
-**Rules that always hold:**
+**Invariants:**
 
-- A read returns values from the router state Angular has now, never an older one.
-- Consumers are notified only on `NavigationEnd`, and only when a field's URL text changed.
-  `ifActive` notifies only when its answer changes.
-- A read of a route that isn't active throws, and the cached error follows the same rules as a
-  value.
+- A read returns values from Angular's current router state, never an older one.
+- Code that reads a signal reruns only after `NavigationEnd`, and only when a parameter's text in
+  the URL changed. A `computed()` that calls `ifActive()` without values reruns only when its
+  answer changes.
+- Reading an inactive route throws. The cached error follows the same rules as a cached value.
 
 | Event                                       | Router state                               | Signal goes to | A read returns           |
 | ------------------------------------------- | ------------------------------------------ | -------------- | ------------------------ |
@@ -81,135 +89,183 @@ keeps a cached `computed()` and remembers `source`, the `router.routerState` it 
 | `NavigationCancel` or `NavigationError` (1) | Angular restores the state it had at start | Current        | cached value             |
 | `NavigationSkipped`                         | unchanged                                  | stays          | cached value             |
 
-(1) Angular's `resetInternalState()` puts back the very object the signal saw before, so `source`
+(1) Angular's `resetInternalState()` restores the same object the signal saw before, so `source`
 matches again.
 
 ## Write
 
-`patchQuery` in `route-node.ts` reads the current query, merges the patch in, writes every declared
-field into the current URL, and calls `router.navigateByUrl()` with the caller's options. Angular's
-rule applies between patches, so the newest one cancels any that's still running. Any other running
-navigation, like a link or Back, wins instead: the patch resolves `false` without calling Angular.
-The patch tells the two apart by its `UrlTree`. It adds each tree it navigates to a `WeakSet`, and
-Angular keeps that tree as the running navigation's `initialUrl`. If the URL wouldn't change and
-nothing is navigating, it resolves `true` without calling Angular at all, because Angular would
-resolve `false`, as if a guard had said no.
+`patchQuery` in `route-node.ts` merges the patch into the current query parameters and writes every
+declared query parameter into a URL. It then calls `router.navigateByUrl()` with the caller's
+options. The starting query and URL depend on what's running:
 
-| What happened                             | Result           |
-| ----------------------------------------- | ---------------- |
-| It worked                                 | Resolves `true`  |
-| The URL already held the patch            | Resolves `true`  |
-| A guard said no                           | Resolves `false` |
-| Another navigation won, or was running    | Resolves `false` |
-| The route wasn't active, or Angular threw | Rejects          |
+- **Nothing.** It starts from the current URL. If the URL wouldn't change, it resolves `true`
+  without calling Angular. Angular would resolve `false`, which looks like a guard decline.
+- **Another patch.** It starts from that patch's destination, so patches add up. If the result
+  equals that destination, it returns that patch's promise. Otherwise the new navigation cancels the
+  running one, and the cancelled patch resolves as the new one does. If the cancelled patch adds a
+  history entry, the new navigation passes `replaceUrl: false`, so the entry isn't lost. A `WeakSet`
+  keeps the trees of patches that add one. If the result is the current URL, it navigates with
+  `onSameUrlNavigation: 'reload'`, so Angular doesn't skip it and resolve `false`.
+- **A link, `navigate()`, or Back.** It resolves `false` without calling Angular.
 
-**Rule:** a write starts from the committed URL, not from a navigation still running, so two
-overlapping writes don't add up. [Design decisions](decisions.md) explains why.
+A patch recognizes its own running navigation by the `UrlTree`. It stores each tree it navigates to
+in a `WeakMap`, with the promise it returned. Angular keeps that tree as the running navigation's
+`initialUrl`.
+
+| What happened                                              | Result                      |
+| ---------------------------------------------------------- | --------------------------- |
+| It worked                                                  | Resolves `true`             |
+| The URL already matched the patch                          | Resolves `true`             |
+| A guard said no                                            | Resolves `false`            |
+| A link, `navigate()`, or Back cancelled it, or was running | Resolves `false`            |
+| A later patch cancelled it                                 | Resolves as the later patch |
+| The route wasn't active, or Angular threw                  | Rejects                     |
+
+**Invariant:** a patch changes only the query parameters it names, so overlapping patches add up.
+[Design decisions](decisions.md) explains why.
 
 ## Value round trips
 
-Every field value moves between two forms: a value in the app and text in the URL. The codecs and
-defaults in `route-params-runtime.ts` move it each way. Writing means building a link, a patch, or
-a form write. Reading means `params()`, `globalParams()`, or a snapshot read.
+Every path and query parameter exists in two forms: a typed value in the app and text in the URL.
+The codecs and defaults in `route-params-runtime.ts` convert between them. A write is a link, a
+patch, or a form write. A read is `params()`, `globalParams()`, or a snapshot read.
 
-**Rule:** reading what was written gives back an equal value, because a codec loses nothing. The
-table lists every write and what it reads back as.
+**Invariant:** reading what was written gives back an equal value, because a codec loses nothing.
 
 | Write                                     | URL             | Reads back as          |
 | ----------------------------------------- | --------------- | ---------------------- |
-| A query value that writes as its default  | key left out    | the default            |
-| A field set to `null`                     | key left out    | the default, or `null` |
-| A list field set to `[]`, default `['a']` | `?tag=`         | `[]`                   |
+| A query parameter at its default          | key left out    | the default            |
+| A query parameter set to `null`           | key left out    | the default, or `null` |
+| A list set to `[]`, default `['a']`       | `?tag=`         | `[]`                   |
 | A list item with the separator, `['a,b']` | `?tag=a%5C,b`   | `['a,b']`              |
-| A query value the codec can't serialize   | key left out    | the default, or `null` |
-| A path value the codec can't serialize    | the link throws |                        |
-| A path value `''`, `.`, or `..`           | the link throws |                        |
+| A query parameter the codec can't write   | key left out    | the default, or `null` |
+| A path parameter the codec can't write    | the link throws |                        |
+| A path parameter `''`, `.`, or `..`       | the link throws |                        |
 
 ## Follow a form edit
 
 `bindQueryParams()` in `projects/ngx-urlik/forms/query-forms.ts` connects both Angular form systems
-to the same binding. The form holds a draft and the URL holds what's been written, and the binding
-talks to the route only through its public API: `params()` to read and `patchQuery()` to write.
+to one binding. The form keeps the draft, and the query parameters keep what's been written. The
+binding uses only the route's public API: `params()` to read and `patchQuery()` to write.
 
-The binding keeps a model, the values it compares with the URL. Signal Forms run `debounce()`
-before their model, so there the model is simply the form's value. In Reactive Forms, a field with
-a `debounce` entry moves into the model when its delay ends, and every other field moves in right
-away.
+The binding keeps a model: the values it compares with the URL. Signal Forms run `debounce()` before
+their model, so there the model is the form's value. In Reactive Forms, typing into a field with a
+`debounce` entry moves into the model when its delay ends. A value set by code moves in right away,
+and so does every field without a delay.
 
-| Variable    | Holds                                                        |
-| ----------- | ------------------------------------------------------------ |
-| `model`     | The values the binding compares with the URL                 |
-| `shown`     | What the form showed after the last change the binding saw   |
-| `lastUrl`   | The URL values the form last took in                         |
-| `held`      | Fields `writeWhen: 'valid'` held back                        |
-| `timers`    | Per field, the Reactive Forms debounce timer                 |
-| `writes`    | How many writes the binding has started                      |
-| `running`   | The newest write and the fields it carries, until it settles |
-| `destroyed` | Whether the injection context was destroyed                  |
+The binding tells code from typing with a `registerOnChange()` listener on each control. Angular
+calls it when code sets a value, to show the value in the input. It doesn't call it when the user
+types. Angular has no public way to remove that listener. So each control gets one listener for its
+life, stored in a `WeakMap`, and each binding adds its own handler to that listener and removes it
+when the binding stops. A form that outlives many bindings keeps one listener per control.
 
-**Model to URL.** When the model changes, the binding writes every field that differs from the URL,
-except the ones `writeWhen` holds back. The newest navigation wins, so a write that carries all of
-them can't lose one to an older write. If the same write is already running, nothing happens. If no
-field differs but an earlier write is still running, the binding writes an empty patch, and
-`patchQuery()` navigates to the URL as it is, which cancels the earlier write. `beforeWrite` runs
-only for a write that has fields.
+A Signal Form's `write()` called from code first calls `markAsTouched()`. That ends every
+`debounce()` wait, as Angular's `submit()` does. It then reads the form's errors, so the validators
+have seen the typing that moved into the model. As the submit action, `write()` resolves once the
+write starts, because `submit()` ignores a new submit while the last one runs.
 
-**URL to model.** When `params()` changes, a field takes the URL's value only if three things hold:
-the URL value changed since `lastUrl`, it differs from the model, and the field isn't held. Taking
-the value also clears the field's debounce timer, as Signal Forms' `debounce()` does. A navigation
-that changes other fields leaves the draft alone.
+`write()` called from code runs the same submit handler as a submit by the user. The handler ends
+every debounce wait. With `writeOn: 'change'`, the binding then writes each field whose validators
+pass. With `writeOn: 'submit'`, it writes the whole draft, and only when the form has no errors.
 
-After a write resolves `true`, each field it carried takes the URL's value, unless the user changed
-it in the meantime. That's how picking the sort that's already chosen, a new object with the same
-text, stops differing from the URL. A write that resolves `false` counts as a decline only when it's
-the binding's newest write and it carried fields, because an older write was replaced by the form
-itself.
+| Variable      | Contents                                                           |
+| ------------- | ------------------------------------------------------------------ |
+| `model`       | The values the binding compares with the URL                       |
+| `shown`       | What the form showed after the last change the binding saw         |
+| `lastUrl`     | The query parameter values the form last took in                   |
+| `invalid`     | Fields whose validators failed when the binding wrote              |
+| `timers`      | Per field, the Reactive Forms debounce timer                       |
+| `writes`      | How many writes the binding has started                            |
+| `running`     | The newest write and the fields it includes, until it finishes     |
+| `newestWrite` | Resolves after the newest write finishes, for `write()` to wait on |
+| `destroyed`   | Whether the injection context was destroyed                        |
+
+**Model to URL.** When the model changes, the binding writes. With `writeOn: 'submit'`, the edit
+waits in the model until a submit without errors. A Signal Form's submit action runs before the
+binding's effect sees the form's value, so the action reads the value first.
+
+A write follows these steps:
+
+1. Take in any query parameter change the effect hasn't seen yet. Otherwise a field nobody edited
+   would be written back over a patch that just reached the URL.
+2. Collect every field that differs from its query parameter. With `writeOn: 'change'`, leave out
+   each field whose validators fail and add it to `invalid`. With `writeOn: 'submit'`, the submit
+   already checked the whole form.
+3. Run `beforeWrite` if any fields were collected.
+4. If a write is running, set back each field the running write set and this one leaves out,
+   including query parameters `beforeWrite` added, to its value in the URL. That is how typing `x`
+   and deleting it ends where it started.
+5. Send the patch, unless it matches the running write, or nothing is running and the patch is
+   empty.
+
+`write()` waits for `newestWrite`, which resolves after the newest write finishes. An older write
+resolves as the newer one that included it.
+
+**URL to model.** When `params()` changes, a field takes its query parameter's value only if three
+things hold: the query parameter changed since `lastUrl`, it differs from the model, and the field
+isn't Invalid. Taking the value also clears the field's debounce timer, as Signal Forms'
+`debounce()` does. A navigation that changes other query parameters leaves the draft alone.
+
+After a write resolves `true`, each field it included takes its query parameter's value, unless the
+user changed it since. So picking the sort that's already chosen, a new object with the same text,
+stops differing from the URL. A write that resolves `false` is a decline only when it's the
+binding's newest write and it included fields. An older write was replaced by the form itself.
 
 ### States of one field
 
-| State   | The model's value                         |
-| ------- | ----------------------------------------- |
-| Synced  | equals the URL value                      |
-| Held    | differs, and `writeWhen` holds it back    |
-| Sending | differs, and the running write carries it |
-| Unsent  | differs, and no running write carries it  |
+| State   | The model's value                          |
+| ------- | ------------------------------------------ |
+| Synced  | equals the query parameter's value         |
+| Invalid | differs, and its validators fail           |
+| Sending | differs, and the running write includes it |
+| Unsent  | differs, and no running write includes it  |
 
-A Reactive Forms field can also be Waiting: its timer is running, and the input shows an edit the
-model hasn't taken yet. Waiting sits in front of the model, so it combines with any state above.
+A Reactive Forms field can also be Waiting: its timer runs, and the input shows an edit the model
+hasn't taken yet. Waiting comes before the model takes the edit, so a field can be Waiting and in
+any state above at once.
 
-A field becomes Unsent when a guard declines its write, another navigation cancels it or was running
-when it started, or
-`beforeWrite` throws. The form keeps the draft, and its next write carries the field again.
+A field becomes Unsent in these cases:
+
+- a guard declines its write;
+- a link, `navigate()`, or Back cancels its write, or was running when the write started;
+- `beforeWrite` throws.
+
+The form keeps the draft, and its next write includes the field again. With `writeOn: 'submit'`,
+every edit stays Unsent until a submit without errors.
 
 ### Transitions
 
-| Event                         | From     | To                       | What else happens                                    |
-| ----------------------------- | -------- | ------------------------ | ---------------------------------------------------- |
-| Edit, no debounce             | any      | Synced, Sending, or Held | one write carries every field that differs           |
-| Edit, with debounce           | any      | Waiting                  | timer restarts                                       |
-| Timer fires                   | Waiting  | Synced, Sending, or Held | the model takes the edit                             |
-| A held field becomes valid    | Held     | Sending                  |                                                      |
-| Write resolves `true`         | Sending  | Synced                   | fields the user didn't change take the URL value     |
-| Newest write resolves `false` | Sending  | Unsent                   | reports `declined`                                   |
-| Older write settles           | Sending  | Sending                  | the newer write carries the field and reports itself |
-| Write rejects                 | Sending  | Unsent                   | reports `error`                                      |
-| `beforeWrite` throws          | any      | Unsent                   | error goes to `ErrorHandler`                         |
-| URL changes the field         | not Held | Synced                   | timer cleared; the form shows the URL value          |
-| URL changes the field         | Held     | Held                     | the form keeps the draft                             |
-| URL changes other fields      | any      | same                     |                                                      |
-| Route goes inactive           | any      | same                     | reads return nothing; the form keeps its values      |
-| Injection context destroyed   | any      | gone                     | timers cleared; settling writes are ignored          |
+| Event                              | From              | To                          | What else happens                                               |
+| ---------------------------------- | ----------------- | --------------------------- | --------------------------------------------------------------- |
+| Edit by code, or no debounce       | any               | Synced, Sending, or Invalid | one write includes every field that differs                     |
+| Typing, with debounce              | any               | Waiting                     | timer restarts                                                  |
+| Submitted or `write()`, `'change'` | Waiting           | Synced, Sending, or Invalid | timer cleared; the model takes the edit                         |
+| Submitted or `write()`, `'submit'` | Waiting or Unsent | Synced or Sending           | timer cleared; one write includes every field; none with errors |
+| Timer fires                        | Waiting           | Synced, Sending, or Invalid | the model takes the edit                                        |
+| Its validators pass                | Invalid           | Sending                     |                                                                 |
+| Write resolves `true`              | Sending           | Synced                      | unchanged fields take their query parameter's value             |
+| Newest write resolves `false`      | Sending           | Unsent                      | reports `declined`                                              |
+| Older write finishes               | Sending           | Sending                     | the newer write includes the field and reports its own result   |
+| Write rejects                      | Sending           | Unsent                      | reports `error`                                                 |
+| `beforeWrite` throws               | any               | Unsent                      | error goes to `ErrorHandler`                                    |
+| Its query parameter changes        | not Invalid       | Synced                      | timer cleared; the form shows the new value                     |
+| Its query parameter changes        | Invalid           | Invalid                     | the form keeps the draft                                        |
+| Other query parameters change      | any               | same                        |                                                                 |
+| Route goes inactive                | any               | same                        | reads return nothing; the form keeps its values                 |
+| Injection context destroyed        | any               | gone                        | timers cleared; writes that finish later are ignored            |
 
-### Rules that always hold
+### Invariants
 
-1. Each write carries every field whose model value differs from the URL, except held ones.
-2. A field takes a value from the URL only when its URL value changes and the field isn't held.
-3. `onWriteFailure` gets `declined` only for the binding's newest write, when it carried fields and
-   resolved `false`. A write the URL already holds resolves `true`.
-4. An edit that ends at the URL's value never runs `beforeWrite`. If an earlier write is still
-   running, the binding navigates to the URL as it is, so typing `x` and deleting it on
+1. Each write includes every field whose model value differs from its query parameter, except
+   Invalid fields.
+2. A field takes a value from its query parameter only when that parameter changes and the field
+   isn't Invalid.
+3. `onWriteFailure` gets `declined` only for the binding's newest write, when it included fields and
+   resolved `false`. A write the URL already matches resolves `true`.
+4. An edit that ends at its query parameter's value never runs `beforeWrite`. If an earlier write is
+   still running, the binding navigates to the current URL. So typing `x` and deleting it on
    `?search=oak&minRating=3` keeps rating 3, however fast the user types.
-5. After destroy, nothing touches the form.
+5. After the binding is destroyed, it never changes the form or reports a failure.
 
 ## Check a change
 
@@ -219,7 +275,7 @@ Library test paths below are relative to `projects/ngx-urlik`.
 | -------------------------- | ----------------------------------------- |
 | Definitions, links, values | `src/lib/app-router.spec.ts`              |
 | Startup checks             | `src/lib/route-checks.spec.ts`            |
-| Path values and failures   | `src/lib/path-values.spec.ts`             |
+| Path parameters, failures  | `src/lib/path-values.spec.ts`             |
 | Escape hatch               | `src/lib/escape-hatch.spec.ts`            |
 | Moving an existing app     | `src/lib/migration-cookbook.spec.ts`      |
 | Codecs                     | `src/lib/params.spec.ts`                  |
@@ -233,22 +289,21 @@ Library test paths below are relative to `projects/ngx-urlik`.
 | Type-check speed           | `type-tests/generate-large-app.mjs`       |
 
 `type-tests` and the demo load `ngx-urlik` from `dist`. `npm run typecheck` builds the library
-first, but you need to build it yourself before you run the demo tests.
+first. Before you run the demo tests, build the library yourself.
 
-Test what a caller can see, so the tests keep passing when the internals change. Each spec doubles
-as a reference for its part of the library: a test's name says what happens, and its body shows it.
+Test what a caller can see, so tests keep passing when internals change. Each spec is also the
+reference for its part of the library. A test's name says what happens, and its body shows it.
 
-Type tests run in Vitest's typecheck mode, where the compiler checks each `*.test-d.ts` file and
-Vitest reports each `it()` as a test without ever running the code.
-`expectTypeOf(x).toEqualTypeOf<T>()` checks the exact type, so a type that quietly widens or
-narrows fails. A line marked `@ts-expect-error` is code that must not compile, and the test fails
-if it starts compiling. `fixtures.ts` holds the routers the type tests share.
+Type tests run in Vitest's typecheck mode. The compiler checks each `*.test-d.ts` file, and Vitest
+reports each `it()` as a test without running the code. `expectTypeOf(x).toEqualTypeOf<T>()` checks
+the exact type, so a type that widens or narrows fails. A line marked `@ts-expect-error` must not
+compile. The test fails if it starts compiling. `fixtures.ts` has the routers the type tests share.
 
-To see which library lines no test reaches, run `npx ng test ngx-urlik --watch=false --coverage`.
+To find library lines no test reaches, run `npx ng test ngx-urlik --watch=false --coverage`.
 
-`npm run typecheck` also writes and checks a 201-route app, as one literal, in about a second. If a
-type change makes it slow, or it fails with TS2589, "excessively deep", that change made big route
-trees cost more than they should.
+`npm run typecheck` also generates and checks a 201-route app, as one literal, in about a second.
+If a type change makes it slow, or it fails with TS2589, "excessively deep", that change made big
+route trees too expensive.
 
 ## TasteTrack's states
 
@@ -275,20 +330,20 @@ signals.
 | A write commits, its `reload()` fails | Ready   | Stale  | the caller's promise resolves       |
 | A later `reload()` succeeds           | Stale   | Ready  | `error` clears                      |
 
-**Rules:**
+**Invariants:**
 
-- Each entry's new value is computed from what the database holds inside the write's transaction,
-  never from the signals.
-- The signals always hold one snapshot of every table.
-- In Failed, no page shows. A page would wait for a response that never comes, so the shell shows
-  the error in place of the router outlet, and reloading the browser is the only way out.
-- A write's promise rejects only when the write didn't commit, so "Please try again" is always safe
-  to follow. If a committed Log viewing write rejected, a retry would count the viewing twice.
+- Each entry's new value comes from what the database contains inside the write's transaction, never
+  from the signals.
+- The signals always contain one snapshot of every table.
+- In Failed, no page shows. A page would wait forever for a response, so the shell shows the error
+  in place of the router outlet. Reloading the browser is the only way out.
+- A write's promise rejects only when the write didn't commit, so "Please try again" is always safe.
+  If a committed Log viewing write rejected, a retry would count the viewing twice.
 
 ### The detail page's save state
 
 `DetailPage` in `projects/demo-app/src/app/detail-page.ts` has `writes`, `saved`, and `error`.
-`writes` counts running writes, `saving` is `writes > 0`, and Log viewing is off while `saving`.
+`writes` counts running writes. `saving` is `writes > 0`. Log viewing is disabled while `saving`.
 
 | Event                     | `writes` | `saved`   | `error`                          |
 | ------------------------- | -------- | --------- | -------------------------------- |
@@ -300,13 +355,13 @@ signals.
 
 (2) Only for Log viewing.
 
-**Rules:**
+**Invariants:**
 
-- Log viewing stays off until every running write finishes. Start a log, change the rating, and
-  the button stays off even if the rating finishes first. A single flag would turn it back on, and
-  a second click would log the viewing twice.
-- A select shows the stored value. When a status or rating write fails, the page puts the select
-  back, because its `[value]` binding didn't change and Angular wouldn't do it on its own.
+- Log viewing stays disabled until every running write finishes. Start a log, then change the
+  rating. The button stays disabled even if the rating write finishes first. A single flag would
+  re-enable it, and a second click would log the viewing twice.
+- A select shows the stored value. When a status or rating write fails, the page resets the select.
+  Its `[value]` binding didn't change, so Angular wouldn't reset it.
 
 ### The settings page's reset
 
@@ -318,34 +373,33 @@ signals.
 | Reset and navigation work  | false       | unchanged                       |
 | Reset or navigation throws | false       | "Could not reset TasteTrack..." |
 
-**Rule:** a reset that fails says so. Resetting twice ends in the same data, so trying again is
-safe.
+**Invariant:** a failed reset says so. Resetting twice gives the same data, so a retry is safe.
 
 ### List pages
 
 The catalog, library, and history pages each turn their route's `params().query` into a backend
-request, and `switchMap` keeps only the newest response. Until the first response arrives, the list
-is busy: it shows no empty message, Next is off, and it keeps a screen's height.
+request. `switchMap` keeps only the newest response. Until the first response arrives, the list is
+busy: it shows no empty message, Next is disabled, and it keeps a screen's height.
 
-**Rule:** the list shows what the URL says. A draft in a form, such as a search too short to write,
+**Invariant:** the list shows what the URL says. A form draft, such as a search too short to write,
 doesn't change the list.
 
 ## Checked, and fine
 
-These cases look like bugs at first glance. Each one has been checked, and each is fine:
+These cases look like bugs. Each has been checked and is fine:
 
 - **A Signal Forms edit made between `NavigationEnd` and the binding's URL effect.** The binding
   could overwrite the edit with the old value. A test edits the model inside a `NavigationEnd`
   handler, and the edit survives.
-- **Two form writes one macrotask apart, with no guards or resolvers.** They don't overlap, because
-  a query-only navigation finishes first.
-- **A computed that read a value Angular later took back.** During the Lagging state, a computed
-  that reads `params()` keeps the fresh value. If Angular then rolls the commit back, as it does
-  when activating the new page throws, no `NavigationEnd` comes, and the computed keeps values from
-  the discarded state until the next navigation. Angular's own `ActivatedRoute` is just as stale in
-  that case, so we leave it.
-- **Path values with `/`, `?`, `#`, `;`, `(`, `%`, or spaces.** Angular encodes them inside one
+- **Two form writes one macrotask apart, like two `setTimeout` callbacks, with no guards or
+  resolvers.** They don't overlap. A query-only navigation finishes first.
+- **A computed that read a value Angular later took back.** In the Lagging state, a computed that
+  reads `params()` keeps the fresh value. Angular rolls the commit back when activating the new page
+  throws. Then no `NavigationEnd` comes, and the computed keeps values from the discarded state
+  until the next navigation. Angular's own `ActivatedRoute` shows the same discarded values there,
+  so we leave it.
+- **Path parameters with `/`, `?`, `#`, `;`, `(`, `%`, or spaces.** Angular encodes them inside one
   segment, like `/items/a%2Fb`, and they read back unchanged.
-- **Out-of-order `reload()` results in the demo.** IndexedDB runs read transactions in the order
-  they start, so an older snapshot can't arrive after a newer one. There's no test, because the
-  unit tests have no IndexedDB.
+- **Out-of-order `reload()` results in the demo.** IndexedDB runs read transactions in start order,
+  so an older snapshot can't arrive after a newer one. There's no test, because the unit tests have
+  no IndexedDB.
