@@ -8,7 +8,7 @@ import type { AppRouterEscapeHatch } from './router-escape-hatch';
 import type { Simplify } from './type-utils';
 
 type Merge<A, B> = Omit<A, keyof B> & B;
-// A field reads as T when it has a default, and as T | null when it doesn't.
+// A field with a default reads as T. A field without one reads as T | null.
 type QueryValue<D> =
   D extends QueryParamDefinition<infer T, boolean, infer Defaulted>
     ? Defaulted extends true
@@ -21,31 +21,43 @@ type OwnQuery<D> = D extends { queryParams: infer Q extends QueryDefinitions }
 type RequiredQueryKeys<D> = D extends { queryParams: infer Q extends QueryDefinitions }
   ? { [K in keyof Q]: Q[K] extends { required: true } ? K : never }[keyof Q]
   : never;
-// What a link takes: every path value, any query fields (the required ones always), a fragment.
+// Link input: every path parameter, any query parameters, every required one, and a fragment. A
+// route without query parameters takes none, because a `Partial` of an empty type accepts any keys.
 type LinkInput<P, Q, Required extends PropertyKey> = (keyof P extends never
   ? { path?: never }
   : { path: Simplify<P> }) &
   ([Required] extends [never]
-    ? { query?: Partial<Simplify<Q>> }
+    ? keyof Q extends never
+      ? { query?: never }
+      : { query?: Partial<Simplify<Q>> }
     : { query: Partial<Simplify<Q>> & Pick<Simplify<Q>, Extract<Required, keyof Q>> }) & {
     fragment?: string | null;
   };
-// The values can be left out only when the route has no path values and no required fields.
+// The input is optional only when the route has no path parameters and no required query ones.
 type LinkArgs<P, Q, Required extends PropertyKey> = keyof P extends never
   ? [Required] extends [never]
     ? [values?: LinkInput<P, Q, Required>]
     : [values: LinkInput<P, Q, Required>]
   : [values: LinkInput<P, Q, Required>];
+// ifActive() input: any path and query parameters. A route with no parameters of a kind takes none,
+// because a `Partial` of an empty type would accept any keys.
+type MatchInput<P, Q> = (keyof P extends never
+  ? { path?: never }
+  : { path?: Partial<Simplify<P>> }) &
+  (keyof Q extends never ? { query?: never } : { query?: Partial<Simplify<Q>> });
 
 export type RouteNode<P = unknown, Q = unknown, Required extends PropertyKey = never> = {
   createUrlTree(...args: LinkArgs<P, Q, Required>): UrlTree;
   navigate(...args: [...LinkArgs<P, Q, Required>, options?: NavigateOptions]): Promise<boolean>;
   readonly [routeNodeInfo]: unknown;
   /**
-   * This route while it, or one of its children, is showing. Otherwise `null`. Read through what
-   * it returns, so the read goes to the route you checked: `EPISODE.ifActive()?.params()`.
+   * Returns this route when it or a route below it is showing and every passed value matches.
+   * Returns `null` otherwise. An omitted field matches any value.
+   *
+   * It reads signals, so templates and `computed()` track it. Read through the returned route, so
+   * the read goes to the route you checked: `EPISODE.ifActive()?.params()`.
    */
-  readonly ifActive: Signal<RouteNode<P, Q, Required> | null>;
+  readonly ifActive: (values?: MatchInput<P, Q>) => RouteNode<P, Q, Required> | null;
   readonly params: Signal<RouteParams<P, Q>>;
   patchQuery(patch: Partial<Readonly<Q>>, options?: NavigateOptions): Promise<boolean>;
 };
@@ -60,7 +72,7 @@ export type QueryParamsOf<N> = N extends { params: Signal<{ query: infer Q }> } 
 export type PathParamsOf<N> = N extends RouteNode<infer P, infer _Q, infer _R> ? P : never;
 export type ParamsOf<N> = N extends { params: Signal<infer S> } ? S : never;
 export type QueryPatchOf<N> = Partial<Readonly<QueryParamsOf<N>>>;
-/** The routes of an `AppRouter` token, for naming a route's types outside an injection context. */
+/** The type of `AppRouter.routes`, for naming route types outside an injection context. */
 export type RoutesOf<Token> =
   Token extends InjectionToken<{ readonly routes: infer R }> ? R : never;
 
@@ -80,7 +92,7 @@ type PathNames<S extends string> = S extends `${infer Head}/${infer Tail}`
   : PathSegmentName<S>;
 type OwnPathNames<D> = D extends { path: infer P extends string } ? PathNames<P> : never;
 type CodecValue<C> = C extends UrlParamCodec<infer T> ? T : string;
-// Each key names a placeholder, and each value is a codec.
+// Keys must be placeholder names. Values must be codecs.
 type PathConfig<Names extends string, Supplied> = [Names] extends [never]
   ? never
   : { readonly [K in keyof Supplied]: K extends Names ? UrlParamCodec<unknown> : never };
@@ -95,8 +107,8 @@ type AccumulatedPath<D, Ancestor> = Simplify<Merge<Ancestor, OwnPath<D>>>;
 type AccumulatedQuery<D, Ancestor> = Simplify<Merge<Ancestor, OwnQuery<D>>>;
 type RouteKey = keyof Route | 'routeName' | 'pathParams' | 'queryParams';
 
-// What a field must be: only known keys, a literal routeName, codecs only for real placeholders,
-// and no query key a parent already declares.
+// The type each route field must have. Unknown keys fail. `routeName` must be a literal.
+// `pathParams` keys must be placeholders in the path. A query key can't repeat a parent's.
 type FieldCheck<D, K extends keyof D, AncestorQuery> = K extends RouteKey
   ? K extends 'children'
     ? Exclude<D[K], undefined> extends readonly unknown[]
@@ -121,7 +133,7 @@ type FieldCheck<D, K extends keyof D, AncestorQuery> = K extends RouteKey
             : never
   : never;
 
-// A route needs a path unless it has a matcher. A path that's there is checked as a field.
+// A route needs a path unless it has a matcher. FieldCheck checks a path that is present.
 type PathRequirement<D> = D extends { matcher: unknown }
   ? { readonly path?: string }
   : 'path' extends keyof D
@@ -169,8 +181,8 @@ type ChildEntries<D, AP, AQ, Required extends PropertyKey> = D extends {
       Required | RequiredQueryKeys<D>
     >
   : never;
-// One entry per named route, with every parent's values included. It maps over each array instead
-// of walking it one route at a time, so the recursion only goes as deep as the routes nest.
+// One entry per named route, with every parent's values. It maps over each array instead of
+// recursing through siblings, so recursion depth equals nesting depth.
 type RouteEntries<
   R extends readonly unknown[],
   AP = object,
@@ -192,15 +204,15 @@ type GlobalDefinitions<P extends PathCodecs, Q extends QueryDefinitions> = {
   readonly query?: Q;
 };
 
-/** What the `AppRouter` token gives you. `routes` has one entry per named route. */
+/** The value of the `AppRouter` token. `routes` has one entry per named route. */
 export type TypedAppRouter<E extends Record<string, string>, R> = {
   readonly routes: {
     readonly [K in keyof E]: E[K] extends keyof NamedRoutes<R> ? NamedRoutes<R>[E[K]] : never;
   };
   /**
-   * Reads path and query values on every page, with no route needing to be active. A path value
-   * comes from whichever active route has a placeholder with that name, and is `null` when none
-   * does or when it doesn't decode. Query fields work as on routes.
+   * Reads path and query parameters on any page. No route has to be active. A path parameter comes
+   * from the active route with a placeholder of that name. It is `null` when no active route has
+   * one or the codec can't read it. Query parameters read as they do on routes.
    */
   globalParams<
     const P extends PathCodecs = Record<never, never>,
@@ -208,7 +220,7 @@ export type TypedAppRouter<E extends Record<string, string>, R> = {
   >(
     definitions: GlobalDefinitions<P, Q>,
   ): Signal<GlobalValues<P, Q>>;
-  /** Reads like `globalParams()`, once, from a snapshot such as the one a guard or resolver gets. */
+  /** Like `globalParams()`, but reads once from a snapshot, such as a guard's or a resolver's. */
   globalParamsSnapshot<
     const P extends PathCodecs = Record<never, never>,
     const Q extends QueryDefinitions = Record<never, never>,
@@ -217,8 +229,8 @@ export type TypedAppRouter<E extends Record<string, string>, R> = {
     snapshot: ActivatedRouteSnapshot,
   ): GlobalValues<P, Q>;
   /**
-   * Reads a route's values once, from a snapshot such as the one a guard or resolver gets. Throws
-   * if the snapshot doesn't contain the route.
+   * Reads a route's values once from a snapshot, such as a guard's or a resolver's. Throws if the
+   * route isn't in the snapshot.
    */
   paramsSnapshot<const N extends AnyRouteNode>(
     route: N,

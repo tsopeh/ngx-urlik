@@ -13,7 +13,7 @@ import {
 import { describe, expectTypeOf, it } from 'vitest';
 import { appRouter, definition, snapshot } from './fixtures';
 
-const { MEMBER, TEAMS } = appRouter.routes;
+const { HOME, MEMBER, TEAMS } = appRouter.routes;
 
 describe('params()', () => {
   it("holds the route's path values, the parents' included, with their codecs' types", () => {
@@ -55,8 +55,28 @@ describe('paramsSnapshot()', () => {
 
 describe('ifActive()', () => {
   it('holds the route itself, or null', () => {
-    expectTypeOf(MEMBER.ifActive).toEqualTypeOf<Signal<typeof MEMBER | null>>();
+    expectTypeOf(MEMBER.ifActive()).toEqualTypeOf<typeof MEMBER | null>();
     expectTypeOf(MEMBER.ifActive()?.params().path.memberId).toEqualTypeOf<number | undefined>();
+  });
+
+  it("takes any of the route's values, with their types", () => {
+    expectTypeOf(
+      MEMBER.ifActive({ path: { teamId: 1 }, query: { locale: 'en', page: null, tags: [] } }),
+    ).toEqualTypeOf<typeof MEMBER | null>();
+    // @ts-expect-error memberId is a number
+    MEMBER.ifActive({ path: { memberId: '1' } });
+    // @ts-expect-error the route has no such field
+    MEMBER.ifActive({ query: { sort: 'name' } });
+    // @ts-expect-error a fragment isn't checked
+    MEMBER.ifActive({ fragment: 'top' });
+  });
+
+  it('takes no path or query parameters on a route without them', () => {
+    expectTypeOf(HOME.ifActive({})).toEqualTypeOf<typeof HOME | null>();
+    // @ts-expect-error HOME has no path parameters
+    HOME.ifActive({ path: { typo: 1 } });
+    // @ts-expect-error HOME has no query parameters
+    HOME.ifActive({ query: { typo: 1 } });
   });
 
   it('narrows to the route after a check', () => {
@@ -71,8 +91,8 @@ describe('ifActive()', () => {
     void TEAMS.ifActive()?.params().path.memberId;
     // @ts-expect-error ifActive() can be null, so read through ?. or an if
     void MEMBER.ifActive().params();
-    // @ts-expect-error ifActive is read-only
-    MEMBER.ifActive.set(null);
+    // @ts-expect-error ifActive can't be replaced
+    MEMBER.ifActive = () => null;
   });
 });
 

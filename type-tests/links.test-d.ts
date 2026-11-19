@@ -37,6 +37,12 @@ describe('createUrlTree()', () => {
     MEMBER.createUrlTree({ path: memberPath, query: { page: 1, tags: [1] } });
   });
 
+  it('takes no query parameters on a route without them', () => {
+    HOME.createUrlTree({});
+    // @ts-expect-error HOME has no query parameters
+    HOME.createUrlTree({ query: { typo: 1 } });
+  });
+
   it('takes a fragment as a string or null', () => {
     HOME.createUrlTree({ fragment: 'top' });
     HOME.createUrlTree({ fragment: null });

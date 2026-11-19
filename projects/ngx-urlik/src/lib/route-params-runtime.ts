@@ -12,16 +12,16 @@ import type { AnyRecord } from './type-utils';
 
 export type RuntimeState = Readonly<{ path: AnyRecord; query: AnyRecord }>;
 /**
- * The value each field last read, with the URL text it came from. While the text stays the same,
- * a read returns the same value, so a field that didn't change in the URL stays `===`.
+ * The value each parameter last read, with the URL text it came from. While the text stays the
+ * same, a read returns the same value, so a parameter that didn't change in the URL stays `===`.
  */
 export type ValueCache = Map<CompiledParam, Readonly<{ text: string | null; value: unknown }>>;
-/** A field's URL text: the last value when its key repeats, or `null` when absent. */
+/** A query parameter's text: the last value when its key repeats, or `null` when absent. */
 const fieldText = (param: CompiledQueryParam, query: ParamMap): string | null =>
   query.getAll(param.name).at(-1) ?? null;
 
 export function createParameterReader(report: ReportParameterFailure) {
-  /** The value that URL text stands for, or `undefined` if it doesn't decode. */
+  /** Decodes a parameter's text. When the codec fails, reports it and returns `undefined`. */
   const decode = (param: CompiledParam, raw: string): unknown => {
     const code = 'PARAM_DESERIALIZE_FAILED';
     try {
@@ -36,7 +36,7 @@ export function createParameterReader(report: ReportParameterFailure) {
     return undefined;
   };
 
-  /** Reads one field from its URL text, or takes the cached value if the text didn't change. */
+  /** Reads one parameter from its text, or takes the cached value if the text didn't change. */
   const readField = (
     param: CompiledParam,
     text: string | null,
@@ -95,7 +95,7 @@ export function createParameterReader(report: ReportParameterFailure) {
     return { path, query: readQueryState(info.queryParams, query, cache) };
   };
 
-  /** Each path value from the deepest active route with that placeholder, or `null`. */
+  /** Each path parameter from the deepest active route with that placeholder, or `null`. */
   const readGlobalPath = (
     params: readonly CompiledPathParam[],
     chain: readonly ActivatedRouteSnapshot[],
@@ -118,8 +118,8 @@ export function createParameterReader(report: ReportParameterFailure) {
 }
 
 /**
- * Two states are the same when every field holds the same value. A `ValueCache` keeps a value while
- * its URL text stays the same, so this compares URL text, field by field.
+ * Compares each parameter with `Object.is`. A `ValueCache` keeps a value while its URL text stays
+ * the same, so this compares URL text, parameter by parameter.
  */
 export const sameState = (a: RuntimeState, b: RuntimeState): boolean =>
   sameFields(a.path, b.path) && sameFields(a.query, b.query);
@@ -155,7 +155,7 @@ export function createParameterSerializer(report: ReportParameterFailure) {
     }
   };
 
-  /** A path value has no fallback, so a value that won't serialize is the caller's bug. */
+  /** Throws instead of reporting. A path parameter has no fallback, so a bad value is a bug. */
   const serializePath = (param: CompiledParam, value: unknown): string => {
     let output: unknown;
     try {
@@ -182,14 +182,22 @@ export function createParameterSerializer(report: ReportParameterFailure) {
     return output;
   };
 
-  // Each field's default, as URL text. Built on first use, so a bad default reports once.
+  // Each query parameter's default, as URL text. Built on first use, so a bad default reports once.
   const defaultTexts = new WeakMap<CompiledQueryParam, string | null>();
-  /** A value that writes the same text as the default leaves the URL. */
-  const serializeQuery = (param: CompiledQueryParam, value: unknown): string | null => {
-    const output = value === null ? null : encode(param, value);
+  /**
+   * The text a query parameter's value writes, `null` when it leaves the URL, or `undefined` when
+   * its codec fails. A value that writes the same text as the default leaves the URL.
+   */
+  const queryText = (param: CompiledQueryParam, value: unknown): string | null | undefined => {
+    if (value === null) {
+      return null;
+    }
+    const output = encode(param, value);
+    if (output === null) {
+      return undefined;
+    }
     const { defaultValue } = param.definition;
-    const nothingToCompare = output === null || defaultValue === undefined;
-    if (nothingToCompare) {
+    if (defaultValue === undefined) {
       return output;
     }
     if (!defaultTexts.has(param)) {
@@ -198,6 +206,15 @@ export function createParameterSerializer(report: ReportParameterFailure) {
     const atDefault = output === defaultTexts.get(param);
     return atDefault ? null : output;
   };
+  const serializeQuery = (param: CompiledQueryParam, value: unknown): string | null =>
+    queryText(param, value) ?? null;
 
-  return { serializePath, serializeQuery };
+  return {
+    serializePath,
+    serializeQuery,
+    queryText,
+    /** The text a path parameter's value writes, or `undefined` when its codec fails. */
+    pathText: (param: CompiledParam, value: unknown): string | undefined =>
+      encode(param, value) ?? undefined,
+  };
 }

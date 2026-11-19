@@ -41,15 +41,16 @@ export type RouteParams<P, Q> = Readonly<{
 export type NavigateOptions = Omit<NavigationBehaviorOptions, 'browserUrl'>;
 
 type LinkValues = { path?: AnyRecord; query?: AnyRecord; fragment?: string | null };
+type MatchValues = { path?: AnyRecord; query?: AnyRecord };
 type GlobalDefinitions = {
   readonly path?: Readonly<Record<string, UrlParamCodec<unknown>>>;
   readonly query?: QueryDefinitions;
 };
 
 /**
- * The default of each query field on a route from `AppRouter.routes`, or `null` for a field without
- * one, and `undefined` for anything that isn't such a route. `ngx-urlik/forms` reads it, and it
- * isn't public API.
+ * Maps each query parameter of a route from `AppRouter.routes` to its default, or to `null` when
+ * it has none. Returns `undefined` for any other object. Only `ngx-urlik/forms` uses it. It isn't
+ * public API.
  */
 export function ɵqueryDefaults(route: object): AnyRecord | undefined {
   const info = (route as Record<PropertyKey, unknown>)[routeNodeInfo] as CompiledRoute | undefined;
@@ -69,7 +70,7 @@ export function createAppRouter(
   report: ReportParameterFailure,
 ): Record<string, unknown> {
   const { readState, readQueryState, readGlobalPath } = createParameterReader(report);
-  const { serializePath, serializeQuery } = createParameterSerializer(report);
+  const { serializePath, serializeQuery, queryText, pathText } = createParameterSerializer(report);
 
   const navigation = signal(0);
   const subscription = router.events
@@ -79,9 +80,9 @@ export function createAppRouter(
     });
   destroyRef.onDestroy(() => subscription.unsubscribe());
 
-  // Angular switches to the new router state, and creates the new page, before NavigationEnd.
-  // Until NavigationEnd, the cached value is from the old state, so read the new one directly.
-  // Each signal keeps its own field values, so a field whose URL text didn't change stays `===`.
+  // Angular switches to the new router state and creates the new page before NavigationEnd. Until
+  // then the cached value comes from the old state, so a read goes to the new state directly. Each
+  // signal has its own ValueCache, so a parameter whose URL text didn't change stays `===`.
   const routerSignal = <T>(
     readWith: (values: ValueCache) => T,
     equal: ValueEqualityFn<T>,
@@ -151,7 +152,7 @@ export function createAppRouter(
     active: ActivatedRouteSnapshot,
     values?: ValueCache,
   ) => {
-    // Named in the error when a path value doesn't decode, so it's built only then.
+    // Only the error for an undecodable path parameter uses the URL, so it's built on demand.
     const url = () =>
       '/' + active.pathFromRoot.flatMap((snapshot) => snapshot.url.map((s) => s.path)).join('/');
     return readState(info, activePathParams(info, active), active.queryParamMap, url, values);
@@ -238,6 +239,28 @@ export function createAppRouter(
     return result;
   };
 
+  // A value matches when it writes the same URL text as the current one, so a default matches
+  // whether the URL writes it out or not. A parameter left out, or passed as `undefined`, matches
+  // any value. A value whose codec fails has no text, so it never matches, even a current value
+  // whose codec fails too.
+  const fieldsMatch = <Param extends { readonly name: string }>(
+    params: readonly Param[],
+    passed: AnyRecord,
+    current: AnyRecord,
+    text: (param: Param, value: unknown) => string | null | undefined,
+  ) =>
+    params.every((param) => {
+      const value = passed[param.name];
+      if (value === undefined) {
+        return true;
+      }
+      const passedText = text(param, value);
+      return passedText !== undefined && passedText === text(param, current[param.name]);
+    });
+  const matchesValues = (info: CompiledRoute, values: MatchValues, current: RuntimeState) =>
+    fieldsMatch(info.pathParams, values.path ?? {}, current.path, pathText) &&
+    fieldsMatch(info.queryParams, values.query ?? {}, current.query, queryText);
+
   const createNode = (info: CompiledRoute) => {
     const node: Record<PropertyKey, unknown> = {
       createUrlTree: (values?: LinkValues) => createUrlTree(info, values),
@@ -248,10 +271,20 @@ export function createAppRouter(
       patchQuery: async (patch: Partial<AnyRecord>, options?: NavigateOptions) =>
         patchQuery(info, patch, options),
     };
-    node['ifActive'] = routerSignal(
+    const active = routerSignal(
       () => (findActiveRoute(router.routerState.snapshot.root, info) ? node : null),
       Object.is,
     );
+    const params = node['params'] as Signal<RuntimeState>;
+    // Without values it reads only `active`, so it notifies only when the answer changes. With
+    // values it reads params() too.
+    node['ifActive'] = (values?: MatchValues) => {
+      const route = active();
+      if (route === null || values === undefined) {
+        return route;
+      }
+      return matchesValues(info, values, params()) ? route : null;
+    };
     Object.defineProperty(node, routeNodeInfo, { value: info });
     return node;
   };

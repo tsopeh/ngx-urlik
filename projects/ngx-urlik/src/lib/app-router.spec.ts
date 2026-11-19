@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Route, Router, RouterFeatures, RouterOutlet, withRouterConfig } from '@angular/router';
 import { createQueryParamsFormGroup } from 'ngx-urlik/forms';
 import { defineAppRouter } from './app-router';
-import { numberCodec, queryParam, stringCodec } from './params';
+import { booleanCodec, listCodec, numberCodec, queryParam, stringCodec } from './params';
 
 @Component({ template: '' })
 class EmptyComponent {}
@@ -442,6 +442,117 @@ describe('defineAppRouter with Angular route arrays', () => {
     expect(appRouter.routes.ITEMS.ifActive()).toBeNull();
     await appRouter.routes.ITEMS.navigate();
     expect(appRouter.routes.ITEMS.ifActive()).toBe(appRouter.routes.ITEMS);
+  });
+
+  describe('ifActive() with values', () => {
+    const define = (diagnostics: unknown[] = []) =>
+      defineAppRouter(
+        { ITEMS: RouteNames.ITEMS, ITEM: RouteNames.ITEM },
+        {
+          routes: [
+            { path: '', component: EmptyComponent },
+            {
+              path: 'items',
+              routeName: RouteNames.ITEMS,
+              queryParams: {
+                search: queryParam({ codec: stringCodec(), defaultValue: '' }),
+                exact: queryParam({ codec: booleanCodec(), defaultValue: true }),
+                tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),
+              },
+              children: [
+                {
+                  path: ':id',
+                  routeName: RouteNames.ITEM,
+                  pathParams: { id: numberCodec() },
+                  component: EmptyComponent,
+                },
+              ],
+            },
+          ],
+          diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
+        },
+      );
+
+    it('checks only the values you pass, and ignores what the route does not declare', async () => {
+      const { appRouter, router } = setup(define());
+      const { ITEMS, ITEM } = appRouter.routes;
+      await router.navigateByUrl('/items/7?search=elm&tags=a,b&campaign=summer');
+
+      expect(ITEM.ifActive({ path: { id: 7 } })).toBe(ITEM);
+      expect(ITEM.ifActive({ path: { id: 8 } })).toBeNull();
+      expect(ITEMS.ifActive({ query: { search: 'elm' } })).toBe(ITEMS);
+      expect(ITEMS.ifActive({ query: { search: 'oak' } })).toBeNull();
+      expect(ITEMS.ifActive({ query: { search: 'elm', exact: false } })).toBeNull();
+      expect(ITEMS.ifActive({ query: { search: undefined } })).toBe(ITEMS);
+      expect(ITEM.ifActive({ path: { id: 7 }, query: { tags: ['a', 'b'] } })).toBe(ITEM);
+      expect(ITEM.ifActive({ query: { tags: ['a'] } })).toBeNull();
+    });
+
+    it('treats a default as a value, whether the URL writes it out or leaves it out', async () => {
+      const { appRouter, router } = setup(define());
+      const { ITEMS } = appRouter.routes;
+
+      await router.navigateByUrl('/items?search=elm&exact=true');
+      expect(ITEMS.ifActive({ query: { exact: true } })).toBe(ITEMS);
+      // An empty search is a value, so it doesn't match a page that searches for elm.
+      expect(ITEMS.ifActive({ query: { search: '' } })).toBeNull();
+      await router.navigateByUrl('/items');
+      expect(ITEMS.ifActive({ query: { search: '', exact: true } })).toBe(ITEMS);
+    });
+
+    it('is null while the route is not showing', async () => {
+      const { appRouter, router } = setup(define());
+      await router.navigateByUrl('/');
+
+      expect(appRouter.routes.ITEMS.ifActive({ query: { search: '' } })).toBeNull();
+    });
+
+    it('updates readers when a value it checks changes', async () => {
+      const { appRouter, router } = setup(define());
+      const { ITEMS } = appRouter.routes;
+      await router.navigateByUrl('/items?search=elm');
+      const current = computed(() => ITEMS.ifActive({ query: { search: 'elm' } }) !== null);
+
+      expect(current()).toBe(true);
+      await ITEMS.patchQuery({ search: 'oak' });
+      expect(current()).toBe(false);
+    });
+
+    it("matches nothing, and reports it, for a value its codec can't write", async () => {
+      const diagnostics: unknown[] = [];
+      const { appRouter, router } = setup(define(diagnostics));
+      await router.navigateByUrl('/items/7');
+
+      expect(appRouter.routes.ITEM.ifActive({ path: { id: 'seven' as never } })).toBeNull();
+      // The URL leaves exact at its default, which a value that can't be written must not match.
+      expect(appRouter.routes.ITEM.ifActive({ query: { exact: 'yes' as never } })).toBeNull();
+      expect(diagnostics).toEqual([
+        expect.objectContaining({ code: 'PARAM_SERIALIZE_FAILED', parameter: 'id' }),
+        expect.objectContaining({ code: 'PARAM_SERIALIZE_FAILED', parameter: 'exact' }),
+      ]);
+    });
+
+    it("doesn't match a value its codec can't write to a default it can't write either", async () => {
+      const definition = defineAppRouter(
+        { ITEMS: RouteNames.ITEMS },
+        {
+          routes: [
+            {
+              path: 'items',
+              routeName: RouteNames.ITEMS,
+              // numberCodec() can't write NaN, so the default has no text.
+              queryParams: { minRating: queryParam({ codec: numberCodec(), defaultValue: NaN }) },
+              component: EmptyComponent,
+            },
+          ],
+          diagnostics: { warn: () => undefined },
+        },
+      );
+      const { appRouter, router } = setup(definition);
+      await router.navigateByUrl('/items');
+
+      expect(appRouter.routes.ITEMS.ifActive({ query: { minRating: 'high' as never } })).toBeNull();
+    });
   });
 
   it('keys nodes by route names member, even when its value differs', async () => {
