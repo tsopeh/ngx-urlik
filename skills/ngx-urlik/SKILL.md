@@ -108,14 +108,14 @@ what's been written. The binding writes the draft to the query parameters.
 - The draft reaches the query parameter exactly as typed. Trim where you build the request. Use
   `beforeWrite` only to change other query parameters.
 - Put a Reactive form with `writeOn: 'submit'` in a `<form [formGroup]>`. For a Signal Form you
-  built yourself, pass `() => binding.write()` as `submission.action`, and type the binding as
-  `QueryParamsBinding`.
+  built yourself, pass `() => binding.submitAction()` as `submission.action`, and type the binding
+  as `SignalFormQueryParamsBinding`.
 - Pass `onWriteFailure` when the page should react to a declined write. Without it, a guard's
   decline is silent.
 - To wait until the draft is in the query parameters, await `write()`. A Signal Form's
   `submitting()` turns `false` as soon as the write starts.
-- Test a bound form on a fake clock, as in “Test a bound form”: move it by the exact delay, and
-  type with `{ emitModelToViewChange: false }`. Then the test gives the same result on every run.
+- Test a bound form on a fake clock, as in “Test a bound form”: move it by the exact delay. Then the
+  test gives the same result on every run.
 
 ## 4. Check your work
 

@@ -24,7 +24,7 @@ import {
   bindQueryParamsToSignalForm,
   createQueryParamsFormGroup,
   createQueryParamsSignalForm,
-  type QueryParamsBinding,
+  type SignalFormQueryParamsBinding,
 } from 'ngx-urlik/forms';
 import { defineAppRouter } from './app-router';
 import { numberCodec, queryParam, stringCodec, UrlParamCodec } from './params';
@@ -647,10 +647,10 @@ describe('query forms', () => {
       const model = signal(results.params().query);
       const search = TestBed.runInInjectionContext(() =>
         signalForm(model, (fields) => minLength(fields.search, 3), {
-          submission: { action: () => binding.write(), ignoreValidators: 'all' },
+          submission: { action: () => binding.submitAction(), ignoreValidators: 'all' },
         }),
       );
-      const binding: QueryParamsBinding = TestBed.runInInjectionContext(() =>
+      const binding: SignalFormQueryParamsBinding = TestBed.runInInjectionContext(() =>
         bindQueryParamsToSignalForm(results, search, { writeOn: 'submit' }),
       );
 
@@ -660,14 +660,14 @@ describe('query forms', () => {
       expect(router.url).toBe('/results?search=el');
     });
 
-    it('writes a Signal Form you built when its submit action calls the returned write', async () => {
+    it('writes a Signal Form you built when its submit action calls the returned submitAction', async () => {
       ({ results } = await setup());
       const router = TestBed.inject(Router);
       const model = signal(results.params().query);
       const search = TestBed.runInInjectionContext(() =>
-        signalForm(model, { submission: { action: () => binding.write() } }),
+        signalForm(model, { submission: { action: () => binding.submitAction() } }),
       );
-      const binding: QueryParamsBinding = TestBed.runInInjectionContext(() =>
+      const binding: SignalFormQueryParamsBinding = TestBed.runInInjectionContext(() =>
         bindQueryParamsToSignalForm(results, search, { writeOn: 'submit' }),
       );
 
@@ -896,18 +896,24 @@ describe('query forms', () => {
       expect(router.url).toBe('/results?search=oaks');
     });
 
-    it('writes a debounced field right away when code sets it', async () => {
+    it('delays a debounced field set from code until the delay ends, or until write() is called', async () => {
       const { results, router } = await setup();
-      const { form } = TestBed.runInInjectionContext(() =>
-        createQueryParamsFormGroup(results, { debounce: { search: 10_000 } }),
+      const { form, write } = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, { debounce: { search: 200 } }),
       );
 
       form.patchValue({ search: 'elm' });
-      await elapse();
+      await elapse(199);
+      expect(router.url).toBe('/results');
+      await elapse(1);
       expect(router.url).toBe('/results?search=elm');
+
+      form.patchValue({ search: 'oak' });
+      await write();
+      expect(router.url).toBe('/results?search=oak');
     });
 
-    it('lets a value set by code replace typing still waiting', async () => {
+    it('lets a later value replace typing still waiting on the same debounce', async () => {
       const { results, router } = await setup();
       const starts: string[] = [];
       router.events.subscribe((event) => {
@@ -916,26 +922,16 @@ describe('query forms', () => {
         }
       });
       const { form } = TestBed.runInInjectionContext(() =>
-        createQueryParamsFormGroup(results, { debounce: { search: 10_000 } }),
+        createQueryParamsFormGroup(results, { debounce: { search: 200 } }),
       );
 
       typeInto(form.controls.search, 'el');
       form.controls.search.setValue('oak');
-      await elapse();
+      await elapse(199);
+      expect(router.url).toBe('/results');
+      await elapse(1);
       expect(router.url).toBe('/results?search=oak');
       expect(starts).toEqual(['/results?search=oak']);
-    });
-
-    it('writes typing still waiting when code sets the same value', async () => {
-      const { results, router } = await setup();
-      const { form } = TestBed.runInInjectionContext(() =>
-        createQueryParamsFormGroup(results, { debounce: { search: 10_000 } }),
-      );
-
-      typeInto(form.controls.search, 'elm');
-      form.controls.search.setValue('elm');
-      await elapse();
-      expect(router.url).toBe('/results?search=elm');
     });
 
     it('writes a debounced field on top of a navigation that changes other fields', async () => {
@@ -1274,27 +1270,24 @@ describe('query forms', () => {
       expect(onWriteFailure).not.toHaveBeenCalled();
     });
 
-    it('leaves one change listener on a control that outlives its bindings', async () => {
+    it('writes once when a form outlives earlier bindings and is bound again', async () => {
       const { results, router } = await setup();
       const form = new FormGroup({
         search: new FormControl('', { nonNullable: true }),
         page: new FormControl(1, { nonNullable: true }),
       });
-      const register = vi.spyOn(form.controls.search, 'registerOnChange');
       for (let visit = 0; visit < 3; visit++) {
         const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
         createIn(injector, () => bindQueryParamsToFormGroup(results, form));
         injector.destroy();
       }
-      TestBed.runInInjectionContext(() =>
-        bindQueryParamsToFormGroup(results, form, { debounce: { search: 10_000 } }),
-      );
+      const write = vi.spyOn(results, 'patchQuery');
+      TestBed.runInInjectionContext(() => bindQueryParamsToFormGroup(results, form));
 
-      // The binding still tells a value set by code from typing, so it writes right away.
       form.controls.search.setValue('elm');
       await elapse();
       expect(router.url).toBe('/results?search=elm');
-      expect(register).toHaveBeenCalledTimes(1);
+      expect(write).toHaveBeenCalledTimes(1);
     });
 
     it('stops following the URL when it is destroyed', async () => {

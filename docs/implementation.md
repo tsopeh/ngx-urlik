@@ -146,35 +146,28 @@ patch, or a form write. A read is `params()`, `globalParams()`, or a snapshot re
 
 ## Follow a form edit
 
-`bindQueryParams()` in `projects/ngx-urlik/forms/query-forms.ts` connects both Angular form systems
-to one binding. The form keeps the draft, and the query parameters keep what's been written. The
-binding reads through `params()`, writes through `patchQuery()`, and gets defaults, URL-text
-equality, and active-route reads through the internal `ɵqueryRouteSupport()` helper.
+`createQuerySync()` in `projects/ngx-urlik/forms/query-forms.ts` reconciles a form's model with the
+route's query parameters. The form keeps the draft, and the query parameters keep what's been
+written. The binding reads through `params()`, writes through `patchQuery()`, and gets defaults,
+URL-text equality, and active-route reads through the internal `ɵqueryRouteSupport()` helper.
 
-The binding keeps a model: the values it compares with the URL. Signal Forms run `debounce()` before
-their model, so there the model is the form's value. In Reactive Forms, typing into a field with a
-`debounce` entry moves into the model when its delay ends. A value set by code moves in right away,
-and so does every field without a delay.
+Each form system wraps `createQuerySync()` with its own adapter:
 
-The binding tells code from typing with a `registerOnChange()` listener on each control. Angular
-calls it when code sets a value, to show the value in the input. It doesn't call it when the user
-types. Angular has no public way to remove that listener. So each control gets one listener for its
-life, stored in a `WeakMap`, and each binding adds its own handler to that listener and removes it
-when the binding stops. A form that outlives many bindings keeps one listener per control.
+- **Reactive Forms** (`bindQueryParamsToFormGroup()`) keeps per-field debounce `timers` and a
+  `lastSeen` snapshot. A change on a debounced field moves into the model when its timer ends or
+  when the form submits or `write()` runs. Fields without a delay move in right away.
+- **Signal Forms** (`bindQueryParamsToSignalForm()`) runs `debounce()` inside Angular before the
+  model, so it needs no timers. It exposes `submitAction()` (resolves as soon as the write starts,
+  for Angular's `submit()`) and `write()` (calls `markAsTouched()` to flush waiting typing, checks
+  errors under `writeOn: 'submit'`, and awaits `newestWrite`).
 
-A Signal Form's `write()` called from code first calls `markAsTouched()`. That ends every
-`debounce()` wait, as Angular's `submit()` does. It then reads the form's errors, so the validators
-have seen the typing that moved into the model. As the submit action, `write()` resolves once the
-write starts, because `submit()` ignores a new submit while the last one runs.
-
-`write()` called from code runs the same submit handler as a submit by the user. The handler ends
-every debounce wait. With `writeOn: 'change'`, the binding then writes each field whose validators
-pass. With `writeOn: 'submit'`, it writes the whole draft, and only when the form has no errors.
+`write()` called from code runs the same submit rules as a submit by the user. It ends every
+debounce wait. With `writeOn: 'change'`, the binding writes each field whose validators pass. With
+`writeOn: 'submit'`, it writes the whole draft, and only when the form has no errors.
 
 | Variable      | Contents                                                           |
 | ------------- | ------------------------------------------------------------------ |
 | `model`       | The values the binding compares with the URL                       |
-| `shown`       | What the form showed after the last change the binding saw         |
 | `lastUrl`     | The query parameter values the form last took in                   |
 | `invalid`     | Fields whose validators failed when the binding wrote              |
 | `timers`      | Per field, the Reactive Forms debounce timer                       |

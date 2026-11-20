@@ -702,9 +702,13 @@ Three rounds on Nov 11–12 looked for code that only compensated for earlier ch
   from `queryText()` and `pathText()`, cached canonical URL text per `RuntimeState` for repeated
   `ifActive(values)` checks, kept `routerSignal()`'s Lagging reads from mutating `ValueCache`,
   replaced `patchQuery()`'s three `UrlTree` Weak collections and re-decoding with a single
-  `pendingWrite` record that writes only supplied keys, and replaced `ɵqueryDefaults` and
+  `pendingWrite` record that writes only supplied keys, replaced `ɵqueryDefaults` and
   `takeWrittenValues()` with `ɵqueryRouteSupport()` so form bindings compare by canonical URL text
-  and read active routes without a broad `try/catch`.
+  and read active routes without a broad `try/catch`, split `query-forms.ts` around a shared
+  `createQuerySync()` reconciler with per-system adapters (deleting the `registerOnChange()` WeakMap
+  and `shown` shadow so Reactive Forms debounces all `valueChanges` and immediate code writes use
+  `patchQuery()` or `write()`), and separated Signal Forms' `submitAction()` from `write()` so
+  `write()` no longer sniffs `submitting()`.
 
 We left these as they are, because a redesign wouldn't make them simpler: `routerSignal`, the
 `canMatch` codec check, the form binding's `pending`, `lastUrl`, and `held` (now `invalid`), the

@@ -304,9 +304,9 @@ the URL. Because a write includes every changed field, the binding never has to 
 navigations from Back.
 
 A Reactive Forms `debounce` delays a field's move into those values, as Signal Forms' `debounce()`
-does. So Back drops a waiting edit in both form systems. In both, only typing waits. A value set by
-code is final. Delaying it would only make the page lag, and code that reads the form right after
-setting it would see the old value.
+does. So Back drops a waiting edit in both form systems. In Reactive Forms, `debounce` delays every
+`valueChanges` emission on that field (rather than hooking `registerOnChange()` to guess typing from
+code); code that wants an immediate write calls `write()` or `patchQuery()`.
 
 Some forms should change the URL only on submit, because each URL change starts a request. `writeOn:
 'submit'` keeps every edit in the binding, not in the form. The form's values still change on each
@@ -327,15 +327,15 @@ first, so they do. A field that isn't written stays in the draft, and the next w
 The cost: with `'change'`, code can't use `write()` to write all fields or none.
 
 The binding detects the submit itself. A `<form [formGroup]>` emits it as an event.
-`createQueryParamsSignalForm()` makes the write the form's submit action. A hand-built Signal Form
-takes its submit action at creation, so its bind function returns `{ write }` for the app to pass
-in. All four form functions return `write`, in an object that leaves room to return more later.
-Calling it from code submits the same way in both form systems.
+`createQueryParamsSignalForm()` makes `submitAction` the form's submit action. A hand-built Signal
+Form takes its submit action at creation, so its bind function returns `{ write, submitAction }` for
+the app to pass in. All four form functions return `write`, in an object that leaves room to return
+more later. Calling `write()` from code submits the same way in both form systems.
 
-As a Signal Form's submit action, `write()` resolves once the write starts, not when the navigation
-finishes. Angular ignores a submit while the last one runs. Waiting would drop the user's next Enter
-while a guard or resolver is slow. The cost: the form's `submitting()` doesn't cover the navigation,
-so a page that wants a spinner reads the router instead.
+`submitAction()` resolves once the write starts, not when the navigation finishes. Angular ignores a
+submit while the last one runs. Waiting would drop the user's next Enter while a guard or resolver
+is slow. The cost: the form's `submitting()` doesn't cover the navigation, so a page that wants a
+spinner reads the router instead.
 
 A field follows its query parameter only when that parameter changes in the URL. So a write to
 another field never replaces what the user is typing. The binding reads through `params()`, writes

@@ -826,10 +826,11 @@ the input to `oak` and drops `elm`. A navigation that changes only other query p
 cancel the wait. When the delay ends, the binding writes `elm` into the URL as it is at that moment.
 Leaving the page drops `elm`.
 
-Only typing waits. A value your code sets, like `form.patchValue({ search: 'elm' })` or a
-`model.update()`, is written at once and replaces typing that's still waiting. Submitting ends the
-wait too, so typing `elm` and pressing Enter writes it at once. That works for a
-`<form [formGroup]>`, and for a Signal Form passed to Angular's `submit()`.
+In Signal Forms, only typing waits: `model.update()` writes at once and replaces typing that's still
+waiting. In Reactive Forms, `debounce` delays every `valueChanges` emission on that field; to write
+immediately from code, call `write()` or `route.patchQuery()`. Submitting ends the wait too, so
+typing `elm` and pressing Enter writes it at once. That works for a `<form [formGroup]>`, and for a
+Signal Form passed to Angular's `submit()`.
 
 ### Skip a too-short search
 
@@ -871,12 +872,12 @@ passed to `<form [formGroup]>`, so bind that group. If you bind a group nested i
 `write()` from `(ngSubmit)`. `createQueryParamsSignalForm()` makes the write the Signal Form's
 submit action, so a `<form [formRoot]>` or a call to Angular's `submit()` writes it.
 
-For a Signal Form you built yourself, make the binding's `write` the form's submit action. The form
-and the binding refer to each other, so the binding needs a type annotation:
+For a Signal Form you built yourself, make the binding's `submitAction` the form's submit action.
+The form and the binding refer to each other, so the binding needs a type annotation:
 
 ```ts
-readonly filters = form(this.model, { submission: { action: () => this.binding.write() } });
-readonly binding: QueryParamsBinding = bindQueryParamsToSignalForm(results, this.filters, {
+readonly filters = form(this.model, { submission: { action: () => this.binding.submitAction() } });
+readonly binding: SignalFormQueryParamsBinding = bindQueryParamsToSignalForm(results, this.filters, {
   writeOn: 'submit',
 });
 ```
@@ -893,7 +894,7 @@ validator doesn't count as an error. `write()` resolves once the form's newest w
 one that was already running.
 
 Inside Angular's `submit()`, the Signal Form's submission options, like `ignoreValidators`, decide
-whether errors stop the write. There, `write()` resolves as soon as the write starts, because
+whether errors stop the write. There, `submitAction()` resolves as soon as the write starts, because
 Angular ignores a submit while the last one runs. Resolving early lets a second Enter, pressed while
 a slow page loads, still write the new search. It also means `submitting()` doesn't tell you whether
 the URL is being written.
@@ -954,7 +955,7 @@ it('writes the search 300 ms after the last keystroke', async () => {
     createQueryParamsFormGroup(results, { debounce: { search: 300 } }),
   );
 
-  form.controls.search.setValue('elm', { emitModelToViewChange: false });
+  form.controls.search.setValue('elm');
   await elapse(299);
   expect(router.url).toBe('/results');
   await elapse(1);
@@ -965,10 +966,9 @@ it('writes the search 300 ms after the last keystroke', async () => {
 The binding reads the URL, and a Signal Form's edits, in effects. On the fake clock, Angular doesn't
 run those effects by itself, so `elapse()` calls `TestBed.tick()`.
 
-Only typing waits for the debounce, and in a test, `setValue('elm')` counts as code, so the binding
-writes it at once. To type, pass `{ emitModelToViewChange: false }` as above, which is how Angular's
-input directives set a value, or dispatch an `input` event on the bound input. In a Signal Form, set
-`form.search().controlValue`, which is what `[formField]` sets on each keystroke.
+In a Signal Form, only typing waits for `debounce()`, so set `form.search().controlValue`, which is
+what `[formField]` sets on each keystroke. In a Reactive Form, `setValue('elm')` waits for the
+field's `debounce` delay just like typing.
 
 ## Diagnostics and errors
 
@@ -1096,8 +1096,8 @@ type SameQuery = QueryParamsOf<Routes['RESULTS']>;
 | `AppRouterDiagnosticCode` | `diagnostic.code`                              |
 | `AppRouterDiagnostics`    | The `diagnostics` option: `{ warn }`           |
 
-`ngx-urlik/forms` exports the option types, `QueryParamsBinding`, `QueryParamsFormControls`, and
-`QueryWriteFailure`.
+`ngx-urlik/forms` exports the option types, `QueryParamsBinding`, `SignalFormQueryParamsBinding`,
+`QueryParamsFormControls`, and `QueryWriteFailure`.
 
 ## Not supported
 
