@@ -697,6 +697,14 @@ Three rounds on Nov 11–12 looked for code that only compensated for earlier ch
   was dropped, as above.
 - **Round 3** compared URL text instead of `isEqual`, and made `patchQuery()` resolve `true` when
   the URL already matches the patch.
+- **Round 4** (Nov 20, branch `audit/compensating-code`) replaced `QueryParamDefinition`'s phantom
+  `Defaulted` type parameter with a discriminated union, returned tagged `{ ok, text }` outcomes
+  from `queryText()` and `pathText()`, cached canonical URL text per `RuntimeState` for repeated
+  `ifActive(values)` checks, kept `routerSignal()`'s Lagging reads from mutating `ValueCache`,
+  replaced `patchQuery()`'s three `UrlTree` Weak collections and re-decoding with a single
+  `pendingWrite` record that writes only supplied keys, and replaced `ɵqueryDefaults` and
+  `takeWrittenValues()` with `ɵqueryRouteSupport()` so form bindings compare by canonical URL text
+  and read active routes without a broad `try/catch`.
 
 We left these as they are, because a redesign wouldn't make them simpler: `routerSignal`, the
 `canMatch` codec check, the form binding's `pending`, `lastUrl`, and `held` (now `invalid`), the

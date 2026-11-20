@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup, FormSubmittedEvent } from '@angular/forms';
 import { FieldTree, form as signalForm, SchemaOrSchemaFn } from '@angular/forms/signals';
-import { ɵqueryDefaults } from 'ngx-urlik';
+import { ɵqueryRouteSupport } from 'ngx-urlik';
 
 type QueryState = Readonly<Record<string, unknown>>;
 type QueryRoute<Q extends QueryState> = {
@@ -89,10 +89,6 @@ const fieldsOf = <Q extends QueryState>(query: Q) => Object.keys(query) as (keyo
 
 type Changes<Q extends QueryState> = { -readonly [K in keyof Q]?: Q[K] };
 
-const sameFields = <Q extends QueryState>(a: Changes<Q>, b: Changes<Q>) =>
-  Object.keys(a).length === Object.keys(b).length &&
-  fieldsOf(a).every((param) => param in b && Object.is(a[param], b[param]));
-
 /** Does what a submit does, and resolves once the form's newest write settles. */
 type SubmitWrite = (hasErrors: boolean) => Promise<void>;
 
@@ -103,8 +99,17 @@ const bindQueryParams = <Q extends QueryState>(
 ): SubmitWrite => {
   const destroyRef = inject(DestroyRef);
   const errorHandler = inject(ErrorHandler);
+  const support = ɵqueryRouteSupport(route);
+  const sameValue = (param: keyof Q, a: unknown, b: unknown) =>
+    support ? support.sameValue(String(param), a, b) : Object.is(a, b);
+  const sameFields = (a: Changes<Q>, b: Changes<Q>) =>
+    Object.keys(a).length === Object.keys(b).length &&
+    fieldsOf(a).every((param) => param in b && sameValue(param, a[param], b[param]));
   // The route can go inactive before the binding is destroyed. The form then keeps its values.
   const read = (): Q | undefined => {
+    if (support) {
+      return support.readIfActive() as Q | undefined;
+    }
     try {
       return route.params().query;
     } catch {
@@ -153,26 +158,6 @@ const bindQueryParams = <Q extends QueryState>(
     adapter.write(changes);
   };
 
-  // A field the user hasn't touched since the write takes its query parameter's value. So a value
-  // that writes the same text, like a sort picked again, stops differing from its query parameter.
-  const takeWrittenValues = (fields: Changes<Q>) => {
-    const url = read();
-    if (!url) {
-      return;
-    }
-    const changes: Changes<Q> = {};
-    for (const param of fieldsOf(fields)) {
-      const untouched =
-        Object.is(model[param], fields[param]) && Object.is(shown[param], fields[param]);
-      if (untouched && !Object.is(url[param], fields[param])) {
-        changes[param] = url[param];
-      }
-    }
-    if (fieldsOf(changes).length) {
-      show(changes);
-    }
-  };
-
   const send = (fields: Changes<Q>, patch: Partial<Q>) => {
     const hasFields = fieldsOf(fields).length > 0;
     const id = ++writes;
@@ -188,9 +173,7 @@ const bindQueryParams = <Q extends QueryState>(
           return;
         }
         settle();
-        if (result) {
-          takeWrittenValues(fields);
-        } else if (id === writes && hasFields) {
+        if (!result && id === writes && hasFields) {
           // An older write was replaced by a newer one from this form, so it isn't a decline.
           reportFailure({ kind: 'declined' });
         }
@@ -217,7 +200,7 @@ const bindQueryParams = <Q extends QueryState>(
     const url = read() ?? lastUrl;
     const fields: Changes<Q> = {};
     for (const param of fieldsOf(model)) {
-      const differs = !Object.is(model[param], url[param]);
+      const differs = !sameValue(param, model[param], url[param]);
       const holdBack = differs && options.writeOn !== 'submit' && !adapter.valid(param);
       if (holdBack) {
         invalid.add(param);
@@ -257,7 +240,9 @@ const bindQueryParams = <Q extends QueryState>(
   };
 
   const updateModel = (changes: Changes<Q>) => {
-    const changed = fieldsOf(changes).some((param) => !Object.is(model[param], changes[param]));
+    const changed = fieldsOf(changes).some(
+      (param) => !sameValue(param, model[param], changes[param]),
+    );
     if (changed) {
       model = { ...model, ...changes };
       // With writeOn: 'submit', the edit waits in the model until the form is submitted.
@@ -274,8 +259,8 @@ const bindQueryParams = <Q extends QueryState>(
     }
     const changes: Changes<Q> = {};
     for (const param of fieldsOf(incoming)) {
-      const urlChanged = !Object.is(lastUrl[param], incoming[param]);
-      const differs = !Object.is(model[param], incoming[param]);
+      const urlChanged = !sameValue(param, lastUrl[param], incoming[param]);
+      const differs = !sameValue(param, model[param], incoming[param]);
       if (urlChanged && differs && !invalid.has(param)) {
         // A new query parameter value replaces an edit still waiting for its debounce, as in Signal
         // Forms. If the timer kept running, it would write `shown`, which show() sets to the new
@@ -295,7 +280,7 @@ const bindQueryParams = <Q extends QueryState>(
     const changes: Changes<Q> = {};
     for (const param of fieldsOf(next)) {
       const fromCode = setByCode?.has(param) ?? false;
-      if (!fromCode && Object.is(shown[param], next[param])) {
+      if (!fromCode && sameValue(param, shown[param], next[param])) {
         continue;
       }
       // As with Signal Forms' debounce(), only typing waits. A value set by code moves in right
@@ -457,7 +442,7 @@ export function createQueryParamsFormGroup<Q extends QueryState>(
   const query = route.params().query;
   // A control resets to the value it's created with, so each starts at its field's default. The
   // binding then shows the query parameters' values.
-  const defaults = ɵqueryDefaults(route);
+  const defaults = ɵqueryRouteSupport(route)?.defaults;
   const controls = Object.fromEntries(
     Object.entries(query).map(([param, value]) => {
       const initial = defaults && Object.hasOwn(defaults, param) ? defaults[param] : value;

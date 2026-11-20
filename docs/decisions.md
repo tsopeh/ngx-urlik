@@ -118,9 +118,9 @@ compares text, not decoded values:
 - A signal keeps each parameter's value while its text in the URL is unchanged. Code that reads
   it reruns only when a value isn't `===` the previous one.
 - A query parameter stays out of the URL when its value writes its default's text.
-- A form binding compares with `Object.is`. Values from `params()` keep their identity. Form
-  controls keep a value until the user edits it. So an edit that ends `Object.is` to the query
-  parameter's value doesn't write.
+- A form binding compares by canonical URL text through the route's codecs, with `Object.is` as a
+  fast path. So picking a new object that writes the same text as the URL doesn't write or run
+  `beforeWrite`.
 
 Take `?from=2026-11-01` read through a `PlainDate` codec. `PlainDate` keeps its state in private
 fields, so a deep comparison sees no keys and calls any two dates equal. Comparing the text
@@ -129,9 +129,7 @@ fields, so a deep comparison sees no keys and calls any two dates equal. Compari
 **Cost:** a codec must write one text per value and lose nothing, so reading the text gives back an
 equal value. Shorter text is fine. A trimmed value isn't: the form would take the trimmed value back
 while the user is still typing. Values from `params()` are shared between reads, so code must not
-mutate them. A form edit that builds a new object equal to the old one, like picking the sort
-already chosen, still counts as an edit. Its write leaves the URL unchanged, but `beforeWrite` runs
-and can add query parameters like `minRating: 0`.
+mutate them.
 
 ## Write enum values, not member names
 
@@ -340,10 +338,11 @@ while a guard or resolver is slow. The cost: the form's `submitting()` doesn't c
 so a page that wants a spinner reads the router instead.
 
 A field follows its query parameter only when that parameter changes in the URL. So a write to
-another field never replaces what the user is typing. The binding uses only the public route:
-`params()` to read and `patchQuery()` to write. A patch that wouldn't change the URL resolves `true`
-without navigating, so `false` always means the write didn't happen. Writes replace the history
-entry by default, so Back doesn't step through each keystroke.
+another field never replaces what the user is typing. The binding reads through `params()`, writes
+through `patchQuery()`, and shares defaults, URL-text equality, and active-route reads with the
+route through an internal helper. A patch that wouldn't change the URL resolves `true` without
+navigating, so `false` always means the write didn't happen. Writes replace the history entry by
+default, so Back doesn't step through each keystroke.
 
 **Cost:** forms bind only query parameters, as flat controls. Nested groups and `FormArray` aren't
 supported. Failed writes are reported, not retried. Debounce is set differently in the two form

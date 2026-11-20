@@ -41,7 +41,8 @@ that the tree matches Angular's `createUrlTree(['/', ...segments])`.
 `params` finds the active Angular snapshot by its `compiledRouteKey` and decodes its values.
 `ifActive()` looks for the same snapshot and returns the node or `null`. Given values, it also reads
 `params()`. It compares each passed parameter by the text its codec writes in the URL, with defaults
-left out, as a link writes them.
+left out, as a link writes them, and caches the current snapshot's canonical texts so repeated checks
+encode each current parameter at most once.
 
 `compiled-route.ts` walks a router state's snapshot tree once. Every signal that reads that state
 shares the result.
@@ -94,23 +95,24 @@ matches again.
 
 ## Write
 
-`patchQuery` in `route-node.ts` merges the patch into the current query parameters and writes every
-declared query parameter into a URL. It then calls `router.navigateByUrl()` with the caller's
-options. The starting query and URL depend on what's running:
+`patchQuery` in `route-node.ts` parses the starting URL, writes only the declared query parameters
+passed in the patch, and leaves untouched parameters as they are. It then calls
+`router.navigateByUrl()` with the caller's options. The starting URL depends on what's running:
 
 - **Nothing.** It starts from the current URL. If the URL wouldn't change, it resolves `true`
   without calling Angular. Angular would resolve `false`, which looks like a guard decline.
-- **Another patch.** It starts from that patch's destination, so patches add up. If the result
+- **Another patch.** It starts from that patch's destination URL, so patches add up. If the result
   equals that destination, it returns that patch's promise. Otherwise the new navigation cancels the
   running one, and the cancelled patch resolves as the new one does. If the cancelled patch adds a
-  history entry, the new navigation passes `replaceUrl: false`, so the entry isn't lost. A `WeakSet`
-  keeps the trees of patches that add one. If the result is the current URL, it navigates with
-  `onSameUrlNavigation: 'reload'`, so Angular doesn't skip it and resolve `false`.
+  history entry, the new navigation passes `replaceUrl: false`, so the entry isn't lost. If the
+  result is the current URL, it navigates with `onSameUrlNavigation: 'reload'`, so Angular doesn't
+  skip it and resolve `false`.
 - **A link, `navigate()`, or Back.** It resolves `false` without calling Angular.
 
-A patch recognizes its own running navigation by the `UrlTree`. It stores each tree it navigates to
-in a `WeakMap`, with the promise it returned. Angular keeps that tree as the running navigation's
-`initialUrl`.
+`patchQuery` tracks the running patch in a single `pendingWrite` record holding its target
+`UrlTree`, serialized URL, history flag, result promise, and overtake callback. Angular keeps that
+tree as the running navigation's `initialUrl`, so a running navigation matches `pendingWrite.tree`
+only when a patch started it.
 
 | What happened                                              | Result                      |
 | ---------------------------------------------------------- | --------------------------- |
@@ -146,7 +148,8 @@ patch, or a form write. A read is `params()`, `globalParams()`, or a snapshot re
 
 `bindQueryParams()` in `projects/ngx-urlik/forms/query-forms.ts` connects both Angular form systems
 to one binding. The form keeps the draft, and the query parameters keep what's been written. The
-binding uses only the route's public API: `params()` to read and `patchQuery()` to write.
+binding reads through `params()`, writes through `patchQuery()`, and gets defaults, URL-text
+equality, and active-route reads through the internal `ɵqueryRouteSupport()` helper.
 
 The binding keeps a model: the values it compares with the URL. Signal Forms run `debounce()` before
 their model, so there the model is the form's value. In Reactive Forms, typing into a field with a
@@ -202,14 +205,15 @@ A write follows these steps:
 resolves as the newer one that included it.
 
 **URL to model.** When `params()` changes, a field takes its query parameter's value only if three
-things hold: the query parameter changed since `lastUrl`, it differs from the model, and the field
-isn't Invalid. Taking the value also clears the field's debounce timer, as Signal Forms'
-`debounce()` does. A navigation that changes other query parameters leaves the draft alone.
+things hold: the query parameter changed since `lastUrl`, it differs from the model by canonical URL
+text, and the field isn't Invalid. Taking the value also clears the field's debounce timer, as
+Signal Forms' `debounce()` does. A navigation that changes other query parameters leaves the draft
+alone.
 
-After a write resolves `true`, each field it included takes its query parameter's value, unless the
-user changed it since. So picking the sort that's already chosen, a new object with the same text,
-stops differing from the URL. A write that resolves `false` is a decline only when it's the
-binding's newest write and it included fields. An older write was replaced by the form itself.
+Because the binding compares field values by canonical URL text, picking a new object that writes
+the same text as the URL doesn't differ from the URL and never starts a write or runs `beforeWrite`.
+A write that resolves `false` is a decline only when it's the binding's newest write and it included
+fields. An older write was replaced by the form itself.
 
 ### States of one field
 
@@ -243,7 +247,7 @@ every edit stays Unsent until a submit without errors.
 | Submitted or `write()`, `'submit'` | Waiting or Unsent | Synced or Sending           | timer cleared; one write includes every field; none with errors |
 | Timer fires                        | Waiting           | Synced, Sending, or Invalid | the model takes the edit                                        |
 | Its validators pass                | Invalid           | Sending                     |                                                                 |
-| Write resolves `true`              | Sending           | Synced                      | unchanged fields take their query parameter's value             |
+| Write resolves `true`              | Sending           | Synced                      |                                                                 |
 | Newest write resolves `false`      | Sending           | Unsent                      | reports `declined`                                              |
 | Older write finishes               | Sending           | Sending                     | the newer write includes the field and reports its own result   |
 | Write rejects                      | Sending           | Unsent                      | reports `error`                                                 |

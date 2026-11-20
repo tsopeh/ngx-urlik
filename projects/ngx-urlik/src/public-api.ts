@@ -22,4 +22,4 @@ export {
   type RoutesOf,
   type ParamsOf,
 } from './lib/app-router';
-export { ɵqueryDefaults } from './lib/route-node';
+export { ɵqueryRouteSupport, type ɵQueryRouteSupport } from './lib/route-node';

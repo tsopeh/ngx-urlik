@@ -930,8 +930,8 @@ user typed until that field's query parameter changes in the URL. Nothing retrie
 the form's next write includes the field again. `onWriteFailure` receives `{ kind: 'declined' }` or
 `{ kind: 'error', error }`. Without it, declines are silent.
 
-Picking the value that's already chosen isn't a decline. A write cancelled by the form's own next
-write isn't reported either, because the next write reports its own result.
+Picking the value that's already chosen doesn't write, so it's never a decline. A write cancelled by
+the form's own next write isn't reported either, because the next write reports its own result.
 
 ### Test a bound form
 

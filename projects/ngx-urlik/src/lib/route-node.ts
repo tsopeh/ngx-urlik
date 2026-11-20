@@ -51,21 +51,23 @@ type GlobalDefinitions = {
 };
 
 /**
- * Maps each query parameter of a route from `AppRouter.routes` to its default, or to `null` when
- * it has none. Returns `undefined` for any other object. Only `ngx-urlik/forms` uses it. It isn't
- * public API.
+ * Internal query-parameter support for a route from `AppRouter.routes`. Only `ngx-urlik/forms`
+ * uses it. It isn't public API.
  */
-export function ɵqueryDefaults(route: object): AnyRecord | undefined {
-  const info = (route as Record<PropertyKey, unknown>)[routeNodeInfo] as CompiledRoute | undefined;
-  if (!info) {
-    return undefined;
-  }
-  return Object.fromEntries(
-    info.queryParams.map((param) => [
-      param.name,
-      param.definition.hasDefault ? param.definition.defaultValue : null,
-    ]),
-  );
+export interface ɵQueryRouteSupport {
+  readonly defaults: AnyRecord;
+  sameValue(param: string, a: unknown, b: unknown): boolean;
+  readIfActive(): AnyRecord | undefined;
+}
+
+const querySupportByNode = new WeakMap<object, ɵQueryRouteSupport>();
+
+/**
+ * Returns query defaults, URL-text equality, and active-route reading for a route from
+ * `AppRouter.routes`, or `undefined` for any other object. Only `ngx-urlik/forms` uses it.
+ */
+export function ɵqueryRouteSupport(route: object): ɵQueryRouteSupport | undefined {
+  return querySupportByNode.get(route);
 }
 
 export function createAppRouter(
@@ -76,7 +78,8 @@ export function createAppRouter(
   report: ReportParameterFailure,
 ): Record<string, unknown> {
   const { readState, readQueryState, readGlobalPath } = createParameterReader(report);
-  const { serializePath, serializeQuery, queryText, pathText } = createParameterSerializer(report);
+  const { serializePath, serializeQuery, queryText, sameQueryValue, pathText } =
+    createParameterSerializer(report);
 
   const navigation = signal(0);
   const subscription = router.events
@@ -352,6 +355,21 @@ export function createAppRouter(
       return matchesValues(info, values, params()) ? route : null;
     };
     Object.defineProperty(node, routeNodeInfo, { value: info });
+    const queryByName = new Map(info.queryParams.map((param) => [param.name, param]));
+    const defaults = Object.fromEntries(
+      info.queryParams.map((param) => [
+        param.name,
+        param.definition.hasDefault ? param.definition.defaultValue : null,
+      ]),
+    );
+    querySupportByNode.set(node, {
+      defaults,
+      sameValue: (name, a, b) => {
+        const param = queryByName.get(name);
+        return param ? sameQueryValue(param, a, b) : Object.is(a, b);
+      },
+      readIfActive: () => (active() ? params().query : undefined),
+    });
     return node;
   };
 

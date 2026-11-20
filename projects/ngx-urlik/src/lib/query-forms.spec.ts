@@ -296,9 +296,10 @@ describe('query forms', () => {
       return { results: TestBed.inject(definition.AppRouter).routes.RESULTS, router };
     };
 
-    it('takes the URL value back after picking the sort that is already chosen', async () => {
+    it("doesn't write or run beforeWrite when picking the sort that is already chosen", async () => {
       const { results, router } = await sortSetup();
       const onWriteFailure = vi.fn();
+      const write = vi.spyOn(results, 'patchQuery');
       const written: string[][] = [];
       const { form } = TestBed.runInInjectionContext(() =>
         createQueryParamsFormGroup(results, {
@@ -310,16 +311,17 @@ describe('query forms', () => {
         }),
       );
 
-      // A new object with the same text. The URL wouldn't change, so patchQuery() doesn't navigate.
+      // A new object with the same URL text doesn't differ from the query parameter.
       form.controls.sort.setValue({ field: 'year', direction: 'desc' });
       await elapse();
-      expect(form.controls.sort.value).toBe(results.params().query.sort);
+      expect(write).not.toHaveBeenCalled();
+      expect(written).toEqual([]);
       expect(onWriteFailure).not.toHaveBeenCalled();
 
       form.controls.page.setValue(2);
       await elapse();
       expect(router.url).toBe('/results?sort=year:desc&page=2');
-      expect(written).toEqual([['sort'], ['page']]);
+      expect(written).toEqual([['page']]);
     });
   });
 
