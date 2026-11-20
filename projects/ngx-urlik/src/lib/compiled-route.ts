@@ -8,7 +8,14 @@ import {
 } from '@angular/router';
 import type { AnyQueryParamDefinition, UrlParamCodec } from './params';
 import { isConverted, stringCodec } from './params';
-import { parseRoutePath, RouteDefinition } from './route-definition';
+import {
+  isCodec,
+  isQueryDefinition,
+  isRecord,
+  parseRoutePath,
+  RouteDefinition,
+  RouteDefinitions,
+} from './route-definition';
 import { compiledRouteKey } from './route-symbols';
 
 interface CompiledParamBase {
@@ -29,7 +36,13 @@ export const compileQueryParam = (
   name: string,
   definition: AnyQueryParamDefinition,
   owner: Pick<CompiledRoute, 'label'>,
-): CompiledQueryParam => ({ name, codec: definition.codec, definition, owner, placement: 'query' });
+): CompiledQueryParam => ({
+  name,
+  codec: definition.codec,
+  definition,
+  owner,
+  placement: 'query',
+});
 
 export interface CompiledRoute {
   readonly routeName?: string;
@@ -44,26 +57,214 @@ export interface CompiledRoute {
 }
 
 const defaultPathCodec = stringCodec();
+const isRoute = (value: unknown): value is RouteDefinition => isRecord(value);
 
-export function compileRoutes(definitions: readonly RouteDefinition[]): {
+/**
+ * Checks and compiles the route tree in one top-down pass, parsing each checked path once.
+ * Throws one error listing every problem in named routes, routes above them, and routes with
+ * `pathParams` or `queryParams`, plus any unused `routeNames` member.
+ */
+export function compileRoutes(
+  definitions: RouteDefinitions,
+  routeNames: Readonly<Record<string, string>>,
+): {
   readonly routes: Routes;
   readonly namedRoutes: ReadonlyMap<string, CompiledRoute>;
 } {
+  const fail = (problems: readonly string[]): never => {
+    throw new Error(`defineAppRouter() found problems:\n- ${problems.join('\n- ')}`);
+  };
+  if (!isRecord(routeNames)) {
+    fail(['pass your route names enum as the first argument']);
+  }
+  if (!Array.isArray(definitions)) {
+    fail(['routes must be an array']);
+  }
+
+  // One bottom-up O(N) scan records which subtrees contain a named route or ngx-urlik fields, so
+  // the top-down validate-and-compile pass never re-walks children.
+  const hasNamed = new WeakSet<RouteDefinition>();
+  const usesLibrary = new WeakSet<RouteDefinition>();
+  const markSubtree = (route: RouteDefinition): { named: boolean; library: boolean } => {
+    let named = 'routeName' in route;
+    let library = 'pathParams' in route || 'queryParams' in route;
+    if (Array.isArray(route.children)) {
+      for (const child of route.children) {
+        if (isRoute(child)) {
+          const childFlags = markSubtree(child);
+          named ||= childFlags.named;
+          library ||= childFlags.library;
+        }
+      }
+    }
+    if (named) {
+      hasNamed.add(route);
+    }
+    if (library) {
+      usesLibrary.add(route);
+    }
+    return { named, library };
+  };
+  for (const route of definitions) {
+    if (isRoute(route)) {
+      markSubtree(route);
+    }
+  }
+
+  const declaredNames = new Set(Object.values(routeNames));
+  const usedNames = new Map<string, string>();
+  const errors: string[] = [];
   const namedRoutes = new Map<string, CompiledRoute>();
+
   const compile = (
-    definitions: readonly RouteDefinition[],
-    parent?: CompiledRoute,
-    location = 'routes',
-  ): Routes =>
-    definitions.map((definition, index) => {
-      const { routeName, pathParams, queryParams, children, ...angularFields } = definition;
-      const angularRoute: Route = { ...angularFields };
-      const parsed = parseRoutePath(definition.path ?? '');
+    siblings: RouteDefinitions,
+    parent: CompiledRoute | undefined,
+    location: string,
+    pathOwners: ReadonlyMap<string, string>,
+    queryOwners: ReadonlyMap<string, string>,
+  ): Routes => {
+    const compiled: Route[] = [];
+    siblings.forEach((route, index) => {
       const at = `${location}[${index}]`;
-      const owner = { label: routeName ?? at };
+      if (!isRoute(route)) {
+        errors.push(`${at} must be a route object`);
+        return;
+      }
+      const { routeName, pathParams, queryParams, children, ...angularFields } = route;
+      const angularRoute: Route = { ...angularFields };
+
+      const readByName = hasNamed.has(route);
+      const checked = readByName || usesLibrary.has(route);
+      if (!checked) {
+        if (Array.isArray(children)) {
+          angularRoute.children = compile(
+            children,
+            parent,
+            `${at}.children`,
+            pathOwners,
+            queryOwners,
+          );
+        }
+        compiled.push(angularRoute);
+        return;
+      }
+
+      const named = 'routeName' in route;
+      const hasUsableName = named && typeof routeName === 'string';
+      const label = hasUsableName ? routeName : at;
+      const report = (message: string) => errors.push(`${label}: ${message}`);
+
+      if (named) {
+        const usableName = typeof routeName === 'string' && routeName.trim() !== '';
+        if (!usableName) {
+          errors.push(`${at}: routeName must be a non-empty string`);
+          return;
+        }
+        const previous = usedNames.get(routeName);
+        if (previous) {
+          errors.push(
+            `routeName '${routeName}' is used by both ${previous} and ${at}. Give each route its own routeName.`,
+          );
+        } else {
+          usedNames.set(routeName, at);
+        }
+        if (!declaredNames.has(routeName)) {
+          errors.push(
+            `routeName '${routeName}' at ${at} isn't in the route names passed to defineAppRouter(). Add it to the enum.`,
+          );
+        }
+        const redirectWildcardOrMatcher =
+          route.redirectTo !== undefined || route.path === '**' || Boolean(route.matcher);
+        if (redirectWildcardOrMatcher) {
+          report("redirects, wildcards, and matchers can't have a routeName");
+        }
+      }
+
+      if (Boolean(route.loadChildren) && readByName) {
+        report(
+          named
+            ? "a named route can't use loadChildren"
+            : "it's above a named route, so it can't use loadChildren",
+        );
+      }
+
+      const plainPath = !(
+        route.matcher ||
+        route.path === undefined ||
+        route.redirectTo !== undefined ||
+        route.path === '**' ||
+        (route.outlet && route.outlet !== 'primary')
+      );
+      if ((readByName || pathParams !== undefined) && !plainPath) {
+        report('needs a plain path in the primary outlet');
+      }
+      const parsed = parseRoutePath(plainPath ? (route.path as string) : '');
+      for (const error of parsed.errors) {
+        report(error);
+      }
+
+      const pathParamMap = isRecord(pathParams) ? pathParams : undefined;
+      if (pathParams !== undefined) {
+        if (!pathParamMap) {
+          report('pathParams must map each placeholder name to its codec');
+        } else {
+          for (const [name, codec] of Object.entries(pathParamMap)) {
+            if (!parsed.placeholders.includes(name)) {
+              report(`pathParams.${name} isn't a placeholder in the path`);
+            }
+            if (!isCodec(codec)) {
+              report(`pathParams.${name} must be a codec`);
+            }
+          }
+        }
+      }
+
+      const ownPathOwners = new Map(pathOwners);
+      for (const name of parsed.placeholders) {
+        const previous = ownPathOwners.get(name);
+        if (previous !== undefined) {
+          report(
+            `path parameter '${name}' appears in both '${previous}' and '${route.path}'. Rename one, because params().path holds one value per name.`,
+          );
+        } else {
+          ownPathOwners.set(name, route.path ?? '');
+        }
+      }
+
+      const ownQueryOwners = new Map(queryOwners);
+      const queryParamMap = isRecord(queryParams) ? queryParams : undefined;
+      if (queryParams !== undefined && !readByName) {
+        report(
+          'no named route at or below it reads queryParams. Add a routeName, or remove queryParams.',
+        );
+      } else if (queryParams !== undefined) {
+        if (!queryParamMap) {
+          report('queryParams must be an object');
+        } else {
+          for (const [name, definition] of Object.entries(queryParamMap)) {
+            if (!isQueryDefinition(definition)) {
+              report(`query parameter '${name}' must come from queryParam()`);
+            }
+            const previous = ownQueryOwners.get(name);
+            if (previous !== undefined) {
+              report(
+                `query parameter '${name}' is defined in both '${previous}' and '${route.path}'. Define it once.`,
+              );
+            } else {
+              ownQueryOwners.set(name, route.path ?? '');
+            }
+          }
+        }
+      }
+
+      const owner = { label };
+      const codecOf = (name: string): UrlParamCodec<unknown> | undefined => {
+        const candidate = pathParamMap?.[name];
+        return isCodec(candidate) ? candidate : undefined;
+      };
       const ownPath = parsed.placeholders.map((name): CompiledPathParam => ({
         name,
-        codec: pathParams?.[name] ?? defaultPathCodec,
+        codec: codecOf(name) ?? defaultPathCodec,
         owner,
         placement: 'path',
       }));
@@ -72,37 +273,64 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): {
           ? segment
           : { ...segment, param: ownPath.find((param) => param.name === segment.name)! },
       );
+      const compiledQueries: CompiledQueryParam[] = [];
+      if (queryParamMap) {
+        for (const [name, def] of Object.entries(queryParamMap)) {
+          if (isQueryDefinition(def)) {
+            compiledQueries.push(compileQueryParam(name, def, owner));
+          }
+        }
+      }
       const info: CompiledRoute = {
-        routeName,
-        label: owner.label,
+        routeName: hasUsableName ? routeName : undefined,
+        label,
         pathParams: [...(parent?.pathParams ?? []), ...ownPath],
-        queryParams: [
-          ...(parent?.queryParams ?? []),
-          ...Object.entries(queryParams ?? {}).map(([name, definition]) =>
-            compileQueryParam(name, definition, owner),
-          ),
-        ],
+        queryParams: [...(parent?.queryParams ?? []), ...compiledQueries],
         fullSegments: [...(parent?.fullSegments ?? []), ...localSegments],
-        pattern: [parent?.pattern, definition.path].filter(Boolean).join('/'),
+        pattern: [parent?.pattern, route.path].filter(Boolean).join('/'),
       };
 
       const codecs = parsed.segments.map((segment) =>
-        segment.kind === 'param' ? pathParams?.[segment.name] : undefined,
+        segment.kind === 'param' ? codecOf(segment.name) : undefined,
       );
       if (codecs.some(Boolean)) {
         angularRoute.canMatch = [matchPathCodecs(codecs), ...(angularRoute.canMatch ?? [])];
       }
       (angularRoute as Record<PropertyKey, unknown>)[compiledRouteKey] = info;
-      if (routeName) {
+      if (hasUsableName) {
         namedRoutes.set(routeName, info);
       }
-      if (children) {
-        angularRoute.children = compile(children, info, `${at}.children`);
-      }
-      return angularRoute;
-    });
 
-  return { routes: compile(definitions), namedRoutes };
+      if (children !== undefined) {
+        if (!Array.isArray(children)) {
+          report('children must be an array');
+        } else {
+          angularRoute.children = compile(
+            children,
+            info,
+            `${at}.children`,
+            ownPathOwners,
+            ownQueryOwners,
+          );
+        }
+      }
+      compiled.push(angularRoute);
+    });
+    return compiled;
+  };
+
+  const routes = compile(definitions, undefined, 'routes', new Map(), new Map());
+  for (const [member, routeName] of Object.entries(routeNames)) {
+    if (!usedNames.has(routeName)) {
+      errors.push(
+        `RouteNames.${member} has no route. Give a route routeName: '${routeName}', or remove the member.`,
+      );
+    }
+  }
+  if (errors.length) {
+    fail(errors);
+  }
+  return { routes, namedRoutes };
 }
 
 /** Rejects a match whose path parameters don't decode, so Angular tries the next route. */

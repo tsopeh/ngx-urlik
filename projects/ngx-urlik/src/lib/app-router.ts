@@ -8,7 +8,7 @@ import {
 import { provideRouter, Router, RouterFeatures } from '@angular/router';
 import type { RouteArrayInput, TypedAppRouter } from './app-router-types';
 import { compileRoutes } from './compiled-route';
-import { RouteDefinitions, validateRouteDefinitions } from './route-definition';
+import type { RouteDefinitions } from './route-definition';
 import { AppRouterDiagnostics, createDiagnosticReporter } from './route-diagnostics';
 import { createAppRouter } from './route-node';
 
@@ -60,13 +60,8 @@ export function defineAppRouter<
   provideAppRouter: (...features: RouterFeatures[]) => EnvironmentProviders;
 } {
   const definitions = options.routes as RouteDefinitions;
-  const errors = validateRouteDefinitions(definitions, routeNames);
-  if (errors.length) {
-    throw new Error(`defineAppRouter() found problems:\n- ${errors.join('\n- ')}`);
-  }
-
+  const { routes, namedRoutes } = compileRoutes(definitions, routeNames);
   const report = createDiagnosticReporter(options.diagnostics);
-  const { routes, namedRoutes } = compileRoutes(definitions);
   const AppRouter = new InjectionToken<TypedAppRouter<E, R>>('AppRouter');
 
   function provideAppRouter(...features: RouterFeatures[]): EnvironmentProviders {

@@ -19,13 +19,12 @@ state), and what each event does. TasteTrack's states and the cases already chec
 
 ## Define
 
-`route-definition.ts` parses paths and checks routes in one walk down the tree. It checks named
-routes, routes above them, and routes with `pathParams` or `queryParams`. Each level passes down the
-path and query names declared above it.
+`route-definition.ts` defines the route types and `parseRoutePath()`.
 
-`compiled-route.ts` copies each route's Angular fields into a plain Angular route. It marks that
-route with `compiledRouteKey`, which points to the compiled route. It also builds `namedRoutes`, a
-map from route name to compiled route.
+`compiled-route.ts` checks and compiles the route tree in one top-down pass (after a linear
+bottom-up scan for named routes and `pathParams`/`queryParams`), parsing each checked path once. It
+copies each route's Angular fields into a plain Angular route, marks that route with
+`compiledRouteKey`, and builds `namedRoutes`, a map from route name to compiled route.
 
 A compiled route has the path and query parameters of every route above it, named or not. Links
 and reads both start from it.
