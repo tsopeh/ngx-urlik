@@ -60,15 +60,10 @@ export function createParameterReader(report: ReportParameterFailure) {
   ): AnyRecord => {
     const result: Record<string, unknown> = {};
     for (const param of params) {
-      result[param.name] = readField(
-        param,
-        fieldText(param, query),
-        cache,
-        (text) =>
-          (text === null ? undefined : decode(param, text)) ??
-          param.definition.defaultValue ??
-          null,
-      );
+      result[param.name] = readField(param, fieldText(param, query), cache, (text) => {
+        const fallback = param.definition.hasDefault ? param.definition.defaultValue : null;
+        return (text === null ? undefined : decode(param, text)) ?? fallback;
+      });
     }
     return result;
   };
@@ -132,45 +127,65 @@ function sameFields(a: AnyRecord, b: AnyRecord): boolean {
   );
 }
 
-export function createParameterSerializer(report: ReportParameterFailure) {
-  const encode = (param: CompiledParam, value: unknown): string | null => {
-    try {
-      const output = param.codec.serialize(value);
-      if (typeof output !== 'string') {
-        report(
-          param,
-          { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize' },
-          "the codec didn't return a string",
-        );
-        return null;
-      }
-      return output;
-    } catch (cause) {
-      report(
-        param,
-        { code: 'PARAM_SERIALIZE_FAILED', operation: 'serialize', cause },
-        'the codec threw',
-      );
-      return null;
+export type EncodedQueryText =
+  Readonly<{ ok: true; text: string | null }> | Readonly<{ ok: false }>;
+
+export type EncodedPathText = Readonly<{ ok: true; text: string }> | Readonly<{ ok: false }>;
+
+type SerializeOutcome =
+  Readonly<{ ok: true; text: string }> | Readonly<{ ok: false; detail: string; cause?: unknown }>;
+
+function trySerialize(param: CompiledParam, value: unknown): SerializeOutcome {
+  try {
+    const output = param.codec.serialize(value);
+    if (typeof output !== 'string') {
+      return { ok: false, detail: "the codec didn't return a string" };
     }
+    return { ok: true, text: output };
+  } catch (cause) {
+    return { ok: false, detail: 'the codec threw', cause };
+  }
+}
+
+export function createParameterSerializer(report: ReportParameterFailure) {
+  const reportFailure = (
+    param: CompiledParam,
+    outcome: Extract<SerializeOutcome, { ok: false }>,
+  ) => {
+    report(
+      param,
+      {
+        code: 'PARAM_SERIALIZE_FAILED',
+        operation: 'serialize',
+        ...(outcome.cause !== undefined ? { cause: outcome.cause } : {}),
+      },
+      outcome.detail,
+    );
+  };
+
+  const encode = (param: CompiledParam, value: unknown, silent = false): EncodedPathText => {
+    const outcome = trySerialize(param, value);
+    if (!outcome.ok) {
+      if (!silent) {
+        reportFailure(param, outcome);
+      }
+      return { ok: false };
+    }
+    return { ok: true, text: outcome.text };
   };
 
   /** Throws instead of reporting. A path parameter has no fallback, so a bad value is a bug. */
   const serializePath = (param: CompiledParam, value: unknown): string => {
-    let output: unknown;
-    try {
-      output = param.codec.serialize(value);
-    } catch (cause) {
-      throw new Error(
-        `${param.owner.label}: can't write path parameter '${param.name}': the codec threw`,
-        { cause },
+    const fail = (detail: string, cause?: unknown) =>
+      new Error(
+        `${param.owner.label}: can't write path parameter '${param.name}': ${detail}`,
+        cause !== undefined ? { cause } : undefined,
       );
+    const outcome = trySerialize(param, value);
+    if (!outcome.ok) {
+      throw fail(outcome.detail, outcome.cause);
     }
-    const fail = (detail: string) =>
-      new Error(`${param.owner.label}: can't write path parameter '${param.name}': ${detail}`);
-    if (typeof output !== 'string') {
-      throw fail("the codec didn't return a string");
-    }
+    const output = outcome.text;
     if (output === '') {
       throw fail("the codec returned '', and a path segment can't be empty");
     }
@@ -182,39 +197,77 @@ export function createParameterSerializer(report: ReportParameterFailure) {
     return output;
   };
 
-  // Each query parameter's default, as URL text. Built on first use, so a bad default reports once.
-  const defaultTexts = new WeakMap<CompiledQueryParam, string | null>();
-  /**
-   * The text a query parameter's value writes, `null` when it leaves the URL, or `undefined` when
-   * its codec fails. A value that writes the same text as the default leaves the URL.
-   */
-  const queryText = (param: CompiledQueryParam, value: unknown): string | null | undefined => {
-    if (value === null) {
+  // Each query parameter's default, serialized once on first use. Bad defaults report at most once
+  // on the first non-silent write or check.
+  const defaultOutcomes = new WeakMap<CompiledQueryParam, SerializeOutcome>();
+  const reportedBadDefaults = new WeakSet<CompiledQueryParam>();
+  const defaultText = (param: CompiledQueryParam, silent: boolean): string | null => {
+    if (!param.definition.hasDefault) {
       return null;
     }
-    const output = encode(param, value);
-    if (output === null) {
-      return undefined;
+    let outcome = defaultOutcomes.get(param);
+    if (!outcome) {
+      outcome = trySerialize(param, param.definition.defaultValue);
+      defaultOutcomes.set(param, outcome);
     }
-    const { defaultValue } = param.definition;
-    if (defaultValue === undefined) {
-      return output;
+    if (!outcome.ok) {
+      if (!silent && !reportedBadDefaults.has(param)) {
+        reportedBadDefaults.add(param);
+        reportFailure(param, outcome);
+      }
+      return null;
     }
-    if (!defaultTexts.has(param)) {
-      defaultTexts.set(param, encode(param, defaultValue));
-    }
-    const atDefault = output === defaultTexts.get(param);
-    return atDefault ? null : output;
+    return outcome.text;
   };
-  const serializeQuery = (param: CompiledQueryParam, value: unknown): string | null =>
-    queryText(param, value) ?? null;
+
+  /**
+   * Encodes a query parameter to its canonical URL text: `{ ok: true, text: null }` when it leaves
+   * the URL (for `null` or its default), `{ ok: true, text: string }` when written, or
+   * `{ ok: false }` when its codec fails.
+   */
+  const queryText = (
+    param: CompiledQueryParam,
+    value: unknown,
+    silent = false,
+  ): EncodedQueryText => {
+    if (value === null) {
+      return { ok: true, text: null };
+    }
+    const encoded = encode(param, value, silent);
+    if (!encoded.ok) {
+      return encoded;
+    }
+    if (!param.definition.hasDefault) {
+      return encoded;
+    }
+    const atDefault = encoded.text === defaultText(param, silent);
+    return atDefault ? { ok: true, text: null } : encoded;
+  };
+
+  const serializeQuery = (param: CompiledQueryParam, value: unknown): string | null => {
+    const encoded = queryText(param, value);
+    return encoded.ok ? encoded.text : null;
+  };
+
+  /** Compares two query values by their canonical URL text, without reporting diagnostics. */
+  const sameQueryValue = (param: CompiledQueryParam, a: unknown, b: unknown): boolean => {
+    if (Object.is(a, b)) {
+      return true;
+    }
+    const aText = queryText(param, a, true);
+    if (!aText.ok) {
+      return false;
+    }
+    const bText = queryText(param, b, true);
+    return bText.ok && aText.text === bText.text;
+  };
 
   return {
     serializePath,
     serializeQuery,
     queryText,
-    /** The text a path parameter's value writes, or `undefined` when its codec fails. */
-    pathText: (param: CompiledParam, value: unknown): string | undefined =>
-      encode(param, value) ?? undefined,
+    sameQueryValue,
+    /** Encodes a path parameter to its URL text, or `{ ok: false }` when its codec fails. */
+    pathText: (param: CompiledParam, value: unknown): EncodedPathText => encode(param, value),
   };
 }

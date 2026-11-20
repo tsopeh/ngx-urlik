@@ -1,6 +1,10 @@
 import type { InjectionToken, Signal } from '@angular/core';
 import type { ActivatedRouteSnapshot, Route, UrlTree } from '@angular/router';
-import type { QueryParamDefinition, UrlParamCodec } from './params';
+import type {
+  DefaultedQueryParamDefinition,
+  OptionalQueryParamDefinition,
+  UrlParamCodec,
+} from './params';
 import type { QueryDefinitions } from './route-definition';
 import type { NavigateOptions, RouteParams } from './route-node';
 import type { routeNodeInfo } from './route-symbols';
@@ -10,11 +14,11 @@ import type { Simplify } from './type-utils';
 type Merge<A, B> = Omit<A, keyof B> & B;
 // A field with a default reads as T. A field without one reads as T | null.
 type QueryValue<D> =
-  D extends QueryParamDefinition<infer T, boolean, infer Defaulted>
-    ? Defaulted extends true
-      ? T
-      : T | null
-    : never;
+  D extends DefaultedQueryParamDefinition<infer T, boolean>
+    ? T
+    : D extends OptionalQueryParamDefinition<infer T, boolean>
+      ? T | null
+      : never;
 type OwnQuery<D> = D extends { queryParams: infer Q extends QueryDefinitions }
   ? { [K in keyof Q]: QueryValue<Q[K]> }
   : object;

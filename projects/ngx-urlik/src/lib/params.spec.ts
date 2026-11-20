@@ -129,13 +129,19 @@ describe('parameter codecs and definitions', () => {
   it('keeps query defaults outside codecs', () => {
     const codec = stringCodec();
     const definition = queryParam({ codec, required: true, defaultValue: 'all' });
-    expect(definition).toStrictEqual({ kind: 'query', codec, required: true, defaultValue: 'all' });
+    expect(definition).toStrictEqual({
+      kind: 'query',
+      codec,
+      required: true,
+      hasDefault: true,
+      defaultValue: 'all',
+    });
     expect(definition.codec).toBe(codec);
     expect(queryParam({ codec })).toStrictEqual({
       kind: 'query',
       codec,
       required: false,
-      defaultValue: undefined,
+      hasDefault: false,
     });
   });
 

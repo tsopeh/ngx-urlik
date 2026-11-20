@@ -9,20 +9,31 @@ type NonNullish<T> = null extends T ? never : undefined extends T ? never : unkn
 export const isConverted = <T>(value: T | null | undefined): value is T =>
   value !== null && value !== undefined;
 
-export interface QueryParamDefinition<
-  T,
-  Required extends boolean = false,
-  // Records whether the field has a default. Only types read it, through `infer`.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  Defaulted extends boolean = false,
-> {
+interface QueryParamDefinitionBase<T, Required extends boolean> {
   readonly kind: 'query';
   readonly codec: UrlParamCodec<T>;
   readonly required: Required;
-  readonly defaultValue?: T;
 }
 
-export type AnyQueryParamDefinition = QueryParamDefinition<unknown, boolean, boolean>;
+export interface DefaultedQueryParamDefinition<
+  T,
+  Required extends boolean = false,
+> extends QueryParamDefinitionBase<T, Required> {
+  readonly hasDefault: true;
+  readonly defaultValue: T;
+}
+
+export interface OptionalQueryParamDefinition<
+  T,
+  Required extends boolean = false,
+> extends QueryParamDefinitionBase<T, Required> {
+  readonly hasDefault: false;
+}
+
+export type QueryParamDefinition<T, Required extends boolean = false> =
+  DefaultedQueryParamDefinition<T, Required> | OptionalQueryParamDefinition<T, Required>;
+
+export type AnyQueryParamDefinition = QueryParamDefinition<unknown, boolean>;
 
 type QueryOptions<T, Required extends boolean> = {
   codec: UrlParamCodec<T>;
@@ -32,19 +43,29 @@ type QueryOptions<T, Required extends boolean> = {
 
 export function queryParam<T, const Required extends boolean = false>(
   options: QueryOptions<T, Required> & { defaultValue: T } & NonNullish<T>,
-): QueryParamDefinition<T, Required, true>;
+): DefaultedQueryParamDefinition<T, Required>;
 export function queryParam<T, const Required extends boolean = false>(
   options: QueryOptions<T, Required> & NonNullish<T>,
-): QueryParamDefinition<T, Required, false>;
+): OptionalQueryParamDefinition<T, Required>;
 export function queryParam<T, const Required extends boolean = false>(
   options: QueryOptions<T, Required> & NonNullish<T>,
-): QueryParamDefinition<T, Required, boolean> {
+): QueryParamDefinition<T, Required> {
+  const required = (options.required ?? false) as Required;
+  if (options.defaultValue !== undefined) {
+    return {
+      kind: 'query',
+      codec: options.codec,
+      required,
+      hasDefault: true,
+      defaultValue: options.defaultValue,
+    };
+  }
   return {
     kind: 'query',
     codec: options.codec,
-    required: options.required ?? false,
-    defaultValue: options.defaultValue,
-  } as QueryParamDefinition<T, Required, boolean>;
+    required,
+    hasDefault: false,
+  };
 }
 
 const numberPattern = /^[+-]?(?:Infinity|(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?)$/;

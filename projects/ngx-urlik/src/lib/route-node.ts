@@ -13,6 +13,7 @@ import {
 import { filter } from 'rxjs';
 import {
   activePathParams,
+  type CompiledParam,
   type CompiledPathParam,
   type CompiledRoute,
   compileQueryParam,
@@ -25,6 +26,8 @@ import { ReportParameterFailure } from './route-diagnostics';
 import {
   createParameterReader,
   createParameterSerializer,
+  type EncodedPathText,
+  type EncodedQueryText,
   type RuntimeState,
   sameState,
   type ValueCache,
@@ -58,7 +61,10 @@ export function ɵqueryDefaults(route: object): AnyRecord | undefined {
     return undefined;
   }
   return Object.fromEntries(
-    info.queryParams.map((param) => [param.name, param.definition.defaultValue ?? null]),
+    info.queryParams.map((param) => [
+      param.name,
+      param.definition.hasDefault ? param.definition.defaultValue : null,
+    ]),
   );
 }
 
@@ -84,17 +90,16 @@ export function createAppRouter(
   // then the cached value comes from the old state, so a read goes to the new state directly. Each
   // signal has its own ValueCache, so a parameter whose URL text didn't change stays `===`.
   const routerSignal = <T>(
-    readWith: (values: ValueCache) => T,
+    readWith: (values?: ValueCache) => T,
     equal: ValueEqualityFn<T>,
   ): Signal<T> => {
     const values: ValueCache = new Map();
-    const read = () => readWith(values);
     let source: RouterState | undefined;
     const cached = computed(
       () => {
         navigation();
         source = router.routerState;
-        return read();
+        return readWith(values);
       },
       { equal },
     );
@@ -111,7 +116,8 @@ export function createAppRouter(
           throw error;
         }
       }
-      return read();
+      // Activation can still throw and roll back routerState, so don't mutate `values` while lagging.
+      return readWith(undefined);
     };
     // Copy the computed's own properties, so Angular still treats the wrapper as a signal.
     return Object.assign(current, cached);
@@ -239,27 +245,63 @@ export function createAppRouter(
     return result;
   };
 
+  // Caches each parameter's canonical URL text for a decoded RuntimeState, so repeated
+  // ifActive(values) checks (such as inside a list) encode the current values at most once.
+  const canonicalTexts = new WeakMap<
+    RuntimeState,
+    Map<CompiledParam, EncodedPathText | EncodedQueryText>
+  >();
+  const currentTextOf = <
+    Param extends CompiledParam,
+    Encoded extends EncodedPathText | EncodedQueryText,
+  >(
+    state: RuntimeState,
+    param: Param,
+    value: unknown,
+    encode: (param: Param, value: unknown) => Encoded,
+  ): Encoded => {
+    let cache = canonicalTexts.get(state);
+    if (!cache) {
+      cache = new Map();
+      canonicalTexts.set(state, cache);
+    }
+    let encoded = cache.get(param) as Encoded | undefined;
+    if (!encoded) {
+      encoded = encode(param, value);
+      cache.set(param, encoded);
+    }
+    return encoded;
+  };
+
   // A value matches when it writes the same URL text as the current one, so a default matches
   // whether the URL writes it out or not. A parameter left out, or passed as `undefined`, matches
   // any value. A value whose codec fails has no text, so it never matches, even a current value
   // whose codec fails too.
-  const fieldsMatch = <Param extends { readonly name: string }>(
+  const fieldsMatch = <
+    Param extends CompiledParam,
+    Encoded extends EncodedPathText | EncodedQueryText,
+  >(
+    state: RuntimeState,
     params: readonly Param[],
     passed: AnyRecord,
     current: AnyRecord,
-    text: (param: Param, value: unknown) => string | null | undefined,
+    encode: (param: Param, value: unknown) => Encoded,
   ) =>
     params.every((param) => {
       const value = passed[param.name];
       if (value === undefined) {
         return true;
       }
-      const passedText = text(param, value);
-      return passedText !== undefined && passedText === text(param, current[param.name]);
+      const passedText = encode(param, value);
+      if (!passedText.ok) {
+        return false;
+      }
+      const currentText = currentTextOf(state, param, current[param.name], encode);
+      return currentText.ok && passedText.text === currentText.text;
     });
   const matchesValues = (info: CompiledRoute, values: MatchValues, current: RuntimeState) =>
-    fieldsMatch(info.pathParams, values.path ?? {}, current.path, pathText) &&
-    fieldsMatch(info.queryParams, values.query ?? {}, current.query, queryText);
+    fieldsMatch(current, info.pathParams, values.path ?? {}, current.path, pathText) &&
+    fieldsMatch(current, info.queryParams, values.query ?? {}, current.query, queryText);
 
   const createNode = (info: CompiledRoute) => {
     const node: Record<PropertyKey, unknown> = {

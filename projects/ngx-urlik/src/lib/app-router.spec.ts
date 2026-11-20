@@ -553,6 +553,54 @@ describe('defineAppRouter with Angular route arrays', () => {
 
       expect(appRouter.routes.ITEMS.ifActive({ query: { minRating: 'high' as never } })).toBeNull();
     });
+
+    it('encodes the current values once per navigation across repeated checks', async () => {
+      let pathSerializations = 0;
+      let querySerializations = 0;
+      const countedNumber = () => ({
+        serialize: (value: number) => {
+          pathSerializations++;
+          return String(value);
+        },
+        deserialize: (raw: string) => Number(raw),
+      });
+      const countedString = () => ({
+        serialize: (value: string) => {
+          querySerializations++;
+          return value;
+        },
+        deserialize: (raw: string) => raw,
+      });
+      const definition = defineAppRouter(
+        { ITEM: RouteNames.ITEM },
+        {
+          routes: [
+            {
+              path: 'items/:id',
+              routeName: RouteNames.ITEM,
+              pathParams: { id: countedNumber() },
+              queryParams: { search: queryParam({ codec: countedString(), defaultValue: '' }) },
+              component: EmptyComponent,
+            },
+          ],
+        },
+      );
+      const { appRouter, router } = setup(definition);
+      const { ITEM } = appRouter.routes;
+      await router.navigateByUrl('/items/7?search=elm');
+
+      // First check encodes both passed values, the current values, and the query default once.
+      expect(ITEM.ifActive({ path: { id: 7 }, query: { search: 'elm' } })).toBe(ITEM);
+      const afterFirstPath = pathSerializations;
+      const afterFirstQuery = querySerializations;
+
+      // Three more checks encode only the passed values (1 each), never re-encoding current values.
+      expect(ITEM.ifActive({ path: { id: 8 }, query: { search: 'elm' } })).toBeNull();
+      expect(ITEM.ifActive({ path: { id: 7 }, query: { search: 'oak' } })).toBeNull();
+      expect(ITEM.ifActive({ path: { id: 7 }, query: { search: 'elm' } })).toBe(ITEM);
+      expect(pathSerializations - afterFirstPath).toBe(3);
+      expect(querySerializations - afterFirstQuery).toBe(2);
+    });
   });
 
   it('keys nodes by route names member, even when its value differs', async () => {
