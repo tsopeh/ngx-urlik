@@ -2,7 +2,7 @@ import { Component, computed, inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CanActivateFn, NavigationStart, Router } from '@angular/router';
 import { defineAppRouter } from './app-router';
-import { queryParam, stringCodec } from './params';
+import { numberCodec, queryParam, stringCodec } from './params';
 
 @Component({ template: '' })
 class Page {}
@@ -291,5 +291,34 @@ describe('query writes', () => {
     // Angular resolves a redirected navigation as the redirect resolves.
     expect(await Promise.all([redirected, second])).toEqual([true, true]);
     expect(router.url).toBe('/other');
+  });
+
+  it("doesn't decode or warn on untouched query parameters", async () => {
+    const diagnostics: unknown[] = [];
+    const definition = defineAppRouter(
+      { RESULTS: RouteNames.RESULTS },
+      {
+        diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
+        routes: [
+          {
+            path: 'results',
+            routeName: RouteNames.RESULTS,
+            queryParams: {
+              search: queryParam({ codec: stringCodec() }),
+              page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
+            },
+            component: Page,
+          },
+        ],
+      },
+    );
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const router = TestBed.inject(Router);
+    const results = TestBed.inject(definition.AppRouter).routes.RESULTS;
+    await router.navigateByUrl('/results?page=bad&search=old');
+
+    expect(await results.patchQuery({ search: 'new' })).toBe(true);
+    expect(router.url).toBe('/results?page=bad&search=new');
+    expect(diagnostics).toEqual([]);
   });
 });

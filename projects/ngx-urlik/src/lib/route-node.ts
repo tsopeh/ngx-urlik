@@ -164,23 +164,28 @@ export function createAppRouter(
     return readState(info, activePathParams(info, active), active.queryParamMap, url, values);
   };
 
-  const readCurrent = (info: CompiledRoute, values?: ValueCache) => {
+  const requireActiveRoute = (info: CompiledRoute): ActivatedRouteSnapshot => {
     const active = findActiveRoute(router.routerState.snapshot.root, info);
     if (!active) {
       throw new Error(
         `${info.label}: route '${info.pattern}' isn't active, so it has no params to read. Check ifActive() first.`,
       );
     }
-    return readActiveState(info, active, values);
+    return active;
   };
 
-  // Maps each patch's target tree to the patch's result. Angular keeps a navigation's starting tree
-  // as `initialUrl`, so a running navigation whose tree is in this map came from a patch.
-  const patchResults = new WeakMap<UrlTree, Promise<boolean>>();
-  // Maps an overtaken patch's tree to the result of the newer patch that carried its fields.
-  const carriedBy = new WeakMap<UrlTree, Promise<boolean>>();
-  // The trees of patches that add a history entry, rather than replace the current one.
-  const pushingPatches = new WeakSet<UrlTree>();
+  const readCurrent = (info: CompiledRoute, values?: ValueCache) =>
+    readActiveState(info, requireActiveRoute(info), values);
+
+  interface PendingQueryWrite {
+    // The exact UrlTree passed to Angular, matched against currentNavigation().initialUrl.
+    readonly tree: UrlTree;
+    readonly url: string;
+    readonly pushHistory: boolean;
+    readonly result: Promise<boolean>;
+    carryBy: (next: Promise<boolean>) => void;
+  }
+  let pendingWrite: PendingQueryWrite | null = null;
 
   // A patch changes only the fields you pass. One made while another patch runs starts from where
   // that patch is going, so patches add up, and the later one wins on a field they share.
@@ -189,26 +194,26 @@ export function createAppRouter(
     patch: Partial<AnyRecord>,
     options?: NavigateOptions,
   ): Promise<boolean> => {
-    // Reading the query first also throws when the route isn't active.
-    const current = readCurrent(info).query;
+    requireActiveRoute(info);
     const running = router.currentNavigation();
-    const runningPatch =
-      running !== null && patchResults.has(running.initialUrl) ? running.initialUrl : null;
+    const activePending =
+      running !== null && pendingWrite !== null && running.initialUrl === pendingWrite.tree
+        ? pendingWrite
+        : null;
     // A navigation no patch started is the user's, like a link or Back, so a patch gives way to it.
-    if (running !== null && runningPatch === null) {
+    if (running !== null && activePending === null) {
+      pendingWrite = null;
       return Promise.resolve(false);
     }
-    const runningUrl = runningPatch ? router.serializeUrl(runningPatch) : null;
     // Each read of router.url serializes the whole URL, so read it once.
     const currentUrl = router.url;
-    const from = runningPatch
-      ? readQueryState(info.queryParams, runningPatch.queryParamMap)
-      : current;
-    const supplied = Object.entries(patch).filter(([, value]) => value !== undefined);
-    const next = { ...from, ...Object.fromEntries(supplied) };
-    const tree = router.parseUrl(runningUrl ?? currentUrl);
+    const tree = router.parseUrl(activePending?.url ?? currentUrl);
     for (const param of info.queryParams) {
-      const output = serializeQuery(param, next[param.name]);
+      const value = patch[param.name];
+      if (value === undefined) {
+        continue;
+      }
+      const output = serializeQuery(param, value);
       if (output === null) {
         delete tree.queryParams[param.name];
       } else {
@@ -216,16 +221,16 @@ export function createAppRouter(
       }
     }
     const target = router.serializeUrl(tree);
-    if (runningPatch) {
-      if (target === runningUrl) {
-        return patchResults.get(runningPatch) as Promise<boolean>;
+    if (activePending) {
+      if (target === activePending.url) {
+        return activePending.result;
       }
     } else if (target === currentUrl) {
       return Promise.resolve(true);
     }
     // The navigation carries the running patch, so it adds the history entry that patch asked for.
     // Its other options are this patch's.
-    const carriesPush = runningPatch !== null && pushingPatches.has(runningPatch);
+    const carriesPush = activePending?.pushHistory ?? false;
     const extras: NavigateOptions = {
       ...options,
       ...(carriesPush ? { replaceUrl: false } : {}),
@@ -233,15 +238,34 @@ export function createAppRouter(
       // onSameUrlNavigation: 'reload' it still overtakes the running patch and resolves true.
       ...(target === currentUrl ? { onSameUrlNavigation: 'reload' as const } : {}),
     };
+    let carried: Promise<boolean> | undefined;
+    const clearPending = () => {
+      if (pendingWrite?.tree === tree) {
+        pendingWrite = null;
+      }
+    };
     const navigation = router.navigateByUrl(tree, extras);
-    const result = navigation.then((done) => done || (carriedBy.get(tree) ?? false));
-    patchResults.set(tree, result);
-    if (!extras.replaceUrl) {
-      pushingPatches.add(tree);
-    }
-    if (runningPatch) {
-      carriedBy.set(runningPatch, result);
-    }
+    const result = navigation.then(
+      (done) => {
+        clearPending();
+        return done || (carried ?? false);
+      },
+      (error: unknown) => {
+        clearPending();
+        throw error;
+      },
+    );
+    const nextPending: PendingQueryWrite = {
+      tree,
+      url: target,
+      pushHistory: !extras.replaceUrl,
+      result,
+      carryBy: (next) => {
+        carried = next;
+      },
+    };
+    pendingWrite = nextPending;
+    activePending?.carryBy(result);
     return result;
   };
 
