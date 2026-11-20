@@ -1,8 +1,15 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AppRouter } from './app-router';
-import { BackendApi, isViewingDate, type ItemDetailRequest, type LibraryStatus } from './backend';
+import {
+  BackendApi,
+  isViewingDate,
+  type ItemDetail,
+  type ItemDetailRequest,
+  type LibraryStatus,
+} from './backend';
 import { CatalogLinks } from './catalog-links';
 import { LoadingIndicator } from './loading-indicator';
 import { Preferences } from './preferences';
@@ -15,7 +22,7 @@ function localDate(date: Date): string {
 }
 
 @Component({
-  imports: [LoadingIndicator, RouterLink],
+  imports: [LoadingIndicator, ReactiveFormsModule, RouterLink],
   template: `
     <section class="page-stack" [attr.aria-busy]="loaded.isLoading()">
       @if (item(); as title) {
@@ -65,10 +72,7 @@ function localDate(date: Date): string {
             <h2>Your library</h2>
             <div class="filter-panel">
               <label
-                >Status<select
-                  [value]="state()?.status ?? ''"
-                  (change)="setStatus($any($event.target))"
-                >
+                >Status<select [formControl]="statusControl" (change)="setStatus()">
                   <option value="" disabled>Not in library</option>
                   <option value="saved">Watchlist</option>
                   <option value="in-progress">Watching</option>
@@ -76,15 +80,10 @@ function localDate(date: Date): string {
                 </select></label
               >
               <label
-                >Rating<select
-                  [value]="state()?.rating ?? ''"
-                  (change)="setRating($any($event.target))"
-                >
+                >Rating<select [formControl]="ratingControl" (change)="setRating()">
                   <option value="">Unrated</option>
                   @for (rating of ratings; track rating) {
-                    <option [value]="rating" [selected]="state()?.rating === rating">
-                      {{ rating }}/10
-                    </option>
+                    <option [value]="rating">{{ rating }}/10</option>
                   }
                 </select></label
               >
@@ -144,32 +143,34 @@ export class DetailPage {
   protected readonly saved = signal(false);
   protected readonly error = signal('');
   protected readonly ratings = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  protected readonly statusControl = new FormControl('', { nonNullable: true });
+  protected readonly ratingControl = new FormControl('', { nonNullable: true });
 
-  // One page serves four routes, so it asks which one shows and reads through what it gets back.
-  private readonly request = computed<ItemDetailRequest>(() => {
+  // One page serves four routes, so it narrows the active route once into a discriminated union.
+  private readonly activeRoute = computed(() => {
     const movie = this.routes.MOVIE_DETAIL.ifActive();
     if (movie) {
-      return { route: 'movie', movieId: movie.params().path.movieId };
+      return { route: 'movie' as const, movieId: movie.params().path.movieId };
     }
     const show = this.routes.SHOW_DETAIL.ifActive();
     if (show) {
-      return { route: 'show', showId: show.params().path.showId };
+      return { route: 'show' as const, showId: show.params().path.showId };
     }
     const season = this.routes.SEASON_DETAIL.ifActive();
     if (season) {
       const { showId, seasonNumber } = season.params().path;
-      return { route: 'season', showId, seasonNumber };
+      return { route: 'season' as const, showId, seasonNumber };
     }
     const episode = this.routes.EPISODE_DETAIL.ifActive();
     if (episode) {
       const { showId, seasonNumber, episodeNumber } = episode.params().path;
-      return { route: 'episode', showId, seasonNumber, episodeNumber };
+      return { route: 'episode' as const, showId, seasonNumber, episodeNumber };
     }
     throw new Error('DetailPage shows only movie, show, season, and episode routes');
   });
 
-  protected readonly loaded = rxResource({
-    params: this.request,
+  protected readonly loaded = rxResource<ItemDetail | null, ItemDetailRequest>({
+    params: this.activeRoute,
     stream: ({ params }) => this.backendApi.getItemDetail(params),
   });
   protected readonly detail = this.loaded.value;
@@ -186,40 +187,42 @@ export class DetailPage {
 
   protected readonly parentLink = computed(() => {
     const query = this.catalogQuery();
-    const episode = this.routes.EPISODE_DETAIL.ifActive();
-    if (episode) {
-      const { showId, seasonNumber } = episode.params().path;
-      return {
-        label: `Season ${seasonNumber}`,
-        url: this.routes.SEASON_DETAIL.createUrlTree({ path: { showId, seasonNumber }, query }),
-      };
+    const active = this.activeRoute();
+    switch (active.route) {
+      case 'episode':
+        return {
+          label: `Season ${active.seasonNumber}`,
+          url: this.routes.SEASON_DETAIL.createUrlTree({
+            path: { showId: active.showId, seasonNumber: active.seasonNumber },
+            query,
+          }),
+        };
+      case 'season':
+        return {
+          label: 'Back to show',
+          url: this.routes.SHOW_DETAIL.createUrlTree({ path: { showId: active.showId }, query }),
+        };
+      default:
+        return null;
     }
-    const season = this.routes.SEASON_DETAIL.ifActive();
-    if (season) {
-      const { showId } = season.params().path;
-      return {
-        label: 'Back to show',
-        url: this.routes.SHOW_DETAIL.createUrlTree({ path: { showId }, query }),
-      };
-    }
-    return null;
   });
   protected readonly childrenLink = computed(() => {
-    const season = this.routes.SEASON_DETAIL.ifActive();
-    if (!season) {
+    const active = this.activeRoute();
+    if (active.route !== 'season') {
       return null;
     }
     return {
       label: 'Browse episodes',
       url: this.routes.EPISODES.createUrlTree({
-        path: season.params().path,
+        path: { showId: active.showId, seasonNumber: active.seasonNumber },
         query: { ...this.catalogQuery(), search: '', genres: [], page: 1 },
       }),
     };
   });
-  private readonly showId = computed(
-    () => this.routes.SHOW_DETAIL.ifActive()?.params().path.showId ?? null,
-  );
+  private readonly showId = computed(() => {
+    const active = this.activeRoute();
+    return active.route === 'show' ? active.showId : null;
+  });
   // The season this show was last opened at, which Preferences saved from the URL.
   protected readonly continueLink = computed(() => {
     const showId = this.showId();
@@ -259,25 +262,32 @@ export class DetailPage {
       query: { search: this.item()?.title ?? '' },
     });
   }
-  // A failed write leaves the stored value as it was, so the select shows it again. Its [value]
-  // binding didn't change, so Angular wouldn't put it back.
-  protected async setStatus(select: HTMLSelectElement) {
+  constructor() {
+    effect(() => {
+      const current = this.state();
+      this.statusControl.setValue(current?.status ?? '', { emitEvent: false });
+      this.ratingControl.setValue(String(current?.rating ?? ''), { emitEvent: false });
+    });
+  }
+
+  protected async setStatus() {
     const item = this.item();
     if (item) {
-      const status = select.value as LibraryStatus;
+      const status = this.statusControl.value as LibraryStatus;
       await this.persist(
         () => this.backendApi.updatePersonal(item.id, { status }),
-        () => (select.value = this.state()?.status ?? ''),
+        () => this.statusControl.setValue(this.state()?.status ?? '', { emitEvent: false }),
       );
     }
   }
-  protected async setRating(select: HTMLSelectElement) {
+  protected async setRating() {
     const item = this.item();
     if (item) {
-      const rating = select.value ? Number(select.value) : null;
+      const value = this.ratingControl.value;
+      const rating = value ? Number(value) : null;
       await this.persist(
         () => this.backendApi.updatePersonal(item.id, { rating }),
-        () => (select.value = String(this.state()?.rating ?? '')),
+        () => this.ratingControl.setValue(String(this.state()?.rating ?? ''), { emitEvent: false }),
       );
     }
   }

@@ -2,7 +2,6 @@ import { Component, inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { AppRouter } from './app-router';
 import { TasteTrackRepository } from './backend';
-import { Preferences } from './preferences';
 import { type ThemePreference, ThemeService } from './theme';
 
 @Component({
@@ -221,9 +220,4 @@ export class Shell {
       url: this.routes.SETTINGS.createUrlTree(),
     },
   ];
-
-  constructor() {
-    // Created with the shell, so Preferences saves values from every page.
-    inject(Preferences);
-  }
 }

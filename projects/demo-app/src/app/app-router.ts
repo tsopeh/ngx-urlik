@@ -195,8 +195,8 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
           routeName: RouteNames.HISTORY,
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
-            from: queryParam({ codec: dateCodec() }),
-            to: queryParam({ codec: dateCodec() }),
+            from: queryParam({ codec: dateCodec(), defaultValue: '' }),
+            to: queryParam({ codec: dateCodec(), defaultValue: '' }),
             ...paginationParams({ pageSizes: [12, 24, 48] }),
             sort: queryParam({
               codec: sortCodec(['date', 'rating'] as const),

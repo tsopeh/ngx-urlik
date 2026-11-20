@@ -12,9 +12,10 @@ const nonNegativeInteger = /^\d+$/;
 
 const calendarDate = /^\d{4}-\d{2}-\d{2}$/;
 
-/** A date such as `2026-09-01`. Text that isn't a real date is neither read nor written. */
+/** A date such as `2026-09-01`, or `''` when cleared. Invalid text is neither read nor written. */
 export function dateCodec(): UrlParamCodec<string> {
-  const isDate = (value: string) => calendarDate.test(value) && Number.isFinite(Date.parse(value));
+  const isDate = (value: string) =>
+    value === '' || (calendarDate.test(value) && Number.isFinite(Date.parse(value)));
   return {
     serialize: (value) => (typeof value === 'string' && isDate(value) ? value : null),
     deserialize: (raw) => (isDate(raw) ? raw : null),

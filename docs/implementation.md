@@ -356,8 +356,8 @@ signals.
 - Log viewing stays disabled until every running write finishes. Start a log, then change the
   rating. The button stays disabled even if the rating write finishes first. A single flag would
   re-enable it, and a second click would log the viewing twice.
-- A select shows the stored value. When a status or rating write fails, the page resets the select.
-  Its `[value]` binding didn't change, so Angular wouldn't reset it.
+- A select shows the stored value through its `FormControl`. When a status or rating write fails,
+  the page resets the control to the stored value.
 
 ### The settings page's reset
 
