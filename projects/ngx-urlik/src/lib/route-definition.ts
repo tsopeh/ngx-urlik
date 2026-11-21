@@ -78,4 +78,7 @@ export const isRecord = (value: unknown): value is Readonly<Record<string, unkno
   !!value && typeof value === 'object' && !Array.isArray(value);
 
 export const isQueryDefinition = (value: unknown): value is AnyQueryParamDefinition =>
-  isRecord(value) && value['kind'] === 'query' && isCodec(value['codec']);
+  isRecord(value) &&
+  value['kind'] === 'query' &&
+  isCodec(value['codec']) &&
+  (value['hasDefault'] === false || (value['hasDefault'] === true && 'defaultValue' in value));

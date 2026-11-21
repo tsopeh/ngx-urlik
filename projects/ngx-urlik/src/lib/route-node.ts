@@ -2,7 +2,9 @@ import { computed, DestroyRef, Signal, signal, ValueEqualityFn } from '@angular/
 import {
   ActivatedRouteSnapshot,
   NavigationBehaviorOptions,
+  NavigationCancel,
   NavigationEnd,
+  NavigationError,
   PRIMARY_OUTLET,
   Router,
   RouterState,
@@ -10,7 +12,6 @@ import {
   UrlSegmentGroup,
   UrlTree,
 } from '@angular/router';
-import { filter } from 'rxjs';
 import {
   activePathParams,
   type CompiledParam,
@@ -82,29 +83,67 @@ export function createAppRouter(
     createParameterSerializer(report);
 
   const navigation = signal(0);
-  const subscription = router.events
-    .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
-    .subscribe(() => {
+  let committedState = router.routerState;
+  let lagState: RouterState | undefined;
+  let lagCaches = new WeakMap<object, ValueCache>();
+  const clearLag = () => {
+    lagState = undefined;
+    lagCaches = new WeakMap();
+  };
+  const subscription = router.events.subscribe((event) => {
+    if (event instanceof NavigationEnd) {
+      committedState = router.routerState;
       navigation.update((value) => value + 1);
-    });
-  destroyRef.onDestroy(() => subscription.unsubscribe());
+    } else if (event instanceof NavigationCancel || event instanceof NavigationError) {
+      clearLag();
+    }
+  });
+  destroyRef.onDestroy(() => {
+    subscription.unsubscribe();
+    clearLag();
+  });
 
   // Angular switches to the new router state and creates the new page before NavigationEnd. Until
-  // then the cached value comes from the old state, so a read goes to the new state directly. Each
-  // signal has its own ValueCache, so a parameter whose URL text didn't change stays `===`.
+  // then the cached value comes from the old state, so a read uses a per-RouterState copy of
+  // ValueCache. Each signal has its own ValueCache, so a parameter whose URL text didn't change
+  // stays `===`, and a rolled-back navigation never mutates the committed cache.
+  const uncommitted = Symbol();
   const routerSignal = <T>(
     readWith: (values?: ValueCache) => T,
     equal: ValueEqualityFn<T>,
   ): Signal<T> => {
-    const values: ValueCache = new Map();
+    const cacheKey = {};
+    let values: ValueCache = new Map();
     let source: RouterState | undefined;
-    const cached = computed(
+    const readLag = (state: RouterState) => {
+      if (lagState !== state) {
+        lagState = state;
+        lagCaches = new WeakMap();
+      }
+      let lagValues = lagCaches.get(cacheKey);
+      if (!lagValues) {
+        lagValues = new Map(values);
+        lagCaches.set(cacheKey, lagValues);
+      }
+      return readWith(lagValues);
+    };
+    const cached = computed<T | typeof uncommitted>(
       () => {
         navigation();
-        source = router.routerState;
+        const state = router.routerState;
+        if (state !== committedState) {
+          source = undefined;
+          return uncommitted;
+        }
+        const promotedLag = lagState === state ? lagCaches.get(cacheKey) : undefined;
+        if (promotedLag) {
+          values = promotedLag;
+          lagCaches.delete(cacheKey);
+        }
+        source = state;
         return readWith(values);
       },
-      { equal },
+      { equal: (a, b) => a !== uncommitted && b !== uncommitted && equal(a, b) },
     );
     // Checked after each read, because reading the computed is what records `source`.
     const cacheIsCurrent = () => source === router.routerState;
@@ -112,18 +151,17 @@ export function createAppRouter(
       try {
         const value = cached();
         if (cacheIsCurrent()) {
-          return value;
+          return value as T;
         }
       } catch (error) {
         if (cacheIsCurrent()) {
           throw error;
         }
       }
-      // Activation can still throw and roll back routerState, so don't mutate `values` while lagging.
-      return readWith(undefined);
+      return readLag(router.routerState);
     };
     // Copy the computed's own properties, so Angular still treats the wrapper as a signal.
-    return Object.assign(current, cached);
+    return Object.assign(current, cached) as Signal<T>;
   };
 
   const createUrlTree = (info: CompiledRoute, values: LinkValues = {}): UrlTree => {
@@ -242,22 +280,7 @@ export function createAppRouter(
       ...(target === currentUrl ? { onSameUrlNavigation: 'reload' as const } : {}),
     };
     let carried: Promise<boolean> | undefined;
-    const clearPending = () => {
-      if (pendingWrite?.tree === tree) {
-        pendingWrite = null;
-      }
-    };
-    const navigation = router.navigateByUrl(tree, extras);
-    const result = navigation.then(
-      (done) => {
-        clearPending();
-        return done || (carried ?? false);
-      },
-      (error: unknown) => {
-        clearPending();
-        throw error;
-      },
-    );
+    const result = router.navigateByUrl(tree, extras).then((done) => done || (carried ?? false));
     const nextPending: PendingQueryWrite = {
       tree,
       url: target,

@@ -9,7 +9,7 @@ import {
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { defineAppRouter } from './app-router';
-import { numberCodec, queryParam, stringCodec } from './params';
+import { listCodec, numberCodec, queryParam, stringCodec } from './params';
 
 enum RouteNames {
   HOME = 'HOME',
@@ -148,6 +148,164 @@ describe('reads during navigation', () => {
     TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
     const appRouter = TestBed.inject(definition.AppRouter);
     expect(isSignal(appRouter.routes.ITEM.params)).toBe(true);
+  });
+
+  it('reuses cached values and reports decode failures once across lagging reads', async () => {
+    const diagnostics: string[] = [];
+    const definition = defineAppRouter(
+      { ITEM: RouteNames.ITEM },
+      {
+        routes: [
+          {
+            path: 'items/:id',
+            routeName: RouteNames.ITEM,
+            pathParams: { id: numberCodec() },
+            queryParams: {
+              tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),
+              page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
+            },
+            component: Item,
+          },
+        ],
+        diagnostics: { warn: (d) => diagnostics.push(d.code) },
+      },
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        definition.provideAppRouter(),
+        { provide: RouteReuseStrategy, useClass: NoReuse },
+        {
+          provide: Reader,
+          useFactory: () => {
+            const item = inject(definition.AppRouter).routes.ITEM;
+            return () => {
+              const first = item.params().query;
+              const second = item.params().query;
+              return { first: first.tags, second: second.tags };
+            };
+          },
+        },
+      ],
+    });
+    const harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/items/1?tags=x,y');
+    const beforeNav = TestBed.inject(definition.AppRouter).routes.ITEM.params().query.tags;
+    seen.length = 0;
+
+    await harness.navigateByUrl('/items/2?tags=x,y&page=bad');
+    const duringLag = seen[0] as { first: readonly string[]; second: readonly string[] };
+    expect(duringLag.first).toBe(beforeNav);
+    expect(duringLag.second).toBe(beforeNav);
+    expect(TestBed.inject(definition.AppRouter).routes.ITEM.params().query.tags).toBe(beforeNav);
+    expect(diagnostics).toEqual(['PARAM_DESERIALIZE_FAILED']);
+  });
+
+  it('preserves value identity when a lagging navigation rolls back', async () => {
+    let failNext = false;
+    const definition = defineAppRouter(
+      { ITEM: RouteNames.ITEM },
+      {
+        routes: [
+          {
+            path: 'items/:id',
+            routeName: RouteNames.ITEM,
+            pathParams: { id: numberCodec() },
+            queryParams: {
+              tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),
+            },
+            component: Item,
+          },
+        ],
+      },
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        definition.provideAppRouter(),
+        { provide: RouteReuseStrategy, useClass: NoReuse },
+        {
+          provide: Reader,
+          useFactory: () => {
+            const item = inject(definition.AppRouter).routes.ITEM;
+            return () => {
+              const tags = item.params().query.tags;
+              if (failNext) {
+                throw new Error('activation failed');
+              }
+              return tags;
+            };
+          },
+        },
+      ],
+    });
+    const harness = await RouterTestingHarness.create();
+    const item = TestBed.inject(definition.AppRouter).routes.ITEM;
+
+    await harness.navigateByUrl('/items/1?tags=a,b');
+    const beforeRollback = item.params().query.tags;
+
+    failNext = true;
+    await expect(harness.navigateByUrl('/items/2?tags=c,d')).rejects.toThrow('activation failed');
+    failNext = false;
+
+    expect(item.params().query.tags).toBe(beforeRollback);
+  });
+
+  it('preserves value identity when a lagging navigation rolls back after an unread NavigationEnd', async () => {
+    let readInConstructor = false;
+    let failInConstructor = false;
+    const definition = defineAppRouter(
+      { ITEM: RouteNames.ITEM },
+      {
+        routes: [
+          {
+            path: 'items/:id',
+            routeName: RouteNames.ITEM,
+            pathParams: { id: numberCodec() },
+            queryParams: {
+              tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),
+            },
+            component: Item,
+          },
+        ],
+      },
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        definition.provideAppRouter(),
+        { provide: RouteReuseStrategy, useClass: NoReuse },
+        {
+          provide: Reader,
+          useFactory: () => {
+            const item = inject(definition.AppRouter).routes.ITEM;
+            return () => {
+              const tags = readInConstructor ? item.params().query.tags : null;
+              if (failInConstructor) {
+                throw new Error('activation failed');
+              }
+              return tags;
+            };
+          },
+        },
+      ],
+    });
+    const harness = await RouterTestingHarness.create();
+    const item = TestBed.inject(definition.AppRouter).routes.ITEM;
+
+    await harness.navigateByUrl('/items/1?tags=a,b');
+    const beforeNav = item.params().query.tags;
+
+    // Move to /items/2 with the same tags without reading item.params() after NavigationEnd.
+    await harness.navigateByUrl('/items/2?tags=a,b');
+
+    // Start /items/3 whose component reads item.params() in its constructor and throws,
+    // rolling Angular back to /items/2.
+    readInConstructor = true;
+    failInConstructor = true;
+    await expect(harness.navigateByUrl('/items/3?tags=c,d')).rejects.toThrow('activation failed');
+    failInConstructor = false;
+
+    expect(item.params().query.tags).toBe(beforeNav);
   });
 });
 

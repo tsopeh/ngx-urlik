@@ -57,7 +57,6 @@ export interface CompiledRoute {
 }
 
 const defaultPathCodec = stringCodec();
-const isRoute = (value: unknown): value is RouteDefinition => isRecord(value);
 
 /**
  * Checks and compiles the route tree in one top-down pass, parsing each checked path once.
@@ -90,7 +89,7 @@ export function compileRoutes(
     let library = 'pathParams' in route || 'queryParams' in route;
     if (Array.isArray(route.children)) {
       for (const child of route.children) {
-        if (isRoute(child)) {
+        if (isRecord(child as unknown)) {
           const childFlags = markSubtree(child);
           named ||= childFlags.named;
           library ||= childFlags.library;
@@ -106,7 +105,7 @@ export function compileRoutes(
     return { named, library };
   };
   for (const route of definitions) {
-    if (isRoute(route)) {
+    if (isRecord(route as unknown)) {
       markSubtree(route);
     }
   }
@@ -126,7 +125,7 @@ export function compileRoutes(
     const compiled: Route[] = [];
     siblings.forEach((route, index) => {
       const at = `${location}[${index}]`;
-      if (!isRoute(route)) {
+      if (!isRecord(route as unknown)) {
         errors.push(`${at} must be a route object`);
         return;
       }
@@ -144,6 +143,8 @@ export function compileRoutes(
             pathOwners,
             queryOwners,
           );
+        } else if (children !== undefined) {
+          angularRoute.children = children as unknown as Routes;
         }
         compiled.push(angularRoute);
         return;
@@ -180,7 +181,8 @@ export function compileRoutes(
         }
       }
 
-      if (Boolean(route.loadChildren) && readByName) {
+      const disallowedLoadChildren = Boolean(route.loadChildren) && readByName;
+      if (disallowedLoadChildren) {
         report(
           named
             ? "a named route can't use loadChildren"
@@ -195,7 +197,8 @@ export function compileRoutes(
         route.path === '**' ||
         (route.outlet && route.outlet !== 'primary')
       );
-      if ((readByName || pathParams !== undefined) && !plainPath) {
+      const needsPlainPath = (readByName || pathParams !== undefined) && !plainPath;
+      if (needsPlainPath) {
         report('needs a plain path in the primary outlet');
       }
       const parsed = parseRoutePath(plainPath ? (route.path as string) : '');
@@ -224,7 +227,7 @@ export function compileRoutes(
         const previous = ownPathOwners.get(name);
         if (previous !== undefined) {
           report(
-            `path parameter '${name}' appears in both '${previous}' and '${route.path}'. Rename one, because params().path holds one value per name.`,
+            `path parameter '${name}' appears in both '${previous}' and '${route.path}'. Rename one, because params().path has one value per name.`,
           );
         } else {
           ownPathOwners.set(name, route.path ?? '');
@@ -233,7 +236,8 @@ export function compileRoutes(
 
       const ownQueryOwners = new Map(queryOwners);
       const queryParamMap = isRecord(queryParams) ? queryParams : undefined;
-      if (queryParams !== undefined && !readByName) {
+      const unreadQueryParams = queryParams !== undefined && !readByName;
+      if (unreadQueryParams) {
         report(
           'no named route at or below it reads queryParams. Add a routeName, or remove queryParams.',
         );

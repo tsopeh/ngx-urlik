@@ -9,5 +9,4 @@ export {
   type QueryParamsFormControls,
   type QueryParamsFormGroupOptions,
   type QueryWriteFailure,
-  type SignalFormQueryParamsBinding,
 } from './query-forms';

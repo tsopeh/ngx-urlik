@@ -120,7 +120,9 @@ compares text, not decoded values:
 - A query parameter stays out of the URL when its value writes its default's text.
 - A form binding compares by canonical URL text through the route's codecs, with `Object.is` as a
   fast path. So picking a new object that writes the same text as the URL doesn't write or run
-  `beforeWrite`.
+  `beforeWrite`. For a query parameter with a default, `null` counts as different from the default
+  value even though both leave the key out of the URL, because an absent key reads back as the
+  default rather than `null`.
 
 Take `?from=2026-11-01` read through a `PlainDate` codec. `PlainDate` keeps its state in private
 fields, so a deep comparison sees no keys and calls any two dates equal. Comparing the text
@@ -129,7 +131,7 @@ fields, so a deep comparison sees no keys and calls any two dates equal. Compari
 **Cost:** a codec must write one text per value and lose nothing, so reading the text gives back an
 equal value. Shorter text is fine. A trimmed value isn't: the form would take the trimmed value back
 while the user is still typing. Values from `params()` are shared between reads, so code must not
-mutate them.
+mutate them. Form comparisons encode values on every check that misses `Object.is`.
 
 ## Write enum values, not member names
 
@@ -249,7 +251,9 @@ A query write is one `navigateByUrl()` call. When two writes overlap, the later 
 the earlier one, as with two `router.navigate()` calls. Only one runs at a time. A patch, a link,
 and the Back button all behave the same way here.
 
-A patch also promises to change only the query parameters it names. So a patch made while another
+A patch also promises to change only the query parameters it names. It parses the starting URL and
+updates only the keys passed in the patch, leaving untouched keys—including declared query
+parameters with invalid text like `?page=bad`—as they are in the URL. A patch made while another
 patch runs starts from that patch's destination, not from the current URL. Patches add up, and the
 later one wins on a shared query parameter. Without this, `patchQuery({ search })` followed by
 `patchQuery({ minRating })` would drop the search. A form edit and a page's patch made together
@@ -268,11 +272,12 @@ Say the page is on `?minRating=4`, and two patches start in the same tick: `{ se
 `?search=elm&minRating=2`.
 
 **Cost:** this is stricter than Angular's `queryParamsHandling: 'merge'`, which merges with the
-current URL. A guard sees the query parameters of every patch the latest one includes. So a patch it
-would accept alone can be declined along with one it wouldn't. A write that starts while the user
-navigates doesn't happen at all. The form sends the query parameter again with its next write. A
-debounced form field still writes after the user presses Back, if Back left its query parameter
-alone.
+current URL. An untouched query parameter with invalid text stays in the URL until something patches
+it or navigates away, rather than being cleaned up as a side effect of an unrelated patch. A guard
+sees the query parameters of every patch the latest one includes. So a patch it would accept alone
+can be declined along with one it wouldn't. A write that starts while the user navigates doesn't
+happen at all. The form sends the query parameter again with its next write. A debounced form field
+still writes after the user presses Back, if Back left its query parameter alone.
 
 ## Keep drafts in the form, and what's written in the URL
 
@@ -304,9 +309,11 @@ the URL. Because a write includes every changed field, the binding never has to 
 navigations from Back.
 
 A Reactive Forms `debounce` delays a field's move into those values, as Signal Forms' `debounce()`
-does. So Back drops a waiting edit in both form systems. In Reactive Forms, `debounce` delays every
-`valueChanges` emission on that field (rather than hooking `registerOnChange()` to guess typing from
-code); code that wants an immediate write calls `write()` or `patchQuery()`.
+does. So Back drops a waiting edit in both form systems. In both, only typing waits. A value set by
+code is final. Delaying it would only make the page lag, and code that reads the form right after
+setting it would see the old value. The cost: Angular has no public way to remove a
+`registerOnChange` listener, so each control keeps one forwarding listener for its life; and tests
+that simulate typing must pass `{ emitModelToViewChange: false }`.
 
 Some forms should change the URL only on submit, because each URL change starts a request. `writeOn:
 'submit'` keeps every edit in the binding, not in the form. The form's values still change on each
@@ -327,22 +334,22 @@ first, so they do. A field that isn't written stays in the draft, and the next w
 The cost: with `'change'`, code can't use `write()` to write all fields or none.
 
 The binding detects the submit itself. A `<form [formGroup]>` emits it as an event.
-`createQueryParamsSignalForm()` makes `submitAction` the form's submit action. A hand-built Signal
-Form takes its submit action at creation, so its bind function returns `{ write, submitAction }` for
-the app to pass in. All four form functions return `write`, in an object that leaves room to return
-more later. Calling `write()` from code submits the same way in both form systems.
+`createQueryParamsSignalForm()` makes the write the form's submit action. A hand-built Signal Form
+takes its submit action at creation, so its bind function returns `{ write }` for the app to pass
+in. All four form functions return `write`, in an object that leaves room to return more later.
+Calling it from code submits the same way in both form systems.
 
-`submitAction()` resolves once the write starts, not when the navigation finishes. Angular ignores a
-submit while the last one runs. Waiting would drop the user's next Enter while a guard or resolver
-is slow. The cost: the form's `submitting()` doesn't cover the navigation, so a page that wants a
-spinner reads the router instead.
+As a Signal Form's submit action, `write()` resolves once the write starts, not when the navigation
+finishes. Angular ignores a submit while the last one runs. Waiting would drop the user's next Enter
+while a guard or resolver is slow. The cost: the form's `submitting()` doesn't cover the navigation,
+so a page that wants a spinner reads the router instead.
 
 A field follows its query parameter only when that parameter changes in the URL. So a write to
 another field never replaces what the user is typing. The binding reads through `params()`, writes
-through `patchQuery()`, and shares defaults, URL-text equality, and active-route reads with the
-route through an internal helper. A patch that wouldn't change the URL resolves `true` without
-navigating, so `false` always means the write didn't happen. Writes replace the history entry by
-default, so Back doesn't step through each keystroke.
+through `patchQuery()`, and reads defaults, URL-text equality, and active-route state from the route
+through an internal helper. A patch that wouldn't change the URL resolves `true` without navigating,
+so `false` always means the write didn't happen. Writes replace the history entry by default, so
+Back doesn't step through each keystroke.
 
 **Cost:** forms bind only query parameters, as flat controls. Nested groups and `FormArray` aren't
 supported. Failed writes are reported, not retried. Debounce is set differently in the two form

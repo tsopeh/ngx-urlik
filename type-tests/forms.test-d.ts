@@ -10,7 +10,6 @@ import {
   type QueryParamsBinding,
   type QueryParamsFormControls,
   type QueryWriteFailure,
-  type SignalFormQueryParamsBinding,
 } from 'ngx-urlik/forms';
 import { describe, expectTypeOf, it } from 'vitest';
 import { appRouter } from './fixtures';
@@ -19,7 +18,7 @@ const { MEMBER } = appRouter.routes;
 type MemberQuery = QueryParamsOf<typeof MEMBER>;
 
 describe('createQueryParamsFormGroup()', () => {
-  it("gives one control per query field, typed like the field's value", () => {
+  it("returns one control per query field, typed like the field's value, and write", () => {
     const { form, write } = createQueryParamsFormGroup(MEMBER);
     expectTypeOf(form).toEqualTypeOf<FormGroup<QueryParamsFormControls<MemberQuery>>>();
     expectTypeOf(write).toEqualTypeOf<() => Promise<void>>();
@@ -41,18 +40,17 @@ describe('createQueryParamsFormGroup()', () => {
 });
 
 describe('createQueryParamsSignalForm()', () => {
-  it('gives a writable model of the query, its field tree, write, and submitAction', () => {
-    const { model, form, write, submitAction } = createQueryParamsSignalForm(MEMBER);
+  it('returns a writable model of the query, its field tree, and write', () => {
+    const { model, form, write } = createQueryParamsSignalForm(MEMBER);
     expectTypeOf(model).toEqualTypeOf<WritableSignal<MemberQuery>>();
     expectTypeOf(form).toEqualTypeOf<FieldTree<MemberQuery>>();
     expectTypeOf(write).toEqualTypeOf<() => Promise<void>>();
-    expectTypeOf(submitAction).toEqualTypeOf<() => Promise<void>>();
   });
 
-  it('binds an existing form, and returns submitAction for its submit action', () => {
+  it('binds an existing form, and returns a write for its submit action', () => {
     const form = {} as FieldTree<MemberQuery>;
     const binding = bindQueryParamsToSignalForm(MEMBER, form);
-    expectTypeOf(binding).toEqualTypeOf<SignalFormQueryParamsBinding>();
+    expectTypeOf(binding).toEqualTypeOf<QueryParamsBinding>();
   });
 });
 

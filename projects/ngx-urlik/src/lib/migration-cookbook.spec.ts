@@ -238,7 +238,7 @@ describe('moving an app over', () => {
         },
       ),
     ).toThrow(
-      "MEMBER: path parameter 'id' appears in both 'teams/:id' and 'members/:id'. Rename one, because params().path holds one value per name.",
+      "MEMBER: path parameter 'id' appears in both 'teams/:id' and 'members/:id'. Rename one, because params().path has one value per name.",
     );
   });
 

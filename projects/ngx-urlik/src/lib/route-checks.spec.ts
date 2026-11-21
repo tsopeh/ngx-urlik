@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { compileRoutes } from './compiled-route';
 import { defineAppRouter } from './app-router';
 import { numberCodec, queryParam } from './params';
 
@@ -141,6 +142,27 @@ describe('startup checks', () => {
       expect(define([{ path: 'a', routeName: 'A', children: {} }], { A: 'A' })).toThrow(
         'A: children must be an array',
       );
+    });
+
+    it('rejects hand-built query definitions without hasDefault', () => {
+      expect(
+        define(
+          [
+            {
+              path: 'a',
+              routeName: 'A',
+              queryParams: { page: { kind: 'query', codec: numberCodec(), defaultValue: 1 } },
+            },
+          ],
+          { A: 'A' },
+        ),
+      ).toThrow("A: query parameter 'page' must come from queryParam()");
+    });
+
+    it('passes non-array children on unchecked routes through unchanged', () => {
+      const badChildren = { notAnArray: true };
+      const { routes } = compileRoutes([{ path: 'a', children: badChildren } as never], {});
+      expect(routes[0].children).toBe(badChildren);
     });
   });
 });

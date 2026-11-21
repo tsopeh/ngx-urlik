@@ -600,6 +600,15 @@ describe('defineAppRouter with Angular route arrays', () => {
       expect(ITEM.ifActive({ path: { id: 7 }, query: { search: 'elm' } })).toBe(ITEM);
       expect(pathSerializations - afterFirstPath).toBe(3);
       expect(querySerializations - afterFirstQuery).toBe(2);
+
+      // A new navigation encodes the new current values once, then reuses them across checks.
+      await router.navigateByUrl('/items/9?search=oak');
+      const beforeSecondNavPath = pathSerializations;
+      const beforeSecondNavQuery = querySerializations;
+      expect(ITEM.ifActive({ path: { id: 9 }, query: { search: 'oak' } })).toBe(ITEM);
+      expect(ITEM.ifActive({ path: { id: 9 }, query: { search: 'oak' } })).toBe(ITEM);
+      expect(pathSerializations - beforeSecondNavPath).toBe(3);
+      expect(querySerializations - beforeSecondNavQuery).toBe(3);
     });
   });
 
@@ -781,7 +790,7 @@ describe('defineAppRouter with Angular route arrays', () => {
         },
       ),
     ).toThrow(
-      "MEMBER: path parameter 'id' appears in both 'teams/:id' and 'members/:id'. Rename one, because params().path holds one value per name.",
+      "MEMBER: path parameter 'id' appears in both 'teams/:id' and 'members/:id'. Rename one, because params().path has one value per name.",
     );
     expect(() =>
       defineAppRouter(

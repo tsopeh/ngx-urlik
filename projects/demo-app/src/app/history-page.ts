@@ -102,8 +102,14 @@ export class HistoryPage {
   private readonly preferences = inject(Preferences);
   protected readonly form = createQueryParamsFormGroup(this.routes.HISTORY, {
     debounce: { search: 250 },
+    // A cleared date input produces ''; turning it into null removes the parameter from the URL.
     // A new filter or order starts from the first page, in the same navigation.
     beforeWrite: (patch) => {
+      for (const field of ['from', 'to'] as const) {
+        if (patch[field] === '') {
+          patch = { ...patch, [field]: null };
+        }
+      }
       const filters = ['search', 'from', 'to', 'sort', 'pageSize'] as const;
       const changesFilter = filters.some((field) => field in patch);
       return changesFilter ? { page: 1, ...patch } : patch;

@@ -81,13 +81,13 @@ switch, so `paramsSnapshot()` and `globalParamsSnapshot()` read the snapshot the
   answer changes.
 - Reading an inactive route throws. The cached error follows the same rules as a cached value.
 
-| Event                                       | Router state                               | Signal goes to | A read returns           |
-| ------------------------------------------- | ------------------------------------------ | -------------- | ------------------------ |
-| `NavigationStart`, guards, resolvers        | unchanged                                  | stays          | cached value             |
-| `BeforeActivateRoutes` (Angular commits)    | new                                        | Lagging        | a fresh read, not cached |
-| `NavigationEnd`                             | unchanged                                  | Current        | recomputed value         |
-| `NavigationCancel` or `NavigationError` (1) | Angular restores the state it had at start | Current        | cached value             |
-| `NavigationSkipped`                         | unchanged                                  | stays          | cached value             |
+| Event                                       | Router state                               | Signal goes to | A read returns                                          |
+| ------------------------------------------- | ------------------------------------------ | -------------- | ------------------------------------------------------- |
+| `NavigationStart`, guards, resolvers        | unchanged                                  | stays          | cached value                                            |
+| `BeforeActivateRoutes` (Angular commits)    | new                                        | Lagging        | a read through a per-router-state copy of `ValueCache`  |
+| `NavigationEnd`                             | unchanged                                  | Current        | recomputed value (promoting the lag copy if present)    |
+| `NavigationCancel` or `NavigationError` (1) | Angular restores the state it had at start | Current        | cached value (the lag copy is cleared)                  |
+| `NavigationSkipped`                         | unchanged                                  | stays          | cached value                                            |
 
 (1) Angular's `resetInternalState()` restores the same object the signal saw before, so `source`
 matches again.
@@ -108,7 +108,7 @@ passed in the patch, and leaves untouched parameters as they are. It then calls
   skip it and resolve `false`.
 - **A link, `navigate()`, or Back.** It resolves `false` without calling Angular.
 
-`patchQuery` tracks the running patch in a single `pendingWrite` record holding its target
+`patchQuery` tracks the running patch in a single `pendingWrite` record with its target
 `UrlTree`, serialized URL, history flag, result promise, and overtake callback. Angular keeps that
 tree as the running navigation's `initialUrl`, so a running navigation matches `pendingWrite.tree`
 only when a patch started it.
@@ -152,13 +152,15 @@ URL-text equality, and active-route reads through the internal `ɵqueryRouteSupp
 
 Each form system wraps `createQuerySync()` with its own adapter:
 
-- **Reactive Forms** (`bindQueryParamsToFormGroup()`) keeps per-field debounce `timers` and a
-  `lastSeen` snapshot. A change on a debounced field moves into the model when its timer ends or
-  when the form submits or `write()` runs. Fields without a delay move in right away.
+- **Reactive Forms** (`bindQueryParamsToFormGroup()`) stores per-field debounce `timers`, a
+  `lastSeen` snapshot, and a shared `registerOnChange()` listener per control to tell values set by
+  code from typing. Typing on a debounced field moves into the model when its timer ends or when
+  the form submits or `write()` runs. Fields without a delay and values set by code move in right
+  away.
 - **Signal Forms** (`bindQueryParamsToSignalForm()`) runs `debounce()` inside Angular before the
-  model, so it needs no timers. It exposes `submitAction()` (resolves as soon as the write starts,
-  for Angular's `submit()`) and `write()` (calls `markAsTouched()` to flush waiting typing, checks
-  errors under `writeOn: 'submit'`, and awaits `newestWrite`).
+  model, so it needs no timers. Its `write()` calls `markAsTouched()` to flush waiting typing,
+  checks errors under `writeOn: 'submit'` when called outside Angular's `submit()`, and resolves as
+  soon as the write starts when called inside `submit()`.
 
 `write()` called from code runs the same submit rules as a submit by the user. It ends every
 debounce wait. With `writeOn: 'change'`, the binding writes each field whose validators pass. With
@@ -167,6 +169,7 @@ debounce wait. With `writeOn: 'change'`, the binding writes each field whose val
 | Variable      | Contents                                                           |
 | ------------- | ------------------------------------------------------------------ |
 | `model`       | The values the binding compares with the URL                       |
+| `lastSeen`    | The Reactive Forms values after the last change the binding saw    |
 | `lastUrl`     | The query parameter values the form last took in                   |
 | `invalid`     | Fields whose validators failed when the binding wrote              |
 | `timers`      | Per field, the Reactive Forms debounce timer                       |
@@ -193,14 +196,20 @@ A write follows these steps:
 5. Send the patch, unless it matches the running write, or nothing is running and the patch is
    empty.
 
+When a write resolves `true`, `takeWrittenValues()` checks each field that was written. If neither
+the model nor the form's current draft has changed since the write started, and the URL's value
+differs by canonical URL text, the binding sets that field to the URL's value. This updates fields
+that `beforeWrite` clamped, values the codec couldn't write, and defaulted fields cleared to `null`.
+
 `write()` waits for `newestWrite`, which resolves after the newest write finishes. An older write
 resolves as the newer one that included it.
 
 **URL to model.** When `params()` changes, a field takes its query parameter's value only if three
 things hold: the query parameter changed since `lastUrl`, it differs from the model by canonical URL
-text, and the field isn't Invalid. Taking the value also clears the field's debounce timer, as
-Signal Forms' `debounce()` does. A navigation that changes other query parameters leaves the draft
-alone.
+text (for a parameter with a default, `null` counts as different from the default even though both
+leave the key out of the URL), and the field isn't Invalid. Taking the value also clears the field's
+debounce timer, as Signal Forms' `debounce()` does. A navigation that changes other query parameters
+leaves the draft alone.
 
 Because the binding compares field values by canonical URL text, picking a new object that writes
 the same text as the URL doesn't differ from the URL and never starts a write or runs `beforeWrite`.
@@ -239,7 +248,7 @@ every edit stays Unsent until a submit without errors.
 | Submitted or `write()`, `'submit'` | Waiting or Unsent | Synced or Sending           | timer cleared; one write includes every field; none with errors |
 | Timer fires                        | Waiting           | Synced, Sending, or Invalid | the model takes the edit                                        |
 | Its validators pass                | Invalid           | Sending                     |                                                                 |
-| Write resolves `true`              | Sending           | Synced                      |                                                                 |
+| Write resolves `true`              | Sending           | Synced                      | untouched fields whose value differs from the URL take the URL's value |
 | Newest write resolves `false`      | Sending           | Unsent                      | reports `declined`                                              |
 | Older write finishes               | Sending           | Sending                     | the newer write includes the field and reports its own result   |
 | Write rejects                      | Sending           | Unsent                      | reports `error`                                                 |

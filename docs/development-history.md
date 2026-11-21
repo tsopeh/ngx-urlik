@@ -38,9 +38,8 @@ gives the path to it. Commit hashes point to the code for each step.
 | Nov 19, 2026    | Version 2.0.0, for the breaking changes in forms, `ifActive`, and patches           |
 | Nov 19, 2026    | `writeWhen` becomes `writeOn: 'change' \| 'submit'`. Validators always apply        |
 | Nov 19, 2026    | Version 2.1.0 needs Angular 22.2.6, the first release where Signal Forms work       |
-| Nov 20, 2026    | Version 3.0.0: compensating-code cleanup, Reactive debounce, Signal `submitAction`  |
 
-The package version is `3.0.0`. In conversation we call the design after Nov 13 "API version 3".
+The package version is `2.1.0`. In conversation we call the design after Nov 13 "API version 3".
 The maintainer chose `1.0.0` for the first publish on Nov 15. Version `2.0.0` follows on Nov 19,
 because the branch `feat/submit-writes-and-ifactive-values` broke the public API:
 `createQueryParamsFormGroup()` returns `{ form, write }`, `ifActive` is a function instead of a
@@ -364,7 +363,8 @@ asks.
 - **`reset()` goes to the defaults** (Nov 15). We found that `createQueryParamsFormGroup()` created
   each control with its query parameter's value, so `form.reset()` on `?search=oak` restored `oak`.
   The maintainer chose to reset to the route's defaults instead of documenting it. The forms entry
-  point reads them through `ɵqueryDefaults()`, a private export of `ngx-urlik`.
+  point read them through `ɵqueryDefaults()`, a private export of `ngx-urlik` (later expanded into
+  `ɵqueryRouteSupport()` in Round 4).
 - **Reactive Forms `debounce` delays only typing** (Nov 18, branch
   `feat/reactive-debounce-typing-only`). It had delayed every change, including `patchValue()` from
   code. Signal Forms' `debounce()` delays only input from `[formField]`. The maintainer preferred
@@ -698,21 +698,24 @@ Three rounds on Nov 11–12 looked for code that only compensated for earlier ch
   was dropped, as above.
 - **Round 3** compared URL text instead of `isEqual`, and made `patchQuery()` resolve `true` when
   the URL already matches the patch.
-- **Round 4** (Nov 20, branch `audit/compensating-code`) replaced `QueryParamDefinition`'s phantom
-  `Defaulted` type parameter with a discriminated union, returned tagged `{ ok, text }` outcomes
-  from `queryText()` and `pathText()`, cached canonical URL text per `RuntimeState` for repeated
-  `ifActive(values)` checks, kept `routerSignal()`'s Lagging reads from mutating `ValueCache`,
-  replaced `patchQuery()`'s three `UrlTree` Weak collections and re-decoding with a single
-  `pendingWrite` record that writes only supplied keys, replaced `ɵqueryDefaults` and
-  `takeWrittenValues()` with `ɵqueryRouteSupport()` so form bindings compare by canonical URL text
-  and read active routes without a broad `try/catch`, split `query-forms.ts` around a shared
-  `createQuerySync()` reconciler with per-system adapters (deleting the `registerOnChange()` WeakMap
-  and `shown` shadow so Reactive Forms debounces all `valueChanges` and immediate code writes use
-  `patchQuery()` or `write()`), separated Signal Forms' `submitAction()` from `write()` so `write()`
-  no longer sniffs `submitting()`, merged route validation and compilation into a single pass in
-  `compileRoutes()`, and removed caller-side workarounds in TasteTrack (`HistoryPage` date clearing,
-  `DetailPage` route union and `FormControl` selects, and `Preferences` initialization via
-  `provideEnvironmentInitializer()`).
+- **Round 4** (Nov 20–21, branch `audit/compensating-code`):
+  - Replaced `QueryParamDefinition`'s phantom `Defaulted` type parameter with a discriminated union
+    (`hasDefault: true | false`).
+  - Returned tagged `{ ok, text }` outcomes from `queryText()` and `pathText()`, and cached
+    canonical URL text per `RuntimeState` for repeated `ifActive(values)` checks.
+  - Scoped `routerSignal()`'s Lagging reads to a per-`RouterState` copy of `ValueCache`, so
+    rollbacks don't mutate `ValueCache` while repeated lagging reads still reuse cached values.
+  - Replaced `patchQuery()`'s three `UrlTree` Weak collections and re-decoding with a single
+    `pendingWrite` record that writes only supplied keys (leaving untouched invalid keys in the URL).
+  - Replaced `ɵqueryDefaults()` with `ɵqueryRouteSupport()` so form bindings compare by canonical
+    URL text and read active `AppRouter` routes directly (keeping a `try/catch` fallback for custom
+    `QueryRoute` objects).
+  - Split `query-forms.ts` around a shared `createQuerySync()` reconciler with per-system adapters
+    while keeping Reactive Forms' typing-only debounce and Signal Forms' single `write()`.
+  - Combined route validation and compilation in `compileRoutes()` into one top-down pass after a
+    linear bottom-up scan.
+  - Simplified TasteTrack (`DetailPage` route union and `FormControl` selects, and `Preferences`
+    initialization via `provideEnvironmentInitializer()`).
 
 We left these as they are, because a redesign wouldn't make them simpler: `routerSignal`, the
 `canMatch` codec check, the form binding's `pending`, `lastUrl`, and `held` (now `invalid`), the

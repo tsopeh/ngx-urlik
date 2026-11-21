@@ -163,10 +163,14 @@ export function createParameterSerializer(report: ReportParameterFailure) {
     );
   };
 
-  const encode = (param: CompiledParam, value: unknown, silent = false): EncodedPathText => {
+  const encode = (
+    param: CompiledParam,
+    value: unknown,
+    diagnostics: 'report' | 'silent' = 'report',
+  ): EncodedPathText => {
     const outcome = trySerialize(param, value);
     if (!outcome.ok) {
-      if (!silent) {
+      if (diagnostics === 'report') {
         reportFailure(param, outcome);
       }
       return { ok: false };
@@ -204,7 +208,7 @@ export function createParameterSerializer(report: ReportParameterFailure) {
   const defaultText = (
     param: CompiledQueryParam,
     defaultValue: unknown,
-    silent: boolean,
+    diagnostics: 'report' | 'silent',
   ): string | null => {
     let outcome = defaultOutcomes.get(param);
     if (!outcome) {
@@ -212,7 +216,8 @@ export function createParameterSerializer(report: ReportParameterFailure) {
       defaultOutcomes.set(param, outcome);
     }
     if (!outcome.ok) {
-      if (!silent && !reportedBadDefaults.has(param)) {
+      const shouldReport = diagnostics === 'report' && !reportedBadDefaults.has(param);
+      if (shouldReport) {
         reportedBadDefaults.add(param);
         reportFailure(param, outcome);
       }
@@ -229,19 +234,20 @@ export function createParameterSerializer(report: ReportParameterFailure) {
   const queryText = (
     param: CompiledQueryParam,
     value: unknown,
-    silent = false,
+    diagnostics: 'report' | 'silent' = 'report',
   ): EncodedQueryText => {
     if (value === null) {
       return { ok: true, text: null };
     }
-    const encoded = encode(param, value, silent);
+    const encoded = encode(param, value, diagnostics);
     if (!encoded.ok) {
       return encoded;
     }
     if (!param.definition.hasDefault) {
       return encoded;
     }
-    const atDefault = encoded.text === defaultText(param, param.definition.defaultValue, silent);
+    const atDefault =
+      encoded.text === defaultText(param, param.definition.defaultValue, diagnostics);
     return atDefault ? { ok: true, text: null } : encoded;
   };
 
@@ -255,11 +261,16 @@ export function createParameterSerializer(report: ReportParameterFailure) {
     if (Object.is(a, b)) {
       return true;
     }
-    const aText = queryText(param, a, true);
+    // A defaulted parameter reads as its default when absent, not null, so null differs from it.
+    const nullAgainstDefault = param.definition.hasDefault && (a === null || b === null);
+    if (nullAgainstDefault) {
+      return false;
+    }
+    const aText = queryText(param, a, 'silent');
     if (!aText.ok) {
       return false;
     }
-    const bText = queryText(param, b, true);
+    const bText = queryText(param, b, 'silent');
     return bText.ok && aText.text === bText.text;
   };
 
