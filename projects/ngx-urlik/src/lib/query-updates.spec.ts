@@ -321,4 +321,19 @@ describe('query writes', () => {
     expect(router.url).toBe('/results?page=bad&search=new');
     expect(diagnostics).toEqual([]);
   });
+
+  it('clears pending state when a navigation rejects', async () => {
+    const { appRouter, router } = setup((route) => {
+      if (route.queryParamMap.get('search') === 'boom') {
+        throw new Error('guard failed');
+      }
+      return true;
+    });
+    await router.navigateByUrl('/results?search=old');
+    const results = appRouter.routes.RESULTS;
+
+    await expect(results.patchQuery({ search: 'boom' })).rejects.toThrow('guard failed');
+    expect(await results.patchQuery({ search: 'ok' })).toBe(true);
+    expect(router.url).toBe('/results?search=ok');
+  });
 });

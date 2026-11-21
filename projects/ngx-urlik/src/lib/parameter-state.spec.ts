@@ -277,4 +277,38 @@ describe('parameter state', () => {
     await router.navigateByUrl('/items?from=2026-03-01&search=elm');
     expect(String(items.params().query.from)).toBe('2026-03-01');
   });
+
+  it('reports an unserializable query default once', () => {
+    const diagnostics: AppRouterDiagnostic[] = [];
+    const definition = defineAppRouter(
+      { ITEMS: RouteNames.ITEMS },
+      {
+        diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
+        routes: [
+          {
+            path: 'items',
+            routeName: RouteNames.ITEMS,
+            queryParams: { minRating: queryParam({ codec: numberCodec(), defaultValue: NaN }) },
+            component: Page,
+          },
+        ],
+      },
+    );
+    TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+    const router = TestBed.inject(Router);
+    const items = TestBed.inject(definition.AppRouter).routes.ITEMS;
+
+    expect(router.serializeUrl(items.createUrlTree({ query: { minRating: 4 } }))).toBe(
+      '/items?minRating=4',
+    );
+    expect(router.serializeUrl(items.createUrlTree({ query: { minRating: 5 } }))).toBe(
+      '/items?minRating=5',
+    );
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'PARAM_SERIALIZE_FAILED',
+        parameter: 'minRating',
+      }),
+    ]);
+  });
 });

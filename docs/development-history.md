@@ -707,8 +707,11 @@ Three rounds on Nov 11–12 looked for code that only compensated for earlier ch
   and read active routes without a broad `try/catch`, split `query-forms.ts` around a shared
   `createQuerySync()` reconciler with per-system adapters (deleting the `registerOnChange()` WeakMap
   and `shown` shadow so Reactive Forms debounces all `valueChanges` and immediate code writes use
-  `patchQuery()` or `write()`), and separated Signal Forms' `submitAction()` from `write()` so
-  `write()` no longer sniffs `submitting()`.
+  `patchQuery()` or `write()`), separated Signal Forms' `submitAction()` from `write()` so `write()`
+  no longer sniffs `submitting()`, merged route validation and compilation into a single pass in
+  `compileRoutes()`, and removed caller-side workarounds in TasteTrack (`HistoryPage` date clearing,
+  `DetailPage` route union and `FormControl` selects, and `Preferences` initialization via
+  `provideEnvironmentInitializer()`).
 
 We left these as they are, because a redesign wouldn't make them simpler: `routerSignal`, the
 `canMatch` codec check, the form binding's `pending`, `lastUrl`, and `held` (now `invalid`), the

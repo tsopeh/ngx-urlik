@@ -323,6 +323,36 @@ describe('query forms', () => {
       expect(router.url).toBe('/results?sort=year:desc&page=2');
       expect(written).toEqual([['page']]);
     });
+
+    it('writes a form value whose codec cannot serialize it, removing it from the URL', async () => {
+      const diagnostics: unknown[] = [];
+      const definition = defineAppRouter(
+        { RESULTS: RouteNames.RESULTS },
+        {
+          diagnostics: { warn: (diagnostic) => diagnostics.push(diagnostic) },
+          routes: [
+            {
+              path: 'results',
+              routeName: RouteNames.RESULTS,
+              queryParams: { page: queryParam({ codec: numberCodec(), defaultValue: 1 }) },
+              component: Page,
+            },
+          ],
+        },
+      );
+      TestBed.configureTestingModule({ providers: [definition.provideAppRouter()] });
+      const router = TestBed.inject(Router);
+      await router.navigateByUrl('/results?page=2');
+      const results = TestBed.inject(definition.AppRouter).routes.RESULTS;
+      const { form } = TestBed.runInInjectionContext(() => createQueryParamsFormGroup(results));
+
+      form.controls.page.setValue(Number.NaN);
+      await elapse();
+      expect(router.url).toBe('/results');
+      expect(diagnostics).toEqual([
+        expect.objectContaining({ code: 'PARAM_SERIALIZE_FAILED', parameter: 'page' }),
+      ]);
+    });
   });
 
   it("doesn't write a form edit that goes back to the URL's value", async () => {

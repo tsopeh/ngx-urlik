@@ -201,13 +201,14 @@ export function createParameterSerializer(report: ReportParameterFailure) {
   // on the first non-silent write or check.
   const defaultOutcomes = new WeakMap<CompiledQueryParam, SerializeOutcome>();
   const reportedBadDefaults = new WeakSet<CompiledQueryParam>();
-  const defaultText = (param: CompiledQueryParam, silent: boolean): string | null => {
-    if (!param.definition.hasDefault) {
-      return null;
-    }
+  const defaultText = (
+    param: CompiledQueryParam,
+    defaultValue: unknown,
+    silent: boolean,
+  ): string | null => {
     let outcome = defaultOutcomes.get(param);
     if (!outcome) {
-      outcome = trySerialize(param, param.definition.defaultValue);
+      outcome = trySerialize(param, defaultValue);
       defaultOutcomes.set(param, outcome);
     }
     if (!outcome.ok) {
@@ -240,7 +241,7 @@ export function createParameterSerializer(report: ReportParameterFailure) {
     if (!param.definition.hasDefault) {
       return encoded;
     }
-    const atDefault = encoded.text === defaultText(param, silent);
+    const atDefault = encoded.text === defaultText(param, param.definition.defaultValue, silent);
     return atDefault ? { ok: true, text: null } : encoded;
   };
 
