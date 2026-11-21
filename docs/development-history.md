@@ -38,8 +38,9 @@ gives the path to it. Commit hashes point to the code for each step.
 | Nov 19, 2026    | Version 2.0.0, for the breaking changes in forms, `ifActive`, and patches           |
 | Nov 19, 2026    | `writeWhen` becomes `writeOn: 'change' \| 'submit'`. Validators always apply        |
 | Nov 19, 2026    | Version 2.1.0 needs Angular 22.2.6, the first release where Signal Forms work       |
+| Nov 20, 2026    | Version 3.0.0: compensating-code cleanup, Reactive debounce, Signal `submitAction`  |
 
-The package version is `2.1.0`. In conversation we call the design after Nov 13 "API version 3".
+The package version is `3.0.0`. In conversation we call the design after Nov 13 "API version 3".
 The maintainer chose `1.0.0` for the first publish on Nov 15. Version `2.0.0` follows on Nov 19,
 because the branch `feat/submit-writes-and-ifactive-values` broke the public API:
 `createQueryParamsFormGroup()` returns `{ form, write }`, `ifActive` is a function instead of a

@@ -1,6 +1,6 @@
 {
   "name": "ngx-urlik",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "Type-safe URL parameters and navigation for Angular Router. Name your routes, read parameters as signals, update the query, and bind forms to the URL.",
   "license": "MIT",
   "keywords": [
