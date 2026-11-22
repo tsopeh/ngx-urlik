@@ -34,6 +34,14 @@ class Item {
   }
 }
 
+@Component({ template: '' })
+class SilentItem {
+  private readonly read = inject(Reader);
+  constructor() {
+    seen.push(this.read());
+  }
+}
+
 @Injectable()
 class NoReuse extends BaseRouteReuseStrategy {
   override shouldReuseRoute(): boolean {
@@ -153,8 +161,10 @@ describe('reads during navigation', () => {
 
   async function setupLaggingItem(options: {
     read: (item: {
-      params: () => { path: { id: number }; query: { tags: readonly string[]; page: number } };
+      params: () => { path: { id: number }; query: { tags: readonly string[]; minRating: number } };
+      ifActive: () => unknown;
     }) => unknown;
+    component?: typeof Item | typeof SilentItem;
     canActivate?: CanActivateFn;
     diagnostics?: string[];
   }) {
@@ -168,10 +178,10 @@ describe('reads during navigation', () => {
             pathParams: { id: numberCodec() },
             queryParams: {
               tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),
-              page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
+              minRating: queryParam({ codec: numberCodec(), defaultValue: 0 }),
             },
             ...(options.canActivate ? { canActivate: [options.canActivate] } : {}),
-            component: Item,
+            component: options.component ?? Item,
           },
         ],
         ...(options.diagnostics
@@ -212,7 +222,7 @@ describe('reads during navigation', () => {
     const beforeNav = item.params().query.tags;
     seen.length = 0;
 
-    await harness.navigateByUrl('/items/2?tags=x,y&page=bad');
+    await harness.navigateByUrl('/items/2?tags=x,y&minRating=bad');
     const duringLag = seen[0] as { first: readonly string[]; second: readonly string[] };
     expect(duringLag.first).toBe(beforeNav);
     expect(duringLag.second).toBe(beforeNav);
@@ -249,6 +259,7 @@ describe('reads during navigation', () => {
     let readInConstructor = false;
     let failInConstructor = false;
     const { harness, item } = await setupLaggingItem({
+      component: SilentItem,
       read: (route) => {
         const tags = readInConstructor ? route.params().query.tags : null;
         if (failInConstructor) {
@@ -278,6 +289,7 @@ describe('reads during navigation', () => {
     let allow = true;
     let readInConstructor = false;
     const { harness, item } = await setupLaggingItem({
+      component: SilentItem,
       canActivate: () => allow,
       read: (route) => (readInConstructor ? route.params().query.tags : null),
     });
@@ -290,35 +302,118 @@ describe('reads during navigation', () => {
     await harness.navigateByUrl('/items/1?tags=a,b');
     const duringActivation = seen[0] as readonly string[];
 
-    // Do not read item.params() after NavigationEnd; cancel a later navigation instead.
+    // Nothing reads item.params() after NavigationEnd; cancel a later navigation instead.
     allow = false;
     await harness.navigateByUrl('/items/2?tags=z');
 
     expect(item.params().query.tags).toBe(duringActivation);
   });
 
-  it("doesn't rerun a computed or replace params() after NavigationEnd when URL text didn't change", async () => {
-    let runs = 0;
+  it('keeps values read during activation across a second navigation without an intervening read', async () => {
+    let readInConstructor = false;
+    const { harness, item } = await setupLaggingItem({
+      component: SilentItem,
+      read: (route) => (readInConstructor ? route.params().query.tags : null),
+    });
+
+    await harness.navigateByUrl('/items/0?tags=x');
+    expect(item.params().query.tags).toEqual(['x']);
+    seen.length = 0;
+
+    readInConstructor = true;
+    await harness.navigateByUrl('/items/1?tags=a,b');
+    const first = seen[0] as readonly string[];
+
+    await harness.navigateByUrl('/items/2?tags=a,b');
+    const second = seen[1] as readonly string[];
+
+    expect(second).toBe(first);
+    expect(item.params().query.tags).toBe(first);
+  });
+
+  it('keeps values read during activation when another signal reads during the next activation', async () => {
+    let mode: 'none' | 'params' | 'ifActive' = 'none';
+    const { harness, item } = await setupLaggingItem({
+      component: SilentItem,
+      read: (route) =>
+        mode === 'params'
+          ? route.params().query.tags
+          : mode === 'ifActive'
+            ? route.ifActive()
+            : null,
+    });
+
+    await harness.navigateByUrl('/items/0?tags=x');
+    expect(item.params().query.tags).toEqual(['x']);
+    seen.length = 0;
+
+    mode = 'params';
+    await harness.navigateByUrl('/items/1?tags=a,b');
+    const first = seen[0] as readonly string[];
+
+    mode = 'ifActive';
+    await harness.navigateByUrl('/items/2?tags=a,b');
+
+    expect(item.params().query.tags).toBe(first);
+  });
+
+  it('preserves top-level params() identity across activation and NavigationEnd when URL text is unchanged', async () => {
     let readCurrent: () => unknown = () => null;
     const { harness, item } = await setupLaggingItem({
+      component: SilentItem,
       read: () => readCurrent(),
     });
 
     await harness.navigateByUrl('/items/1?tags=a,b');
+    const before = item.params();
+
+    let runs = 0;
     const derived = computed(() => {
       runs++;
       return item.params();
     });
+    // First read of `derived` happens during activation while URL text of declared params stays the same.
     readCurrent = derived;
-    const before = derived();
-    expect(runs).toBe(1);
+    seen.length = 0;
 
-    // Changing only an undeclared query param activates a fresh component without changing any
-    // declared parameter's URL text.
     await harness.navigateByUrl('/items/1?tags=a,b&other=1');
+    const duringActivation = seen[0];
     const after = derived();
+
+    expect(duringActivation).toBe(before);
     expect(after).toBe(before);
+    expect(item.params()).toBe(before);
     expect(runs).toBe(1);
+  });
+
+  it('recomputes a computed after a cancelled activation following an unread NavigationEnd', async () => {
+    let fail = false;
+    let readCurrent: () => unknown = () => null;
+    const { harness, item } = await setupLaggingItem({
+      component: SilentItem,
+      read: () => {
+        const value = readCurrent();
+        if (fail) {
+          throw new Error('activation failed');
+        }
+        return value;
+      },
+    });
+
+    await harness.navigateByUrl('/items/0?tags=x');
+    const derived = computed(() => item.params().query.tags);
+    expect(derived()).toEqual(['x']);
+
+    // Commit /items/1 without reading `derived`.
+    await harness.navigateByUrl('/items/1?tags=a,b');
+
+    // Read `derived` during activation of /items/2, then roll back to /items/1.
+    readCurrent = derived;
+    fail = true;
+    await expect(harness.navigateByUrl('/items/2?tags=c,d')).rejects.toThrow('activation failed');
+    fail = false;
+
+    expect(derived()).toEqual(['a', 'b']);
   });
 });
 

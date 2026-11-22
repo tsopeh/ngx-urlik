@@ -78,29 +78,31 @@ the signal version before `NavigationEnd`.
 
 **Invariants:**
 
-- A read returns values from Angular's current router state, never an older one.
+- A direct signal read returns values from Angular's current router state, never an older one. A
+  `computed()` already cached before a navigation keeps its previous value during activation until
+  `NavigationEnd`.
 - Code that reads a signal reruns only after `NavigationEnd`, and only when a parameter's text in
   the URL changed. A `computed()` that calls `ifActive()` without values reruns only when its
   answer changes.
 - Reading an inactive route throws. The cached error follows the same rules as a cached value.
 
-| Event                                       | Router state                               | Signal goes to | A read returns                                                                      |
-| ------------------------------------------- | ------------------------------------------ | -------------- | ----------------------------------------------------------------------------------- |
-| `NavigationStart`, guards, resolvers        | unchanged                                  | stays          | cached value                                                                        |
-| `BeforeActivateRoutes` (Angular commits)    | new                                        | Lagging        | a read through a per-`RouterState` copy of `ValueCache`                             |
-| `NavigationEnd`                             | unchanged                                  | Current        | recomputed value (promoting the lag copy if present; clearing stale lag copies)     |
-| `NavigationCancel` or `NavigationError` (1) | Angular restores the state it had at start | Current (1)    | cached value if read at that state, or recomputed value (clearing stale lag copies) |
-| `NavigationSkipped`                         | unchanged                                  | stays          | cached value                                                                        |
+| Event                                       | Router state                               | Signal goes to | A read returns                                                                    |
+| ------------------------------------------- | ------------------------------------------ | -------------- | --------------------------------------------------------------------------------- |
+| `NavigationStart`, guards, resolvers        | unchanged                                  | stays          | cached value                                                                      |
+| `BeforeActivateRoutes` (Angular commits)    | new                                        | Lagging        | a read through a per-signal copy of `ValueCache` scoped to that `RouterState`     |
+| `NavigationEnd`                             | unchanged                                  | Current        | recomputed value (promoting any lag copy whose `RouterState` committed)           |
+| `NavigationCancel` or `NavigationError` (1) | Angular restores the state it had at start | Current (1)    | cached value if read at that state, or recomputed value (promoting committed lag) |
+| `NavigationSkipped`                         | unchanged                                  | stays          | cached value                                                                      |
 
-(1) Angular's `resetInternalState()` restores the state from before the navigation. If the signal
-already read that state, `source` matches again and reads return the cached value; if the previous
-`NavigationEnd` wasn't read yet, the next read recomputes from the committed state and preserves its
-promoted lag copy because `clearLag()` runs only when `lagState !== router.routerState`.
+(1) Angular's `resetInternalState()` restores the state from before the navigation. Committed states
+are recorded in `committedStates`, so a lag copy from an earlier unread `NavigationEnd` is still
+promoted on the next read. If a signal's `computed()` returned `uncommitted` during the cancelled
+activation, the router bumps `navigation` so the next read recomputes from the restored state.
 
 ## Write
 
 `patchQuery` in `route-node.ts` parses the starting URL, writes only the declared query parameters
-passed in the patch, and leaves untouched parameters as they are. It then calls
+passed in the patch, and leaves unmentioned parameters as they are. It then calls
 `router.navigateByUrl()` with the caller's options. The starting URL depends on what's running:
 
 - **Nothing.** It starts from the current URL. If the URL wouldn't change, it resolves `true`
@@ -201,9 +203,9 @@ A write follows these steps:
 5. Send the patch, unless it matches the running write (in which case `running.fields` records the
    latest written fields), or nothing is running and the patch is empty.
 
-When a write resolves `true`, `takeWrittenValues()` checks each field that was written. If neither
-the model nor the form's current draft changed from the written value, and the URL's value differs
-by canonical URL text, the binding sets that field to the URL's value. This updates fields that
+When a write resolves `true`, `takeWrittenValues()` checks each field that was written. If both the
+model and the form's current draft still match the written value, and the URL's value differs by
+canonical URL text, the binding sets that field to the URL's value. This updates fields that
 `beforeWrite` changed or set to `undefined`, values the codec couldn't write, and defaulted fields
 cleared to `null`.
 

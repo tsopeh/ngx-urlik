@@ -19,7 +19,6 @@ import {
   submit,
 } from '@angular/forms/signals';
 import { CanActivateFn, NavigationEnd, NavigationStart, Router } from '@angular/router';
-import type { Subject } from 'rxjs';
 import {
   bindQueryParamsToFormGroup,
   bindQueryParamsToSignalForm,
@@ -1368,16 +1367,28 @@ describe('query forms', () => {
 
     it('stops following the URL and unsubscribes from form streams when destroyed', async () => {
       const { results, router } = await setup();
+      const form = new FormGroup({
+        search: new FormControl('', { nonNullable: true }),
+        page: new FormControl(1, { nonNullable: true }),
+      });
+      const spies = [
+        vi.spyOn(form.valueChanges, 'subscribe'),
+        vi.spyOn(form.statusChanges, 'subscribe'),
+        vi.spyOn(form.events, 'subscribe'),
+      ];
       const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
-      const { form } = createIn(injector, () => createQueryParamsFormGroup(results));
+      createIn(injector, () => bindQueryParamsToFormGroup(results, form));
 
       injector.destroy();
       await router.navigateByUrl('/results?search=after');
       TestBed.flushEffects();
 
       expect(form.controls.search.value).toBe('');
-      expect((form.valueChanges as Subject<unknown>).observed).toBe(false);
-      expect((form.statusChanges as Subject<unknown>).observed).toBe(false);
+      expect(
+        spies.every(
+          (spy) => (spy.mock.results[0]?.value as { closed: boolean } | undefined)?.closed,
+        ),
+      ).toBe(true);
     });
 
     it('keeps a debounced edit made while a clamped write runs', async () => {
@@ -1438,7 +1449,31 @@ describe('query forms', () => {
       expect(form.controls.page.value).toBe(5);
     });
 
-    it('takes the URL value back when a second clamped write coalesces into the running write', async () => {
+    it('keeps a model change made while a write runs under writeOn: submit even if typing returns to the written value', async () => {
+      const { results, router } = await setup();
+      await router.navigateByUrl('/results?page=5');
+      const { form, write } = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, {
+          writeOn: 'submit',
+          debounce: { page: 10_000 },
+          beforeWrite: (patch) =>
+            patch.page !== undefined ? { ...patch, page: Math.min(patch.page, 5) } : patch,
+        }),
+      );
+
+      // Submit sends page=9 (clamped to 5). Before it settles, code sets model to 7, then
+      // debounced typing sets the draft back to 9 (so draft === 9 while model === 7).
+      form.controls.page.setValue(9);
+      const pending = write();
+      form.controls.page.setValue(7);
+      typeInto(form.controls.page, 9);
+      await pending;
+
+      expect(router.url).toBe('/results?page=5');
+      expect(form.controls.page.value).toBe(9);
+    });
+
+    it('takes the URL value back when a second clamped write matches the running write', async () => {
       const { results, router } = await setup();
       await router.navigateByUrl('/results?page=5');
       const { form } = TestBed.runInInjectionContext(() =>

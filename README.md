@@ -796,11 +796,11 @@ A bound form works like this:
   passes. See [Skip a too-short search](#skip-a-too-short-search).
 - A write is a patch, so it adds up with the form's other writes and with `patchQuery()` calls.
 - Setting a field from a query parameter never marks it touched or dirty.
-- After a write succeeds, a field takes the URL's value if its value differs from the URL and
-  neither the model nor the form draft changed since the write started. This happens when
-  `beforeWrite` changes a field or sets it to `undefined`, when the codec can't write the value, or
-  when a defaulted field is set to `null`. Clearing a number input with a default restores the
-  default right away, so add a `debounce` if users clear the input before typing a new number.
+- After a write succeeds, a field takes the URL's value if its value differs from the URL and both
+  its model and form draft still match the written value. This happens when `beforeWrite` changes a
+  field or sets it to `undefined`, when the codec can't write the value, or when a defaulted field
+  is set to `null`. Clearing a number input with a default restores the default right away, so add a
+  `debounce` if users clear the input before typing a new number.
 - The binding writes values exactly as typed. If a request needs a trimmed search, trim it where you
   build the request.
 

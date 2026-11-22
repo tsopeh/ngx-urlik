@@ -84,55 +84,51 @@ export function createAppRouter(
 
   const navigation = signal(0);
   let committedState = router.routerState;
-  let lagState: RouterState | undefined;
-  let lagCaches = new WeakMap<object, ValueCache>();
-  const clearLag = () => {
-    lagState = undefined;
-    lagCaches = new WeakMap();
-  };
+  const committedStates = new WeakSet<RouterState>([committedState]);
+  let sawUncommitted = false;
   const subscription = router.events.subscribe((event) => {
     if (event instanceof NavigationEnd) {
       committedState = router.routerState;
-      if (lagState !== committedState) {
-        clearLag();
-      }
+      committedStates.add(committedState);
+      sawUncommitted = false;
       navigation.update((value) => value + 1);
     } else if (event instanceof NavigationCancel || event instanceof NavigationError) {
-      if (lagState !== router.routerState) {
-        clearLag();
+      if (sawUncommitted) {
+        sawUncommitted = false;
+        navigation.update((value) => value + 1);
       }
     }
   });
   destroyRef.onDestroy(() => {
     subscription.unsubscribe();
-    clearLag();
     pendingWrite = null;
   });
 
   // Angular switches to the new router state and creates the new page before NavigationEnd. Until
-  // then the cached value comes from the old state, so a read uses a per-RouterState copy of
-  // ValueCache. Each signal has its own ValueCache, so a parameter whose URL text didn't change
-  // stays `===`, and a rolled-back navigation never mutates the committed cache.
+  // then the cached value comes from the old state, so a read uses a per-signal copy of ValueCache
+  // scoped to that RouterState. When that state commits, the copy is promoted into `values`; if
+  // activation rolls back, the copy is discarded without mutating `values`.
   const uncommitted = Symbol();
   const routerSignal = <T>(
     readWith: (values: ValueCache) => T,
     equal: ValueEqualityFn<T>,
   ): Signal<T> => {
-    // Per-signal key into lagCaches, so each signal keeps its own copy of ValueCache.
-    const cacheKey = {};
     let values: ValueCache = new Map();
+    let lag: { state: RouterState; values: ValueCache } | undefined;
     let source: RouterState | undefined;
-    const readLag = (state: RouterState) => {
-      if (lagState !== state) {
-        lagState = state;
-        lagCaches = new WeakMap();
+    const promoteCommittedLag = () => {
+      if (lag && committedStates.has(lag.state)) {
+        values = lag.values;
+        lag = undefined;
       }
-      let lagValues = lagCaches.get(cacheKey);
-      if (!lagValues) {
-        lagValues = new Map(values);
-        lagCaches.set(cacheKey, lagValues);
+    };
+    const readLag = (state: RouterState, previous: T | typeof uncommitted): T => {
+      promoteCommittedLag();
+      if (lag?.state !== state) {
+        lag = { state, values: new Map(values) };
       }
-      return readWith(lagValues);
+      const next = readWith(lag.values);
+      return previous !== uncommitted && equal(previous, next) ? previous : next;
     };
     // Treating `uncommitted` as equal to the previous value prevents a spurious version bump during
     // activation, so a computed() doesn't rerun after NavigationEnd when URL text is unchanged.
@@ -144,12 +140,12 @@ export function createAppRouter(
         const state = router.routerState;
         if (state !== committedState) {
           source = undefined;
+          sawUncommitted = true;
           return uncommitted;
         }
-        const promotedLag = lagState === state ? lagCaches.get(cacheKey) : undefined;
-        if (promotedLag) {
-          values = promotedLag;
-          lagCaches.delete(cacheKey);
+        promoteCommittedLag();
+        if (lag && lag.state !== state) {
+          lag = undefined;
         }
         source = state;
         return readWith(values);
@@ -159,17 +155,19 @@ export function createAppRouter(
     // Checked after each read, because reading the computed is what records `source`.
     const cacheIsCurrent = () => source === router.routerState;
     const current = () => {
+      let cachedValue: T | typeof uncommitted = uncommitted;
       try {
         const value = cached();
         if (cacheIsCurrent()) {
           return value as T;
         }
+        cachedValue = value;
       } catch (error) {
         if (cacheIsCurrent()) {
           throw error;
         }
       }
-      return readLag(router.routerState);
+      return readLag(router.routerState, cachedValue);
     };
     // Copy the computed's own properties, so Angular still treats the wrapper as a signal.
     return Object.assign(current, cached) as Signal<T>;

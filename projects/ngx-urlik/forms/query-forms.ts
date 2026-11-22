@@ -170,10 +170,10 @@ function createQuerySync<Q extends QueryState>(
     const currentDraft = host.draft();
     const changes: Changes<Q> = {};
     for (const param of fieldsOf(fields)) {
-      const unchangedSinceWrite =
+      const matchesWrittenValue =
         Object.is(model[param], fields[param]) && Object.is(currentDraft[param], fields[param]);
       const shouldTakeUrlValue =
-        unchangedSinceWrite && !sameValue(param, url[param], fields[param]);
+        matchesWrittenValue && !sameValue(param, url[param], fields[param]);
       if (shouldTakeUrlValue) {
         changes[param] = url[param];
       }
@@ -304,7 +304,12 @@ function createQuerySync<Q extends QueryState>(
       }
       await newestWrite;
     },
-    waitForWrite: () => newestWrite,
+    writeIfValid: (blockedByErrors: boolean) =>
+      blockedByErrors
+        ? newestWrite
+        : options.writeOn === 'submit'
+          ? (writeDraft(), newestWrite)
+          : newestWrite,
     /** Reads `params()` in an effect and updates the form on changes. Call after registering form-change watchers. */
     start: (onDestroy: () => void) => {
       const urlEffect = effect(() => followUrl());
@@ -462,7 +467,7 @@ export function bindQueryParamsToFormGroup<Q extends QueryState>(
   return {
     write: () => {
       flushTimers();
-      return form.invalid ? sync.waitForWrite() : sync.submit();
+      return sync.writeIfValid(form.invalid);
     },
   };
 }
@@ -541,7 +546,7 @@ export function bindQueryParamsToSignalForm<Q extends QueryState>(
       // With writeOn: 'submit', the form's errors block the write, as in Reactive Forms. Read after
       // markAsTouched(), so the validators have seen the typing it moved into the model.
       const blockedByErrors = !insideSubmit && untracked(state.invalid);
-      const written = blockedByErrors ? sync.waitForWrite() : sync.submit();
+      const written = sync.writeIfValid(blockedByErrors);
       // Angular ignores a submit while the last one runs, so the user's next submit would be lost
       // while a slow page loads. The submit ends once the write has started.
       return insideSubmit ? Promise.resolve() : written;
