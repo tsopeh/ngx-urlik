@@ -517,9 +517,11 @@ For a link to a section of the current page, use Angular's own form:
 ## Read the URL
 
 Every named route has a `params` signal that returns `{ path, query }`: its path and query
-parameters, including those of the routes above it. It returns the new URL's values before Angular
-creates the new page, so a page's constructor already reads its own URL. Calling `params()` on an
-inactive route throws.
+parameters, including those of the routes above it. Calling `params()` directly returns the new
+URL's values before Angular creates the new page, so a page's constructor already reads its own
+URL. A `computed()` that was already cached before the navigation still returns its previous value
+(which can be from an earlier navigation) until `NavigationEnd`, so read `params()` directly in a
+constructor. Calling `params()` on an inactive route throws.
 
 `params()` returns a new value for a parameter only when its text in the URL changes. Otherwise it
 returns the same value as before. Go from `?sort=title:asc&minRating=1` to

@@ -703,9 +703,9 @@ Three rounds on Nov 11–12 looked for code that only compensated for earlier ch
     (`hasDefault: true | false`).
   - Returned tagged `{ ok, text }` outcomes from `queryText()` and `pathText()`, and cached
     canonical URL text per `RuntimeState` for repeated `ifActive(values)` checks.
-  - Tracked `committedState` and `committedStates` with an `uncommitted` sentinel, and scoped
-    `routerSignal()`'s Lagging reads to a per-signal copy of `ValueCache` that promotes whenever its
-    `RouterState` has committed.
+  - Tracked `committedState` and `committedStates` with an `uncommitted` sentinel, cached thrown
+    errors as values compared by message, and scoped `routerSignal()`'s Lagging reads to a
+    per-signal copy of `ValueCache` that replaces `values` whenever its `RouterState` has committed.
   - Replaced `patchQuery()`'s three `UrlTree` Weak collections and re-decoding with a single
     `pendingWrite` record (cleared on settlement and destroy) that writes only supplied keys,
     leaving unmentioned invalid keys in the URL (a behavior change from `master`, which previously
@@ -721,7 +721,9 @@ Three rounds on Nov 11–12 looked for code that only compensated for earlier ch
     linear bottom-up scan.
   - Simplified TasteTrack (`DetailPage` route union and `FormControl` selects, and `Preferences`
     initialization via `provideEnvironmentInitializer()`).
-  - Set the package version back to `2.1.0` (after bumping to `3.0.0` in `1d47380`).
+  - Set the package version back to `2.1.0` (after bumping to `3.0.0` in `1d47380`) because callers
+    using `queryParam()` stay compatible; only hand-built query objects missing `hasDefault` are now
+    rejected.
   - **Where it stands:** in place on `audit/compensating-code`, including the accepted `patchQuery()`
     change to leave unmentioned keys as they are.
 

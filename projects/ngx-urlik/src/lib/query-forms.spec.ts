@@ -1449,7 +1449,7 @@ describe('query forms', () => {
       expect(form.controls.page.value).toBe(5);
     });
 
-    it('keeps a model change made while a write runs under writeOn: submit even if typing returns to the written value', async () => {
+    it('keeps the typed value when the model changes during a write under writeOn: submit', async () => {
       const { results, router } = await setup();
       await router.navigateByUrl('/results?page=5');
       const { form, write } = TestBed.runInInjectionContext(() =>

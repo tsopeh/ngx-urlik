@@ -65,11 +65,13 @@ switch, so `paramsSnapshot()` and `globalParamsSnapshot()` read the snapshot the
 ### Router signal states
 
 `routerSignal()` in `route-node.ts` provides `params`, `globalParams()`, and the route check inside
-`ifActive()`. Each signal keeps a cached `computed()` and `source`, the `router.routerState` it
+`ifActive()`. Each signal stores a cached `computed()` and `source`, the `router.routerState` it
 last read. The router tracks `committedState` (the `router.routerState` at the last `NavigationEnd`)
 and returns an `uncommitted` sentinel from `computed()` while `router.routerState !== committedState`.
-Its equality function treats `uncommitted` as equal to the previous value, so activation never bumps
-the signal version before `NavigationEnd`.
+Its equality function treats `uncommitted` as equal to the previous value and compares cached errors
+by message, so activation never bumps the signal version before `NavigationEnd` and inactive routes
+don't rerun downstream computeds on unrelated navigations or cancels. During Lagging reads,
+`readLag()` returns the previous value when `equal()` matches, preserving top-level object identity.
 
 | State   | Meaning                                                                       |
 | ------- | ----------------------------------------------------------------------------- |
@@ -79,7 +81,7 @@ the signal version before `NavigationEnd`.
 **Invariants:**
 
 - A direct signal read returns values from Angular's current router state, never an older one. A
-  `computed()` already cached before a navigation keeps its previous value during activation until
+  `computed()` already cached before a navigation returns its previous value during activation until
   `NavigationEnd`.
 - Code that reads a signal reruns only after `NavigationEnd`, and only when a parameter's text in
   the URL changed. A `computed()` that calls `ifActive()` without values reruns only when its
@@ -406,11 +408,12 @@ These cases look like bugs. Each has been checked and is fine:
   handler, and the edit survives.
 - **Two form writes one macrotask apart, like two `setTimeout` callbacks, with no guards or
   resolvers.** They don't overlap. A query-only navigation finishes first.
-- **A computed that read a value Angular later took back.** In the Lagging state, a computed that
-  reads `params()` keeps the fresh value. Angular rolls the commit back when activating the new page
-  throws. Then no `NavigationEnd` comes, and the computed keeps values from the discarded state
-  until the next navigation. Angular's own `ActivatedRoute` shows the same discarded values there,
-  so we leave it.
+- **A computed that read a value Angular later took back.** Angular rolls the commit back when
+  activating the new page throws, so no `NavigationEnd` comes. If a `computed()` recomputed during
+  activation after an earlier unread `NavigationEnd`, the router bumps `navigation` on the error and
+  the computed refreshes to the restored state. Otherwise, the computed retains values from the
+  discarded state until the next navigation. Angular's own `ActivatedRoute` shows the same discarded
+  values there, so we leave it.
 - **Path parameters with `/`, `?`, `#`, `;`, `(`, `%`, or spaces.** Angular encodes them inside one
   segment, like `/items/a%2Fb`, and they read back unchanged.
 - **Out-of-order `reload()` results in the demo.** IndexedDB runs read transactions in start order,

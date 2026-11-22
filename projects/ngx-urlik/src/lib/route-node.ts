@@ -106,9 +106,15 @@ export function createAppRouter(
 
   // Angular switches to the new router state and creates the new page before NavigationEnd. Until
   // then the cached value comes from the old state, so a read uses a per-signal copy of ValueCache
-  // scoped to that RouterState. When that state commits, the copy is promoted into `values`; if
-  // activation rolls back, the copy is discarded without mutating `values`.
+  // scoped to that RouterState. When that state commits, the copy replaces `values`; if activation
+  // rolls back, the copy is discarded without mutating `values`.
   const uncommitted = Symbol();
+  type CachedRead<T> =
+    | { readonly ok: true; readonly value: T }
+    | { readonly ok: false; readonly error: unknown }
+    | typeof uncommitted;
+  const sameError = (a: unknown, b: unknown) =>
+    Object.is(a, b) || (a instanceof Error && b instanceof Error && a.message === b.message);
   const routerSignal = <T>(
     readWith: (values: ValueCache) => T,
     equal: ValueEqualityFn<T>,
@@ -122,19 +128,32 @@ export function createAppRouter(
         lag = undefined;
       }
     };
-    const readLag = (state: RouterState, previous: T | typeof uncommitted): T => {
+    const readLag = (state: RouterState, previous: CachedRead<T>): T => {
       promoteCommittedLag();
       if (lag?.state !== state) {
         lag = { state, values: new Map(values) };
       }
       const next = readWith(lag.values);
-      return previous !== uncommitted && equal(previous, next) ? previous : next;
+      const matchesPrevious =
+        previous !== uncommitted && previous.ok && equal(previous.value, next);
+      return matchesPrevious ? previous.value : next;
     };
     // Treating `uncommitted` as equal to the previous value prevents a spurious version bump during
-    // activation, so a computed() doesn't rerun after NavigationEnd when URL text is unchanged.
-    const sameSignalValue = (a: T | typeof uncommitted, b: T | typeof uncommitted) =>
-      b === uncommitted || (a !== uncommitted && equal(a, b));
-    const cached = computed<T | typeof uncommitted>(
+    // activation, and comparing cached errors by message prevents inactive routes from rerunning
+    // downstream computeds on unrelated navigations or cancels.
+    const sameSignalValue = (a: CachedRead<T>, b: CachedRead<T>) => {
+      if (b === uncommitted) {
+        return true;
+      }
+      if (a === uncommitted) {
+        return false;
+      }
+      if (a.ok && b.ok) {
+        return equal(a.value, b.value);
+      }
+      return !a.ok && !b.ok && sameError(a.error, b.error);
+    };
+    const cached = computed<CachedRead<T>>(
       () => {
         navigation();
         const state = router.routerState;
@@ -148,26 +167,25 @@ export function createAppRouter(
           lag = undefined;
         }
         source = state;
-        return readWith(values);
+        try {
+          return { ok: true, value: readWith(values) };
+        } catch (error) {
+          return { ok: false, error };
+        }
       },
       { equal: sameSignalValue },
     );
     // Checked after each read, because reading the computed is what records `source`.
     const cacheIsCurrent = () => source === router.routerState;
     const current = () => {
-      let cachedValue: T | typeof uncommitted = uncommitted;
-      try {
-        const value = cached();
-        if (cacheIsCurrent()) {
-          return value as T;
+      const result = cached();
+      if (cacheIsCurrent() && result !== uncommitted) {
+        if (result.ok) {
+          return result.value;
         }
-        cachedValue = value;
-      } catch (error) {
-        if (cacheIsCurrent()) {
-          throw error;
-        }
+        throw result.error;
       }
-      return readLag(router.routerState, cachedValue);
+      return readLag(router.routerState, result);
     };
     // Copy the computed's own properties, so Angular still treats the wrapper as a signal.
     return Object.assign(current, cached) as Signal<T>;

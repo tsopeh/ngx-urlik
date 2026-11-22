@@ -309,7 +309,7 @@ describe('reads during navigation', () => {
     expect(item.params().query.tags).toBe(duringActivation);
   });
 
-  it('keeps values read during activation across a second navigation without an intervening read', async () => {
+  it('returns the activation array across a second navigation without an intervening read', async () => {
     let readInConstructor = false;
     const { harness, item } = await setupLaggingItem({
       component: SilentItem,
@@ -331,7 +331,7 @@ describe('reads during navigation', () => {
     expect(item.params().query.tags).toBe(first);
   });
 
-  it('keeps values read during activation when another signal reads during the next activation', async () => {
+  it('returns the activation array when another signal reads during the next activation', async () => {
     let mode: 'none' | 'params' | 'ifActive' = 'none';
     const { harness, item } = await setupLaggingItem({
       component: SilentItem,
@@ -414,6 +414,98 @@ describe('reads during navigation', () => {
     fail = false;
 
     expect(derived()).toEqual(['a', 'b']);
+  });
+
+  it("doesn't rerun a dirty computed after activation and NavigationEnd when the URL text matches", async () => {
+    let readCurrent: () => unknown = () => null;
+    const { harness, item } = await setupLaggingItem({
+      component: SilentItem,
+      read: () => readCurrent(),
+    });
+
+    await harness.navigateByUrl('/items/1?tags=a,b');
+    let runs = 0;
+    const derived = computed(() => {
+      runs++;
+      return item.params();
+    });
+    const before = derived();
+    expect(runs).toBe(1);
+
+    // Commit another navigation without reading `derived`, so `cached` is dirty entering activation.
+    await harness.navigateByUrl('/items/1?tags=a,b&step=1');
+
+    // Read `derived` during activation of a third navigation with the same declared params.
+    readCurrent = derived;
+    await harness.navigateByUrl('/items/1?tags=a,b&step=2');
+
+    expect(derived()).toBe(before);
+    expect(runs).toBe(1);
+  });
+
+  it("doesn't rerun a computed catching an inactive route error on NavigationEnd or cancelled activation", async () => {
+    let fail = false;
+    let readCurrent: () => unknown = () => null;
+    const definition = defineAppRouter(
+      { HOME: RouteNames.HOME, ITEM: RouteNames.ITEM },
+      {
+        routes: [
+          { path: 'home', routeName: RouteNames.HOME, component: Home },
+          {
+            path: 'items/:id',
+            routeName: RouteNames.ITEM,
+            pathParams: { id: numberCodec() },
+            component: SilentItem,
+          },
+        ],
+      },
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        definition.provideAppRouter(),
+        { provide: RouteReuseStrategy, useClass: NoReuse },
+        {
+          provide: Reader,
+          useFactory: () => () => {
+            const value = readCurrent();
+            if (fail) {
+              throw new Error('activation failed');
+            }
+            return value;
+          },
+        },
+      ],
+    });
+    const harness = await RouterTestingHarness.create();
+    const { HOME, ITEM } = TestBed.inject(definition.AppRouter).routes;
+
+    await harness.navigateByUrl('/items/1');
+    let runs = 0;
+    const inactiveRead = computed(() => {
+      runs++;
+      try {
+        return HOME.params();
+      } catch {
+        return 'inactive';
+      }
+    });
+    expect(inactiveRead()).toBe('inactive');
+    expect(runs).toBe(1);
+
+    // Another NavigationEnd while HOME stays inactive shouldn't rerun `inactiveRead`.
+    await harness.navigateByUrl('/items/2');
+    expect(inactiveRead()).toBe('inactive');
+    expect(runs).toBe(1);
+
+    // Unread NavigationEnd followed by a cancelled activation that hits `uncommitted` shouldn't rerun it either.
+    await harness.navigateByUrl('/items/3');
+    readCurrent = () => ITEM.params();
+    fail = true;
+    await expect(harness.navigateByUrl('/items/4')).rejects.toThrow('activation failed');
+    fail = false;
+
+    expect(inactiveRead()).toBe('inactive');
+    expect(runs).toBe(1);
   });
 });
 
