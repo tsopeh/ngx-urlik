@@ -131,7 +131,8 @@ fields, so a deep comparison sees no keys and calls any two dates equal. Compari
 **Cost:** a codec must write one text per value and lose nothing, so reading the text gives back an
 equal value. Shorter text is fine. A trimmed value isn't: the form would take the trimmed value back
 while the user is still typing. Values from `params()` are shared between reads, so code must not
-mutate them. Form comparisons encode values on every check that misses `Object.is`.
+mutate them. Form comparisons encode values on every check that misses `Object.is`, and clearing a
+defaulted number input without `debounce` immediately restores the default.
 
 ## Write enum values, not member names
 
@@ -252,11 +253,10 @@ the earlier one, as with two `router.navigate()` calls. Only one runs at a time.
 and the Back button all behave the same way here.
 
 A patch also promises to change only the query parameters it names. It parses the starting URL and
-updates only the keys passed in the patch, leaving untouched keys—including declared query
-parameters with invalid text like `?page=bad`—as they are in the URL. A patch made while another
-patch runs starts from that patch's destination, not from the current URL. Patches add up, and the
-later one wins on a shared query parameter. Without this, `patchQuery({ search })` followed by
-`patchQuery({ minRating })` would drop the search. A form edit and a page's patch made together
+updates only the keys passed in the patch, leaving every other key as it is. A patch made while
+another patch runs starts from that patch's destination, not from the current URL. Patches add up,
+and the later one wins on a shared query parameter. Without this, `patchQuery({ search })` followed
+by `patchQuery({ minRating })` would drop the search. A form edit and a page's patch made together
 would undo each other. The cancelled patch resolves with the result of the patch that included its
 query parameters.
 
@@ -272,12 +272,11 @@ Say the page is on `?minRating=4`, and two patches start in the same tick: `{ se
 `?search=elm&minRating=2`.
 
 **Cost:** this is stricter than Angular's `queryParamsHandling: 'merge'`, which merges with the
-current URL. An untouched query parameter with invalid text stays in the URL until something patches
-it or navigates away, rather than being cleaned up as a side effect of an unrelated patch. A guard
-sees the query parameters of every patch the latest one includes. So a patch it would accept alone
-can be declined along with one it wouldn't. A write that starts while the user navigates doesn't
-happen at all. The form sends the query parameter again with its next write. A debounced form field
-still writes after the user presses Back, if Back left its query parameter alone.
+current URL. A guard sees the query parameters of every patch the latest one includes. So a patch it
+would accept alone can be declined along with one it wouldn't. A write that starts while the user
+navigates doesn't happen at all. The form sends the query parameter again with its next write. A
+debounced form field still writes after the user presses Back, if Back left its query parameter
+alone.
 
 ## Keep drafts in the form, and what's written in the URL
 
@@ -312,8 +311,8 @@ A Reactive Forms `debounce` delays a field's move into those values, as Signal F
 does. So Back drops a waiting edit in both form systems. In both, only typing waits. A value set by
 code is final. Delaying it would only make the page lag, and code that reads the form right after
 setting it would see the old value. The cost: Angular has no public way to remove a
-`registerOnChange` listener, so each control keeps one forwarding listener for its life; and tests
-that simulate typing must pass `{ emitModelToViewChange: false }`.
+`registerOnChange` listener, so each control registers one forwarding listener for its life; and
+tests that simulate typing must pass `{ emitModelToViewChange: false }`.
 
 Some forms should change the URL only on submit, because each URL change starts a request. `writeOn:
 'submit'` keeps every edit in the binding, not in the form. The form's values still change on each

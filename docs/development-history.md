@@ -703,19 +703,25 @@ Three rounds on Nov 11–12 looked for code that only compensated for earlier ch
     (`hasDefault: true | false`).
   - Returned tagged `{ ok, text }` outcomes from `queryText()` and `pathText()`, and cached
     canonical URL text per `RuntimeState` for repeated `ifActive(values)` checks.
-  - Scoped `routerSignal()`'s Lagging reads to a per-`RouterState` copy of `ValueCache`, so
-    rollbacks don't mutate `ValueCache` while repeated lagging reads still reuse cached values.
+  - Tracked `committedState` with an `uncommitted` sentinel and scoped `routerSignal()`'s Lagging
+    reads to a per-`RouterState` copy of `ValueCache`, promoting it on `NavigationEnd` and clearing
+    stale copies only when `lagState !== router.routerState`.
   - Replaced `patchQuery()`'s three `UrlTree` Weak collections and re-decoding with a single
-    `pendingWrite` record that writes only supplied keys (leaving untouched invalid keys in the URL).
+    `pendingWrite` record (cleared on settlement and destroy) that writes only supplied keys,
+    leaving unmentioned invalid keys in the URL.
   - Replaced `ɵqueryDefaults()` with `ɵqueryRouteSupport()` so form bindings compare by canonical
-    URL text and read active `AppRouter` routes directly (keeping a `try/catch` fallback for custom
-    `QueryRoute` objects).
+    URL text (treating `null` as different from a defaulted parameter's default) and read active
+    `AppRouter` routes directly (keeping a `try/catch` fallback for custom `QueryRoute` objects).
   - Split `query-forms.ts` around a shared `createQuerySync()` reconciler with per-system adapters
-    while keeping Reactive Forms' typing-only debounce and Signal Forms' single `write()`.
+    while keeping Reactive Forms' typing-only debounce and Signal Forms' single `write()`, and added
+    `takeWrittenValues()` so fields whose model and draft still match what was written take the
+    URL's value after a successful write.
   - Combined route validation and compilation in `compileRoutes()` into one top-down pass after a
     linear bottom-up scan.
   - Simplified TasteTrack (`DetailPage` route union and `FormControl` selects, and `Preferences`
     initialization via `provideEnvironmentInitializer()`).
+  - Kept the package version at `2.1.0` (reverting the earlier `3.0.0` bump in `1d47380` because
+    the public API stayed compatible).
 
 We left these as they are, because a redesign wouldn't make them simpler: `routerSignal`, the
 `canMatch` codec check, the form binding's `pending`, `lastUrl`, and `held` (now `invalid`), the

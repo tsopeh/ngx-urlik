@@ -65,8 +65,11 @@ switch, so `paramsSnapshot()` and `globalParamsSnapshot()` read the snapshot the
 ### Router signal states
 
 `routerSignal()` in `route-node.ts` provides `params`, `globalParams()`, and the route check inside
-`ifActive()`. Each signal keeps a cached `computed()`. It also keeps `source`, the
-`router.routerState` it last read.
+`ifActive()`. Each signal keeps a cached `computed()` and `source`, the `router.routerState` it
+last read. The router tracks `committedState` (the `router.routerState` at the last `NavigationEnd`)
+and returns an `uncommitted` sentinel from `computed()` while `router.routerState !== committedState`.
+Its equality function treats `uncommitted` as equal to the previous value, so activation never bumps
+the signal version before `NavigationEnd`.
 
 | State   | Meaning                                                                       |
 | ------- | ----------------------------------------------------------------------------- |
@@ -81,16 +84,18 @@ switch, so `paramsSnapshot()` and `globalParamsSnapshot()` read the snapshot the
   answer changes.
 - Reading an inactive route throws. The cached error follows the same rules as a cached value.
 
-| Event                                       | Router state                               | Signal goes to | A read returns                                          |
-| ------------------------------------------- | ------------------------------------------ | -------------- | ------------------------------------------------------- |
-| `NavigationStart`, guards, resolvers        | unchanged                                  | stays          | cached value                                            |
-| `BeforeActivateRoutes` (Angular commits)    | new                                        | Lagging        | a read through a per-router-state copy of `ValueCache`  |
-| `NavigationEnd`                             | unchanged                                  | Current        | recomputed value (promoting the lag copy if present)    |
-| `NavigationCancel` or `NavigationError` (1) | Angular restores the state it had at start | Current        | cached value (the lag copy is cleared)                  |
-| `NavigationSkipped`                         | unchanged                                  | stays          | cached value                                            |
+| Event                                       | Router state                               | Signal goes to | A read returns                                                                      |
+| ------------------------------------------- | ------------------------------------------ | -------------- | ----------------------------------------------------------------------------------- |
+| `NavigationStart`, guards, resolvers        | unchanged                                  | stays          | cached value                                                                        |
+| `BeforeActivateRoutes` (Angular commits)    | new                                        | Lagging        | a read through a per-`RouterState` copy of `ValueCache`                             |
+| `NavigationEnd`                             | unchanged                                  | Current        | recomputed value (promoting the lag copy if present; clearing stale lag copies)     |
+| `NavigationCancel` or `NavigationError` (1) | Angular restores the state it had at start | Current (1)    | cached value if read at that state, or recomputed value (clearing stale lag copies) |
+| `NavigationSkipped`                         | unchanged                                  | stays          | cached value                                                                        |
 
-(1) Angular's `resetInternalState()` restores the same object the signal saw before, so `source`
-matches again.
+(1) Angular's `resetInternalState()` restores the state from before the navigation. If the signal
+already read that state, `source` matches again and reads return the cached value; if the previous
+`NavigationEnd` wasn't read yet, the next read recomputes from the committed state and preserves its
+promoted lag copy because `clearLag()` runs only when `lagState !== router.routerState`.
 
 ## Write
 
@@ -193,23 +198,24 @@ A write follows these steps:
 4. If a write is running, set back each field the running write set and this one leaves out,
    including query parameters `beforeWrite` added, to its value in the URL. That is how typing `x`
    and deleting it ends where it started.
-5. Send the patch, unless it matches the running write, or nothing is running and the patch is
-   empty.
+5. Send the patch, unless it matches the running write (in which case `running.fields` records the
+   latest written fields), or nothing is running and the patch is empty.
 
 When a write resolves `true`, `takeWrittenValues()` checks each field that was written. If neither
-the model nor the form's current draft has changed since the write started, and the URL's value
-differs by canonical URL text, the binding sets that field to the URL's value. This updates fields
-that `beforeWrite` clamped, values the codec couldn't write, and defaulted fields cleared to `null`.
+the model nor the form's current draft changed from the written value, and the URL's value differs
+by canonical URL text, the binding sets that field to the URL's value. This updates fields that
+`beforeWrite` changed or set to `undefined`, values the codec couldn't write, and defaulted fields
+cleared to `null`.
 
 `write()` waits for `newestWrite`, which resolves after the newest write finishes. An older write
 resolves as the newer one that included it.
 
-**URL to model.** When `params()` changes, a field takes its query parameter's value only if three
-things hold: the query parameter changed since `lastUrl`, it differs from the model by canonical URL
-text (for a parameter with a default, `null` counts as different from the default even though both
-leave the key out of the URL), and the field isn't Invalid. Taking the value also clears the field's
-debounce timer, as Signal Forms' `debounce()` does. A navigation that changes other query parameters
-leaves the draft alone.
+**URL to model.** When `params()` changes, a field takes its query parameter's value only when the
+query parameter changed since `lastUrl`, differs from the model by canonical URL text (for a
+parameter with a default, `null` counts as different from the default even though both leave the key
+out of the URL), and isn't Invalid. Taking the value also clears the field's debounce timer, as
+Signal Forms' `debounce()` does. A navigation that changes other query parameters leaves the draft
+alone.
 
 Because the binding compares field values by canonical URL text, picking a new object that writes
 the same text as the URL doesn't differ from the URL and never starts a write or runs `beforeWrite`.
@@ -240,24 +246,24 @@ every edit stays Unsent until a submit without errors.
 
 ### Transitions
 
-| Event                              | From              | To                          | What else happens                                               |
-| ---------------------------------- | ----------------- | --------------------------- | --------------------------------------------------------------- |
-| Edit by code, or no debounce       | any               | Synced, Sending, or Invalid | one write includes every field that differs                     |
-| Typing, with debounce              | any               | Waiting                     | timer restarts                                                  |
-| Submitted or `write()`, `'change'` | Waiting           | Synced, Sending, or Invalid | timer cleared; the model takes the edit                         |
-| Submitted or `write()`, `'submit'` | Waiting or Unsent | Synced or Sending           | timer cleared; one write includes every field; none with errors |
-| Timer fires                        | Waiting           | Synced, Sending, or Invalid | the model takes the edit                                        |
-| Its validators pass                | Invalid           | Sending                     |                                                                 |
-| Write resolves `true`              | Sending           | Synced                      | untouched fields whose value differs from the URL take the URL's value |
-| Newest write resolves `false`      | Sending           | Unsent                      | reports `declined`                                              |
-| Older write finishes               | Sending           | Sending                     | the newer write includes the field and reports its own result   |
-| Write rejects                      | Sending           | Unsent                      | reports `error`                                                 |
-| `beforeWrite` throws               | any               | Unsent                      | error goes to `ErrorHandler`                                    |
-| Its query parameter changes        | not Invalid       | Synced                      | timer cleared; the form shows the new value                     |
-| Its query parameter changes        | Invalid           | Invalid                     | the form keeps the draft                                        |
-| Other query parameters change      | any               | same                        |                                                                 |
-| Route goes inactive                | any               | same                        | reads return nothing; the form keeps its values                 |
-| Injection context destroyed        | any               | gone                        | timers cleared; writes that finish later are ignored            |
+| Event                              | From              | To                          | What else happens                                                          |
+| ---------------------------------- | ----------------- | --------------------------- | -------------------------------------------------------------------------- |
+| Edit by code, or no debounce       | any               | Synced, Sending, or Invalid | one write includes every field that differs                                |
+| Typing, with debounce              | any               | Waiting                     | timer restarts                                                             |
+| Submitted or `write()`, `'change'` | Waiting           | Synced, Sending, or Invalid | timer cleared; the model takes the edit                                    |
+| Submitted or `write()`, `'submit'` | Waiting or Unsent | Synced or Sending           | timer cleared; one write includes every field; none with errors            |
+| Timer fires                        | Waiting           | Synced, Sending, or Invalid | the model takes the edit                                                   |
+| Its validators pass                | Invalid           | Sending                     |                                                                            |
+| Write resolves `true`              | Sending           | Synced                      | fields still matching the written value take the URL's value if it differs |
+| Newest write resolves `false`      | Sending           | Unsent                      | reports `declined`                                                         |
+| Older write finishes               | Sending           | Sending                     | the newer write includes the field and reports its own result              |
+| Write rejects                      | Sending           | Unsent                      | reports `error`                                                            |
+| `beforeWrite` throws               | any               | Unsent                      | error goes to `ErrorHandler`                                               |
+| Its query parameter changes        | not Invalid       | Synced                      | timer cleared; the form shows the new value                                |
+| Its query parameter changes        | Invalid           | Invalid                     | the form keeps the draft                                                   |
+| Other query parameters change      | any               | same                        |                                                                            |
+| Route goes inactive                | any               | same                        | reads return nothing; the form keeps its values                            |
+| Injection context destroyed        | any               | gone                        | timers cleared; writes that finish later are ignored                       |
 
 ### Invariants
 

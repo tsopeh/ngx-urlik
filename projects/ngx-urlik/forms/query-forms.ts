@@ -47,6 +47,9 @@ export interface QueryParamsBinding {
    * `writeOn: 'change'`, it writes each field whose validators pass. With `writeOn: 'submit'`, it
    * writes the whole draft, unless the form has errors. Resolves once the form's newest write
    * settles, even one that was already running.
+   *
+   * As a Signal Form's submit action, it resolves once the write starts. Angular ignores a submit
+   * while the last one runs, so waiting longer would drop the user's next submit.
    */
   readonly write: () => Promise<void>;
 }
@@ -115,7 +118,8 @@ function createQuerySync<Q extends QueryState>(
   const invalid = new Set<keyof Q>();
   // Each write gets the next number. `running` is the newest write, until it settles.
   let writes = 0;
-  let running: { readonly id: number; readonly patch: Partial<Q> } | null = null;
+  let running: { readonly id: number; readonly patch: Partial<Q>; fields: Changes<Q> } | null =
+    null;
   // Settles after the newest write does. An older write resolves as the newer one that carried it,
   // so waiting for the newest covers them all.
   let newestWrite: Promise<void> = Promise.resolve();
@@ -155,8 +159,9 @@ function createQuerySync<Q extends QueryState>(
     }
   };
 
-  // A field the user hasn't edited since the write takes the URL's value, so a clamped or
-  // unserializable value doesn't stay in the form after the write resolves true.
+  // When a field's model and draft still match what was written, it takes the URL's value, so a
+  // clamped, unserializable, or null-cleared value doesn't stay in the form after the write
+  // resolves true.
   const takeWrittenValues = (fields: Changes<Q>) => {
     const url = read();
     if (!url) {
@@ -165,9 +170,10 @@ function createQuerySync<Q extends QueryState>(
     const currentDraft = host.draft();
     const changes: Changes<Q> = {};
     for (const param of fieldsOf(fields)) {
-      const untouched =
+      const unchangedSinceWrite =
         Object.is(model[param], fields[param]) && Object.is(currentDraft[param], fields[param]);
-      const shouldTakeUrlValue = untouched && !sameValue(param, url[param], fields[param]);
+      const shouldTakeUrlValue =
+        unchangedSinceWrite && !sameValue(param, url[param], fields[param]);
       if (shouldTakeUrlValue) {
         changes[param] = url[param];
       }
@@ -181,7 +187,8 @@ function createQuerySync<Q extends QueryState>(
   const send = (fields: Changes<Q>, patch: Partial<Q>) => {
     const hasFields = fieldsOf(fields).length > 0;
     const id = ++writes;
-    running = { id, patch };
+    const entry = { id, patch, fields };
+    running = entry;
     const settle = () => {
       if (running?.id === id) {
         running = null;
@@ -194,7 +201,7 @@ function createQuerySync<Q extends QueryState>(
         }
         settle();
         if (result) {
-          takeWrittenValues(fields);
+          takeWrittenValues(entry.fields);
         } else {
           const newestDeclined = id === writes && hasFields;
           if (newestDeclined) {
@@ -257,9 +264,14 @@ function createQuerySync<Q extends QueryState>(
       }
       patch = { ...undo, ...patch };
     }
-    // The same write again would change nothing.
+    // The same write again would change nothing, so keep the running write and record the latest
+    // written fields for takeWrittenValues().
     const nothingNew = running ? sameFields(running.patch, patch) : !fieldsOf(patch).length;
-    if (!nothingNew) {
+    if (nothingNew) {
+      if (running) {
+        running.fields = fields;
+      }
+    } else {
       send(fields, patch);
     }
   };
@@ -278,7 +290,6 @@ function createQuerySync<Q extends QueryState>(
   };
 
   return {
-    initial: model,
     sameValue,
     apply,
     checkValidity: () => {
@@ -294,7 +305,7 @@ function createQuerySync<Q extends QueryState>(
       await newestWrite;
     },
     waitForWrite: () => newestWrite,
-    /** Starts following `params()` in an effect. Call after registering form-change watchers. */
+    /** Reads `params()` in an effect and updates the form on changes. Call after registering form-change watchers. */
     start: (onDestroy: () => void) => {
       const urlEffect = effect(() => followUrl());
       destroyRef.onDestroy(() => {
@@ -337,7 +348,7 @@ export function bindQueryParamsToFormGroup<Q extends QueryState>(
     timers.delete(param);
   };
   const readForm = () => form.getRawValue() as Q;
-  let lastSeen = readForm();
+  let lastSeen!: Q;
 
   const sync = createQuerySync(
     route,

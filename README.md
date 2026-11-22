@@ -712,11 +712,10 @@ await results.patchQuery({ search: 'elm', minRating: 0 });
 
 `minRating` is back at its default, so `patchQuery()` removed it from the URL. `sort` is still
 there, because a patch doesn't change keys the route doesn't declare. The query parameters you left
-out (even ones with invalid text), the path, and the fragment don't change either. Neither does a
-query parameter passed as `undefined`, or one declared by a child route. To clear a query parameter,
-set it to its default or to `null`. A value its codec can't write also removes the query parameter
-from the URL, with a warning. `patchQuery()` takes the same options as `navigate()`, like
-`replaceUrl` and `state`.
+out, the path, and the fragment don't change either. Neither does a query parameter passed as
+`undefined`, or one declared by a child route. To clear a query parameter, set it to its default or
+to `null`. A value its codec can't write also removes the query parameter from the URL, with a
+warning. `patchQuery()` takes the same options as `navigate()`, like `replaceUrl` and `state`.
 
 Patches add up. A patch made while another is running starts from that patch's destination, and the
 later patch wins on a query parameter both set:
@@ -797,9 +796,11 @@ A bound form works like this:
   passes. See [Skip a too-short search](#skip-a-too-short-search).
 - A write is a patch, so it adds up with the form's other writes and with `patchQuery()` calls.
 - Setting a field from a query parameter never marks it touched or dirty.
-- After a write succeeds, if the URL ends up with a different value than what was written—because
-  `beforeWrite` changed it, the codec couldn't write it, or a defaulted field was set to `null`—the
-  binding sets that field to the URL's value unless the user edited it while the write was running.
+- After a write succeeds, a field takes the URL's value if its value differs from the URL and
+  neither the model nor the form draft changed since the write started. This happens when
+  `beforeWrite` changes a field or sets it to `undefined`, when the codec can't write the value, or
+  when a defaulted field is set to `null`. Clearing a number input with a default restores the
+  default right away, so add a `debounce` if users clear the input before typing a new number.
 - The binding writes values exactly as typed. If a request needs a trimmed search, trim it where you
   build the request.
 

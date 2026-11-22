@@ -1052,7 +1052,7 @@ describe('query forms', () => {
       expect(router.url).toBe('/results?search=oak');
     });
 
-    it('writes a field again after Back restores its earlier value', async () => {
+    it('writes a field again after a navigation sets another value', async () => {
       const { results, router } = await setup();
       const { form } = TestBed.runInInjectionContext(() =>
         createQueryParamsFormGroup(results, { debounce: { search: 200 } }),
@@ -1366,7 +1366,7 @@ describe('query forms', () => {
       expect(register).toHaveBeenCalledTimes(1);
     });
 
-    it('stops following the URL when it is destroyed', async () => {
+    it('stops following the URL and unsubscribes from form streams when destroyed', async () => {
       const { results, router } = await setup();
       const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
       const { form } = createIn(injector, () => createQueryParamsFormGroup(results));
@@ -1432,6 +1432,24 @@ describe('query forms', () => {
       );
 
       form.controls.page.setValue(9);
+      await elapse();
+
+      expect(router.url).toBe('/results?page=5');
+      expect(form.controls.page.value).toBe(5);
+    });
+
+    it('takes the URL value back when a second clamped write coalesces into the running write', async () => {
+      const { results, router } = await setup();
+      await router.navigateByUrl('/results?page=5');
+      const { form } = TestBed.runInInjectionContext(() =>
+        createQueryParamsFormGroup(results, {
+          beforeWrite: (patch) =>
+            patch.page !== undefined ? { ...patch, page: Math.min(patch.page, 5) } : patch,
+        }),
+      );
+
+      form.controls.page.setValue(9);
+      form.controls.page.setValue(7);
       await elapse();
 
       expect(router.url).toBe('/results?page=5');

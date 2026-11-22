@@ -1,8 +1,9 @@
-import { Component, inject, Injectable, InjectionToken } from '@angular/core';
+import { Component, computed, inject, Injectable, InjectionToken } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   ActivatedRouteSnapshot,
   BaseRouteReuseStrategy,
+  CanActivateFn,
   ResolveFn,
   RouteReuseStrategy,
   Router,
@@ -150,8 +151,13 @@ describe('reads during navigation', () => {
     expect(isSignal(appRouter.routes.ITEM.params)).toBe(true);
   });
 
-  it('reuses cached values and reports decode failures once across lagging reads', async () => {
-    const diagnostics: string[] = [];
+  async function setupLaggingItem(options: {
+    read: (item: {
+      params: () => { path: { id: number }; query: { tags: readonly string[]; page: number } };
+    }) => unknown;
+    canActivate?: CanActivateFn;
+    diagnostics?: string[];
+  }) {
     const definition = defineAppRouter(
       { ITEM: RouteNames.ITEM },
       {
@@ -164,10 +170,13 @@ describe('reads during navigation', () => {
               tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),
               page: queryParam({ codec: numberCodec(), defaultValue: 1 }),
             },
+            ...(options.canActivate ? { canActivate: [options.canActivate] } : {}),
             component: Item,
           },
         ],
-        diagnostics: { warn: (d) => diagnostics.push(d.code) },
+        ...(options.diagnostics
+          ? { diagnostics: { warn: (d) => options.diagnostics!.push(d.code) } }
+          : {}),
       },
     );
     TestBed.configureTestingModule({
@@ -178,68 +187,50 @@ describe('reads during navigation', () => {
           provide: Reader,
           useFactory: () => {
             const item = inject(definition.AppRouter).routes.ITEM;
-            return () => {
-              const first = item.params().query;
-              const second = item.params().query;
-              return { first: first.tags, second: second.tags };
-            };
-          },
-        },
-      ],
-    });
-    const harness = await RouterTestingHarness.create();
-
-    await harness.navigateByUrl('/items/1?tags=x,y');
-    const beforeNav = TestBed.inject(definition.AppRouter).routes.ITEM.params().query.tags;
-    seen.length = 0;
-
-    await harness.navigateByUrl('/items/2?tags=x,y&page=bad');
-    const duringLag = seen[0] as { first: readonly string[]; second: readonly string[] };
-    expect(duringLag.first).toBe(beforeNav);
-    expect(duringLag.second).toBe(beforeNav);
-    expect(TestBed.inject(definition.AppRouter).routes.ITEM.params().query.tags).toBe(beforeNav);
-    expect(diagnostics).toEqual(['PARAM_DESERIALIZE_FAILED']);
-  });
-
-  it('preserves value identity when a lagging navigation rolls back', async () => {
-    let failNext = false;
-    const definition = defineAppRouter(
-      { ITEM: RouteNames.ITEM },
-      {
-        routes: [
-          {
-            path: 'items/:id',
-            routeName: RouteNames.ITEM,
-            pathParams: { id: numberCodec() },
-            queryParams: {
-              tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),
-            },
-            component: Item,
-          },
-        ],
-      },
-    );
-    TestBed.configureTestingModule({
-      providers: [
-        definition.provideAppRouter(),
-        { provide: RouteReuseStrategy, useClass: NoReuse },
-        {
-          provide: Reader,
-          useFactory: () => {
-            const item = inject(definition.AppRouter).routes.ITEM;
-            return () => {
-              const tags = item.params().query.tags;
-              if (failNext) {
-                throw new Error('activation failed');
-              }
-              return tags;
-            };
+            return () => options.read(item);
           },
         },
       ],
     });
     const harness = await RouterTestingHarness.create();
     const item = TestBed.inject(definition.AppRouter).routes.ITEM;
+    return { harness, item };
+  }
+
+  it('reuses cached values and reports decode failures once across lagging reads', async () => {
+    const diagnostics: string[] = [];
+    const { harness, item } = await setupLaggingItem({
+      diagnostics,
+      read: (route) => {
+        const first = route.params().query;
+        const second = route.params().query;
+        return { first: first.tags, second: second.tags };
+      },
+    });
+
+    await harness.navigateByUrl('/items/1?tags=x,y');
+    const beforeNav = item.params().query.tags;
+    seen.length = 0;
+
+    await harness.navigateByUrl('/items/2?tags=x,y&page=bad');
+    const duringLag = seen[0] as { first: readonly string[]; second: readonly string[] };
+    expect(duringLag.first).toBe(beforeNav);
+    expect(duringLag.second).toBe(beforeNav);
+    expect(item.params().query.tags).toBe(beforeNav);
+    expect(diagnostics).toEqual(['PARAM_DESERIALIZE_FAILED']);
+  });
+
+  it('preserves value identity when a lagging navigation rolls back', async () => {
+    let failNext = false;
+    const { harness, item } = await setupLaggingItem({
+      read: (route) => {
+        const tags = route.params().query.tags;
+        if (failNext) {
+          throw new Error('activation failed');
+        }
+        return tags;
+      },
+    });
 
     await harness.navigateByUrl('/items/1?tags=a,b');
     const beforeRollback = item.params().query.tags;
@@ -249,48 +240,23 @@ describe('reads during navigation', () => {
     failNext = false;
 
     expect(item.params().query.tags).toBe(beforeRollback);
+    // Navigating again with the same tags reads from ValueCache, confirming rollback didn't overwrite it.
+    await harness.navigateByUrl('/items/3?tags=a,b');
+    expect(item.params().query.tags).toBe(beforeRollback);
   });
 
   it('preserves value identity when a lagging navigation rolls back after an unread NavigationEnd', async () => {
     let readInConstructor = false;
     let failInConstructor = false;
-    const definition = defineAppRouter(
-      { ITEM: RouteNames.ITEM },
-      {
-        routes: [
-          {
-            path: 'items/:id',
-            routeName: RouteNames.ITEM,
-            pathParams: { id: numberCodec() },
-            queryParams: {
-              tags: queryParam({ codec: listCodec(stringCodec(), ','), defaultValue: [] }),
-            },
-            component: Item,
-          },
-        ],
+    const { harness, item } = await setupLaggingItem({
+      read: (route) => {
+        const tags = readInConstructor ? route.params().query.tags : null;
+        if (failInConstructor) {
+          throw new Error('activation failed');
+        }
+        return tags;
       },
-    );
-    TestBed.configureTestingModule({
-      providers: [
-        definition.provideAppRouter(),
-        { provide: RouteReuseStrategy, useClass: NoReuse },
-        {
-          provide: Reader,
-          useFactory: () => {
-            const item = inject(definition.AppRouter).routes.ITEM;
-            return () => {
-              const tags = readInConstructor ? item.params().query.tags : null;
-              if (failInConstructor) {
-                throw new Error('activation failed');
-              }
-              return tags;
-            };
-          },
-        },
-      ],
     });
-    const harness = await RouterTestingHarness.create();
-    const item = TestBed.inject(definition.AppRouter).routes.ITEM;
 
     await harness.navigateByUrl('/items/1?tags=a,b');
     const beforeNav = item.params().query.tags;
@@ -306,6 +272,53 @@ describe('reads during navigation', () => {
     failInConstructor = false;
 
     expect(item.params().query.tags).toBe(beforeNav);
+  });
+
+  it('keeps values read during activation when a later navigation is cancelled', async () => {
+    let allow = true;
+    let readInConstructor = false;
+    const { harness, item } = await setupLaggingItem({
+      canActivate: () => allow,
+      read: (route) => (readInConstructor ? route.params().query.tags : null),
+    });
+
+    await harness.navigateByUrl('/items/0?tags=x');
+    expect(item.params().query.tags).toEqual(['x']);
+    seen.length = 0;
+
+    readInConstructor = true;
+    await harness.navigateByUrl('/items/1?tags=a,b');
+    const duringActivation = seen[0] as readonly string[];
+
+    // Do not read item.params() after NavigationEnd; cancel a later navigation instead.
+    allow = false;
+    await harness.navigateByUrl('/items/2?tags=z');
+
+    expect(item.params().query.tags).toBe(duringActivation);
+  });
+
+  it("doesn't rerun a computed or replace params() after NavigationEnd when URL text didn't change", async () => {
+    let runs = 0;
+    let readCurrent: () => unknown = () => null;
+    const { harness, item } = await setupLaggingItem({
+      read: () => readCurrent(),
+    });
+
+    await harness.navigateByUrl('/items/1?tags=a,b');
+    const derived = computed(() => {
+      runs++;
+      return item.params();
+    });
+    readCurrent = derived;
+    const before = derived();
+    expect(runs).toBe(1);
+
+    // Changing only an undeclared query param activates a fresh component without changing any
+    // declared parameter's URL text.
+    await harness.navigateByUrl('/items/1?tags=a,b&other=1');
+    const after = derived();
+    expect(after).toBe(before);
+    expect(runs).toBe(1);
   });
 });
 

@@ -57,6 +57,7 @@ export interface CompiledRoute {
 }
 
 const defaultPathCodec = stringCodec();
+const isRoute = (value: unknown): value is RouteDefinition => isRecord(value);
 
 /**
  * Checks and compiles the route tree in one top-down pass, parsing each checked path once.
@@ -89,7 +90,7 @@ export function compileRoutes(
     let library = 'pathParams' in route || 'queryParams' in route;
     if (Array.isArray(route.children)) {
       for (const child of route.children) {
-        if (isRecord(child as unknown)) {
+        if (isRoute(child)) {
           const childFlags = markSubtree(child);
           named ||= childFlags.named;
           library ||= childFlags.library;
@@ -105,7 +106,7 @@ export function compileRoutes(
     return { named, library };
   };
   for (const route of definitions) {
-    if (isRecord(route as unknown)) {
+    if (isRoute(route)) {
       markSubtree(route);
     }
   }
@@ -125,7 +126,7 @@ export function compileRoutes(
     const compiled: Route[] = [];
     siblings.forEach((route, index) => {
       const at = `${location}[${index}]`;
-      if (!isRecord(route as unknown)) {
+      if (!isRoute(route)) {
         errors.push(`${at} must be a route object`);
         return;
       }

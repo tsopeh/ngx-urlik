@@ -322,7 +322,7 @@ describe('query writes', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  it('clears pending state when a navigation rejects', async () => {
+  it('allows a follow-up patchQuery after a navigation rejects', async () => {
     const { appRouter, router } = setup((route) => {
       if (route.queryParamMap.get('search') === 'boom') {
         throw new Error('guard failed');

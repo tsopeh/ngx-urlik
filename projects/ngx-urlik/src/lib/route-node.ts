@@ -93,14 +93,20 @@ export function createAppRouter(
   const subscription = router.events.subscribe((event) => {
     if (event instanceof NavigationEnd) {
       committedState = router.routerState;
+      if (lagState !== committedState) {
+        clearLag();
+      }
       navigation.update((value) => value + 1);
     } else if (event instanceof NavigationCancel || event instanceof NavigationError) {
-      clearLag();
+      if (lagState !== router.routerState) {
+        clearLag();
+      }
     }
   });
   destroyRef.onDestroy(() => {
     subscription.unsubscribe();
     clearLag();
+    pendingWrite = null;
   });
 
   // Angular switches to the new router state and creates the new page before NavigationEnd. Until
@@ -109,9 +115,10 @@ export function createAppRouter(
   // stays `===`, and a rolled-back navigation never mutates the committed cache.
   const uncommitted = Symbol();
   const routerSignal = <T>(
-    readWith: (values?: ValueCache) => T,
+    readWith: (values: ValueCache) => T,
     equal: ValueEqualityFn<T>,
   ): Signal<T> => {
+    // Per-signal key into lagCaches, so each signal keeps its own copy of ValueCache.
     const cacheKey = {};
     let values: ValueCache = new Map();
     let source: RouterState | undefined;
@@ -127,6 +134,10 @@ export function createAppRouter(
       }
       return readWith(lagValues);
     };
+    // Treating `uncommitted` as equal to the previous value prevents a spurious version bump during
+    // activation, so a computed() doesn't rerun after NavigationEnd when URL text is unchanged.
+    const sameSignalValue = (a: T | typeof uncommitted, b: T | typeof uncommitted) =>
+      b === uncommitted || (a !== uncommitted && equal(a, b));
     const cached = computed<T | typeof uncommitted>(
       () => {
         navigation();
@@ -143,7 +154,7 @@ export function createAppRouter(
         source = state;
         return readWith(values);
       },
-      { equal: (a, b) => a !== uncommitted && b !== uncommitted && equal(a, b) },
+      { equal: sameSignalValue },
     );
     // Checked after each read, because reading the computed is what records `source`.
     const cacheIsCurrent = () => source === router.routerState;
@@ -292,6 +303,12 @@ export function createAppRouter(
     };
     pendingWrite = nextPending;
     activePending?.carryBy(result);
+    const clearPending = () => {
+      if (pendingWrite === nextPending) {
+        pendingWrite = null;
+      }
+    };
+    void result.then(clearPending, clearPending);
     return result;
   };
 

@@ -127,6 +127,8 @@ function sameFields(a: AnyRecord, b: AnyRecord): boolean {
   );
 }
 
+type DiagnosticMode = 'report' | 'silent';
+
 export type EncodedQueryText =
   Readonly<{ ok: true; text: string | null }> | Readonly<{ ok: false }>;
 
@@ -166,7 +168,7 @@ export function createParameterSerializer(report: ReportParameterFailure) {
   const encode = (
     param: CompiledParam,
     value: unknown,
-    diagnostics: 'report' | 'silent' = 'report',
+    diagnostics: DiagnosticMode = 'report',
   ): EncodedPathText => {
     const outcome = trySerialize(param, value);
     if (!outcome.ok) {
@@ -208,7 +210,7 @@ export function createParameterSerializer(report: ReportParameterFailure) {
   const defaultText = (
     param: CompiledQueryParam,
     defaultValue: unknown,
-    diagnostics: 'report' | 'silent',
+    diagnostics: DiagnosticMode,
   ): string | null => {
     let outcome = defaultOutcomes.get(param);
     if (!outcome) {
@@ -234,7 +236,7 @@ export function createParameterSerializer(report: ReportParameterFailure) {
   const queryText = (
     param: CompiledQueryParam,
     value: unknown,
-    diagnostics: 'report' | 'silent' = 'report',
+    diagnostics: DiagnosticMode = 'report',
   ): EncodedQueryText => {
     if (value === null) {
       return { ok: true, text: null };
