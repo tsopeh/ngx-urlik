@@ -99,7 +99,9 @@ don't rerun downstream computeds on unrelated navigations or cancels. During Lag
 (1) Angular's `resetInternalState()` restores the state from before the navigation. Committed states
 are recorded in `committedStates`, so a lag copy from an earlier unread `NavigationEnd` is still
 promoted on the next read. If a signal's `computed()` returned `uncommitted` during the cancelled
-activation, the router bumps `navigation` so the next read recomputes from the restored state.
+activation, the cancel or error increments that signal's own `retry` counter, so the signal's next
+read recomputes from the restored state. Signals that didn't read during the navigation still have
+a value from the restored state, so they don't recompute.
 
 ## Write
 

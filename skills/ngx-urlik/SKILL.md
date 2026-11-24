@@ -54,6 +54,8 @@ README: “Build links”, “Read the URL”, “In guards and resolvers”, �
 “Parameters on every page”, “Remember values yourself”, “Write the query”, “Escape hatch”.
 
 - **Read** with signals, like `route.params().query.search`, inside a `computed()` or a template.
+- **In a constructor**, call `params()` directly. A `computed()` that already has a cached value
+  returns the previous URL's value until `NavigationEnd`.
 - **In guards and resolvers**, read the destination with
   `appRouter.paramsSnapshot(appRouter.routes.NAME, snapshot)`. There, `params()` still shows the
   page being left.

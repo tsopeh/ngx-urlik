@@ -1,4 +1,11 @@
-import { computed, DestroyRef, Signal, signal, ValueEqualityFn } from '@angular/core';
+import {
+  computed,
+  DestroyRef,
+  Signal,
+  signal,
+  ValueEqualityFn,
+  WritableSignal,
+} from '@angular/core';
 import {
   ActivatedRouteSnapshot,
   NavigationBehaviorOptions,
@@ -85,18 +92,20 @@ export function createAppRouter(
   const navigation = signal(0);
   let committedState = router.routerState;
   const committedStates = new WeakSet<RouterState>([committedState]);
-  let sawUncommitted = false;
+  // The retry counters of signals that computed `uncommitted` during the running navigation. A
+  // cancel or error ends that navigation without NavigationEnd, so only these signals compute again.
+  const readDuringNavigation = new Set<WritableSignal<number>>();
   const subscription = router.events.subscribe((event) => {
     if (event instanceof NavigationEnd) {
       committedState = router.routerState;
       committedStates.add(committedState);
-      sawUncommitted = false;
+      readDuringNavigation.clear();
       navigation.update((value) => value + 1);
     } else if (event instanceof NavigationCancel || event instanceof NavigationError) {
-      if (sawUncommitted) {
-        sawUncommitted = false;
-        navigation.update((value) => value + 1);
+      for (const retry of readDuringNavigation) {
+        retry.update((value) => value + 1);
       }
+      readDuringNavigation.clear();
     }
   });
   destroyRef.onDestroy(() => {
@@ -113,6 +122,10 @@ export function createAppRouter(
     | { readonly ok: true; readonly value: T }
     | { readonly ok: false; readonly error: unknown }
     | typeof uncommitted;
+  // Errors compare by message, which is enough for the two errors a read throws: the inactive-route
+  // error names the route, and the path-parameter error also contains the URL. A new error that a
+  // read throws needs a message that names its cause, or a computed catching it won't rerun when
+  // only the cause changes.
   const sameError = (a: unknown, b: unknown) =>
     Object.is(a, b) || (a instanceof Error && b instanceof Error && a.message === b.message);
   const routerSignal = <T>(
@@ -122,6 +135,7 @@ export function createAppRouter(
     let values: ValueCache = new Map();
     let lag: { state: RouterState; values: ValueCache } | undefined;
     let source: RouterState | undefined;
+    const retry = signal(0);
     const promoteCommittedLag = () => {
       if (lag && committedStates.has(lag.state)) {
         values = lag.values;
@@ -156,10 +170,11 @@ export function createAppRouter(
     const cached = computed<CachedRead<T>>(
       () => {
         navigation();
+        retry();
         const state = router.routerState;
         if (state !== committedState) {
           source = undefined;
-          sawUncommitted = true;
+          readDuringNavigation.add(retry);
           return uncommitted;
         }
         promoteCommittedLag();

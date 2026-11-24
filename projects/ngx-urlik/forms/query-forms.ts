@@ -307,7 +307,10 @@ function createQuerySync<Q extends QueryState>(
     },
     submit,
     finishWrite: (hasErrors: boolean) => (hasErrors ? newestWrite : submit()),
-    /** Reads `params()` in an effect and updates the form on changes. Call after registering form-change watchers. */
+    /**
+     * Reads `params()` in an effect and updates the form on changes. Call it after subscribing to
+     * the form's changes.
+     */
     start: (onDestroy: () => void) => {
       const urlEffect = effect(() => followUrl());
       destroyRef.onDestroy(() => {

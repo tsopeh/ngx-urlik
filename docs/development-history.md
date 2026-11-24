@@ -708,8 +708,8 @@ Three rounds on Nov 11–12 looked for code that only compensated for earlier ch
     per-signal copy of `ValueCache` that replaces `values` whenever its `RouterState` has committed.
   - Replaced `patchQuery()`'s three `UrlTree` Weak collections and re-decoding with a single
     `pendingWrite` record (cleared on settlement and destroy) that writes only supplied keys,
-    leaving unmentioned invalid keys in the URL (a behavior change from `master`, which previously
-    re-serialized every declared query parameter).
+    leaving unmentioned invalid keys in the URL (a behavior change from 2.1.0, which re-serialized
+    every declared query parameter).
   - Replaced `ɵqueryDefaults()` with `ɵqueryRouteSupport()` so form bindings compare by canonical
     URL text (treating `null` as different from a defaulted parameter's default) and read active
     `AppRouter` routes directly (keeping a `try/catch` fallback for custom `QueryRoute` objects).
@@ -724,8 +724,10 @@ Three rounds on Nov 11–12 looked for code that only compensated for earlier ch
   - Set the package version back to `2.1.0` (after bumping to `3.0.0` in `1d47380`) because callers
     using `queryParam()` stay compatible; only hand-built query objects missing `hasDefault` are now
     rejected.
-  - **Where it stands:** in place on `audit/compensating-code`, including the accepted `patchQuery()`
-    change to leave unmentioned keys as they are.
+  - Scoped the recompute after a cancelled or failed navigation to the signals that read during it,
+    instead of every signal of the router.
+  - **Where it stands:** in place, including the accepted `patchQuery()` change to leave unmentioned
+    keys as they are.
 
 We left these as they are, because a redesign wouldn't make them simpler: `routerSignal`, the
 `canMatch` codec check, the form binding's `pending`, `lastUrl`, and `held` (now `invalid`), the

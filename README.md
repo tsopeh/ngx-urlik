@@ -519,9 +519,9 @@ For a link to a section of the current page, use Angular's own form:
 Every named route has a `params` signal that returns `{ path, query }`: its path and query
 parameters, including those of the routes above it. Calling `params()` directly returns the new
 URL's values before Angular creates the new page, so a page's constructor already reads its own
-URL. A `computed()` that was already cached before the navigation still returns its previous value
-(which can be from an earlier navigation) until `NavigationEnd`, so read `params()` directly in a
-constructor. Calling `params()` on an inactive route throws.
+URL. A `computed()` over `params()` that already has a cached value returns that value, from the
+previous URL, until `NavigationEnd`. So in a constructor, call `params()` directly. Calling
+`params()` on an inactive route throws.
 
 `params()` returns a new value for a parameter only when its text in the URL changes. Otherwise it
 returns the same value as before. Go from `?sort=title:asc&minRating=1` to
@@ -801,8 +801,9 @@ A bound form works like this:
 - After a write succeeds, a field takes the URL's value if its value differs from the URL and both
   its model and form draft still match the written value. This happens when `beforeWrite` changes a
   field or sets it to `undefined`, when the codec can't write the value, or when a defaulted field
-  is set to `null`. Clearing a number input with a default restores the default right away, so add a
-  `debounce` if users clear the input before typing a new number.
+  is set to `null`. So clearing a number input with a default writes `null`, and the input shows
+  the default right away. With a `debounce` on that field, the binding writes once the user stops
+  typing, so the default appears only if the input is still empty then.
 - The binding writes values exactly as typed. If a request needs a trimmed search, trim it where you
   build the request.
 
