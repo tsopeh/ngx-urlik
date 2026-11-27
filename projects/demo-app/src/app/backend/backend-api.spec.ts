@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { BACKEND_LATENCY, BackendApi, type LibraryQuery } from './backend-api';
 import { TasteTrackRepository } from './database';
-import type { CatalogItem, PersonalState } from './domain';
+import type { CatalogItem, LibraryItemId, PersonalState } from './domain';
 import { tasteTrackSeed } from './seed';
 
 class MockTasteTrackRepository {
@@ -23,7 +23,7 @@ class MockTasteTrackRepository {
   readonly error = signal<string | null>(null);
   readonly dataVersion = signal(1);
 
-  async toggleFavorite(itemId: CatalogItem['id']): Promise<void> {
+  async toggleFavorite(itemId: LibraryItemId): Promise<void> {
     const states = this.personalStates();
     const existing = states.find((s) => s.itemId === itemId);
     const updated = states.map((s) => (s.itemId === itemId ? { ...s, favorite: !s.favorite } : s));
@@ -41,7 +41,7 @@ class MockTasteTrackRepository {
   }
 
   async updatePersonal(
-    itemId: CatalogItem['id'],
+    itemId: LibraryItemId,
     patch: Partial<Omit<PersonalState, 'itemId'>>,
   ): Promise<void> {
     const states = this.personalStates();
@@ -178,6 +178,29 @@ describe('BackendApi', () => {
       expect(showDetail?.isSeason).toBe(true);
     });
 
+    it("counts a show's episode viewings on the show and on their season", async () => {
+      const { api } = setup();
+      const showId = 'tv_twelve-steps-for-toasters';
+      const ownViewings = tasteTrackSeed.events.filter((event) => event.itemId === showId);
+      const episodeViewings = tasteTrackSeed.events.filter((event) =>
+        event.itemId.startsWith('ep_twelve-steps-for-toasters-1-'),
+      );
+      expect(episodeViewings).toHaveLength(4);
+
+      const show = await firstValueFrom(api.getItemDetail({ route: 'show', showId }));
+      expect(show?.eventCount).toBe(ownViewings.length + 4);
+
+      const season = await firstValueFrom(
+        api.getItemDetail({ route: 'season', showId, seasonNumber: 1 }),
+      );
+      expect(season?.eventCount).toBe(4);
+      expect(season?.recentViewings.map((viewing) => viewing.episode)).toEqual([
+        'Season 1, episode 4',
+        'Season 1, episode 3',
+        'Season 1, episode 2',
+      ]);
+    });
+
     it('retrieves seasons for a show', async () => {
       const { api } = setup();
 
@@ -233,21 +256,6 @@ describe('BackendApi', () => {
       expect(response.total).toBeGreaterThan(0);
       expect(response.items.every((card) => card.state.status === 'completed')).toBe(true);
       expect(response.items.every((card) => (card.state.rating ?? 0) >= 9)).toBe(true);
-    });
-
-    it('lists movies and shows, never an episode, even one with a journal entry', async () => {
-      const { api, repository } = setup();
-      const episode = tasteTrackSeed.items.find((item) => item.kind === 'episode')!;
-      await repository.updatePersonal(episode.id, { status: 'completed' });
-
-      const response = await firstValueFrom(api.getLibrary(libraryQuery({ pageSize: 48 })));
-      const kinds = new Set(response.items.map((card) => card.item.kind));
-
-      expect([...kinds].sort()).toEqual(['movie', 'show']);
-      const entries = tasteTrackSeed.personalStates.filter(
-        (state) => !state.itemId.startsWith('ep_'),
-      );
-      expect(response.total).toBe(entries.length);
     });
 
     it("counts a show's logged episodes on its card", async () => {

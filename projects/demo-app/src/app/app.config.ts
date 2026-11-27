@@ -4,13 +4,14 @@ import {
   provideBrowserGlobalErrorListeners,
   provideEnvironmentInitializer,
 } from '@angular/core';
-import { withInMemoryScrolling } from '@angular/router';
+import { TitleStrategy, withInMemoryScrolling } from '@angular/router';
 import { provideAppRouter } from './app-router';
 import { BACKEND_LATENCY, BACKEND_MONITOR } from './backend';
 import { DemoLab } from './demo-lab';
 import { EventLog } from './inspector/event-log';
 import { recordAppEvents } from './inspector/record-events';
 import { Preferences } from './preferences';
+import { TabTitle } from './tab-title';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -18,6 +19,7 @@ export const appConfig: ApplicationConfig = {
     // Section links on a detail page, like #credits, scroll to their section. Scroll restoration
     // stays off, because it would scroll to the top on every filter change a form writes.
     provideAppRouter(withInMemoryScrolling({ anchorScrolling: 'enabled' })),
+    { provide: TitleStrategy, useExisting: TabTitle },
     // The backend answers at the speed picked in Settings.
     {
       provide: BACKEND_LATENCY,

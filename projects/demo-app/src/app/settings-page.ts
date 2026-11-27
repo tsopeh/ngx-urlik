@@ -3,7 +3,7 @@ import { AppRouter } from './app-router';
 import { Preferences } from './preferences';
 import { TasteTrackRepository } from './backend';
 import { ThemeService, type ThemePreference } from './theme';
-import { type BackendSpeed, declinedMinRating, DemoLab } from './demo-lab';
+import { backendSpeeds, declinedMinRating, DemoLab } from './demo-lab';
 
 @Component({
   template: `
@@ -107,11 +107,7 @@ import { type BackendSpeed, declinedMinRating, DemoLab } from './demo-lab';
 export class SettingsPage {
   protected readonly lab = inject(DemoLab);
   protected readonly declinedMinRating = declinedMinRating;
-  protected readonly speeds: readonly { value: BackendSpeed; label: string }[] = [
-    { value: 'instant', label: 'Instant' },
-    { value: 'normal', label: 'Normal' },
-    { value: 'slow', label: 'Slow (2 s)' },
-  ];
+  protected readonly speeds = backendSpeeds;
   private readonly routes = inject(AppRouter).routes;
   private readonly repository = inject(TasteTrackRepository);
   private readonly preferences = inject(Preferences);

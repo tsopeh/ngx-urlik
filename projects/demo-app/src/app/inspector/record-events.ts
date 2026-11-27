@@ -1,4 +1,4 @@
-import { inject } from '@angular/core';
+import { DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   NavigationCancel,
@@ -28,9 +28,10 @@ export function recordAppEvents(): void {
   const log = inject(EventLog);
   const { escapeHatch } = inject(AppRouter);
 
-  diagnosticsRelay.listen((diagnostic) =>
+  const stopWarnings = diagnosticsRelay.listen((diagnostic) =>
     log.add('warning', diagnostic.route, `${diagnostic.code} for ${diagnostic.parameter}`),
   );
+  inject(DestroyRef).onDestroy(stopWarnings);
 
   // Each running navigation's event ID and start time, by navigation ID.
   const running = new Map<number, { eventId: number; started: number }>();

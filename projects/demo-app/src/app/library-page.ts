@@ -1,4 +1,4 @@
-import { Component, computed, inject, linkedSignal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { debounce, FormField, minLength } from '@angular/forms/signals';
 import { createQueryParamsSignalForm, type QueryWriteFailure } from 'ngx-urlik/forms';
@@ -10,9 +10,9 @@ import { withPreviousValue } from './with-previous-value';
 import { experienceCountCodec, type PageSize } from './codecs';
 import {
   BackendApi,
-  type CatalogItem,
   type LibraryQuery,
   type LibraryStatus,
+  type LibraryItemId,
   type LibraryKind,
 } from './backend';
 import { MediaCard } from './media-card';
@@ -81,12 +81,12 @@ import { EventLog } from './inspector/event-log';
           </select></label
         >
         <label
-          >Viewing count<select
+          >Times finished<select
             [value]="countValue()"
             (change)="setCount($any($event.target).value)"
           >
-            <option value="">Any count</option>
-            <option value="0">Not watched</option>
+            <option value="">Any</option>
+            <option value="0">Never</option>
             <option value="1">Once</option>
             <option value="countless">More than I can count</option>
           </select></label
@@ -196,15 +196,21 @@ export class LibraryPage {
     },
     // Any change other than the page itself starts from the first page, in the same navigation.
     beforeWrite: this.log.formWrite('Library form', (patch) => {
+      // A new write starts, so the last write's failure no longer describes the form.
+      this.lastFailure.set(null);
       const changesMoreThanPage = Object.keys(patch).some((field) => field !== 'page');
       return changesMoreThanPage ? { page: 1, ...patch } : patch;
     }),
-    onWriteFailure: (failure) => this.writeFailure.set(describeFailure(failure)),
+    onWriteFailure: (failure) => this.lastFailure.set(failure),
   });
-  // A failed write leaves the URL as it was, so the message stays until the URL changes.
-  protected readonly writeFailure = linkedSignal({
-    source: () => this.routes.LIBRARY.params(),
-    computation: () => '',
+  private readonly lastFailure = signal<QueryWriteFailure | null>(null);
+  // The message is about edits the URL didn't take, so it shows only while the form differs from
+  // the URL. Picking the URL's value again hides it.
+  protected readonly writeFailure = computed(() => {
+    const failure = this.lastFailure();
+    const unwritten =
+      JSON.stringify(this.binding.model()) !== JSON.stringify(this.routes.LIBRARY.params().query);
+    return failure && unwritten ? describeFailure(failure) : '';
   });
   protected readonly ratings = [6, 7, 8, 9, 10];
   protected readonly pageSizes = [12, 24, 48] as const;
@@ -262,7 +268,7 @@ export class LibraryPage {
   protected setPageSize(value: string) {
     this.edit({ pageSize: Number(value) as PageSize });
   }
-  protected toggleFavorite(id: CatalogItem['id']) {
+  protected toggleFavorite(id: LibraryItemId) {
     void this.backendApi.toggleFavorite(id);
   }
 

@@ -75,7 +75,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
   routes: [
     {
       path: '',
-      // Detail pages set their own title once their data loads.
+      // Detail pages show their heading instead, once their data loads. See TabTitle.
       title: 'TasteTrack',
       loadComponent: loadShell,
       children: [

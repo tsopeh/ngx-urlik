@@ -166,7 +166,9 @@ export class EventLog {
         lastEdit === undefined
           ? ''
           : `, ${Math.round(performance.now() - lastEdit)} ms after the last edit`;
-      this.add('form', source, `writes ${describe(written)}${wait}`);
+      // The binding can still skip the write, when a running write already sends the same values.
+      // The router's event shows whether a navigation follows.
+      this.add('form', source, `ready to write ${describe(written)}${wait}`);
       return written;
     };
   }

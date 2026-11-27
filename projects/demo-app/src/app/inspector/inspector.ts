@@ -12,7 +12,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { AppRouter } from '../app-router';
-import { type BackendSpeed, DemoLab } from '../demo-lab';
+import { backendSpeeds, DemoLab } from '../demo-lab';
 import { describe, EventLog } from './event-log';
 
 /** The part of a typed route the inspector reads. Every route in `AppRouter.routes` has it. */
@@ -485,11 +485,7 @@ export class Inspector {
   protected readonly log = inject(EventLog);
   protected readonly lab = inject(DemoLab);
   protected readonly origin = performance.timeOrigin;
-  protected readonly speeds: readonly { value: BackendSpeed; label: string }[] = [
-    { value: 'instant', label: 'Instant' },
-    { value: 'normal', label: 'Normal' },
-    { value: 'slow', label: 'Slow (2 s)' },
-  ];
+  protected readonly speeds = backendSpeeds;
 
   protected readonly open = signal(readOpen());
   // How many events had been added when the inspector was last open.
@@ -552,6 +548,9 @@ export class Inspector {
   });
 
   constructor() {
+    // `rows` compares with the previous URL it computed. The template reads it only while the
+    // panel is open, so this effect reads it after every URL change, open or not.
+    effect(() => this.rows());
     // While the inspector is open, every event counts as seen.
     effect(() => {
       if (this.open()) {

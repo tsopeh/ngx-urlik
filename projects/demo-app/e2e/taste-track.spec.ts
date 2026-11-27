@@ -103,10 +103,10 @@ test('restores Signal Forms and writes array and structured query values', async
   await page.getByRole('button', { name: 'Movies', exact: true }).click();
   await page.getByRole('button', { name: 'Shows', exact: true }).click();
   await expect(page).toHaveURL(/media=movie(?:%2C|,)show/);
-  await page.getByLabel('Viewing count').selectOption('countless');
+  await page.getByLabel('Times finished').selectOption('countless');
   await expect(page).toHaveURL(/replayCount=countless/);
   await page.reload();
-  await expect(page.getByLabel('Viewing count')).toHaveValue('countless');
+  await expect(page.getByLabel('Times finished')).toHaveValue('countless');
   await expect(page.getByRole('button', { name: 'Movies', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -576,6 +576,20 @@ test('tab titles describe what the URL shows', async ({ page }) => {
   await expect(page).toHaveTitle("Quillon's Last Inference · TasteTrack");
 });
 
+test('a page keeps its heading in the tab after an in-page navigation', async ({ page }) => {
+  await page.goto(movieUrl);
+  await expect(page).toHaveTitle("Quillon's Last Inference · TasteTrack");
+  await page.getByRole('link', { name: 'Credits', exact: true }).click();
+  await expect(page).toHaveURL(/#credits$/);
+  await expect(page).toHaveTitle("Quillon's Last Inference · TasteTrack");
+
+  await page.goto('/people/wendell');
+  await expect(page).toHaveTitle('Wendell Marchbank · TasteTrack');
+  await page.getByRole('button', { name: 'Writer', exact: true }).click();
+  await expect(page).toHaveURL(/role=Writer$/);
+  await expect(page).toHaveTitle('Wendell Marchbank · TasteTrack');
+});
+
 test('the people search changes the URL only when submitted', async ({ page }) => {
   const urlWrites = await recordUrlWrites(page);
   await page.goto('/people');
@@ -634,6 +648,13 @@ test('a guard declines a Library filter, and the form keeps the choice', async (
   await expect(page).toHaveURL(/\/library$/);
   await expect(rating).toHaveValue('9');
 
+  // Picking the URL's value again leaves nothing unwritten, so the message goes away.
+  await rating.selectOption('');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/library$/);
+
+  await rating.selectOption('9');
+  await expect(page.getByRole('alert')).toContainText('A guard declined this filter change');
   await rating.selectOption('7');
   await expect(page).toHaveURL(/\/library\?minRating=7$/);
   await expect(page.getByRole('alert')).toHaveCount(0);
@@ -669,6 +690,19 @@ test.describe('inspector', () => {
     await expect(paramRow(page, 'sort')).not.toContainText('new value');
   });
 
+  test('marks only the last URL change, even after changes made while hidden', async ({ page }) => {
+    await page.goto('/movies?sort=year:desc');
+    await expect(page.locator('app-media-card').first()).toBeVisible();
+    await inspectorOf(page).getByRole('button', { name: 'Hide' }).click();
+    await page.getByRole('button', { name: 'Drama', exact: true }).click();
+    await expect(page).toHaveURL(/genres=Drama/);
+    await page.getByRole('combobox', { name: 'Direction' }).selectOption('asc');
+    await expect(page).toHaveURL(/sort=year(:|%3A)asc/);
+    await page.getByRole('button', { name: /^ngx-urlik inspector/ }).click();
+    await expect(paramRow(page, 'sort')).toContainText('new value');
+    await expect(paramRow(page, 'genres')).not.toContainText('new value');
+  });
+
   test('logs typing as one edit, then one write after the debounce', async ({ page }) => {
     await page.goto('/movies');
     await expect(page.locator('app-media-card').first()).toBeVisible();
@@ -679,7 +713,7 @@ test.describe('inspector', () => {
     const events = inspectorOf(page).getByRole('listitem');
     await expect(events.filter({ hasText: "edits search = 'the'" })).toHaveCount(1);
     await expect(events.filter({ hasText: /edits search = '(t|th)'$/ })).toHaveCount(0);
-    const write = events.filter({ hasText: "writes { page: 1, search: 'the' }" });
+    const write = events.filter({ hasText: "ready to write { page: 1, search: 'the' }" });
     await expect(write).toHaveCount(1);
     const wait = Number(/(\d+) ms after the last edit/.exec(await write.innerText())?.[1]);
     // The catalog search waits 300 ms after the last keystroke.

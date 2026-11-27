@@ -787,6 +787,16 @@ Three more were possible but not fixed that day. We fixed them on Nov 13:
 - The maintainer then almost missed the inspector, because it used TasteTrack's colors and fonts.
   It now looks like a developer tool: a dark panel in both themes, bluer on a dark page, named
   "ngx-urlik inspector", with a hint at the top until the visitor dismisses it.
+- A review of the branch for unidirectional data flow and single source of truth found places
+  where two pieces of code owned one value. Detail pages set the tab title while Angular's title
+  strategy reset it after every navigation, so a section link reverted it to "TasteTrack"; a
+  `TabTitle` strategy now builds the title from the route title and the page's heading. The
+  Library's declined-write message now shows only while the form differs from the URL. The rule
+  that only movies and shows have Library entries moved from the UI into the types and a
+  database upgrade. A show's page counts its episode viewings, and the Library's count filter
+  became "Times finished". The inspector compares with the previous URL even while hidden. The
+  review also flagged a role in a hand-edited URL that leaves an empty filmography; the maintainer
+  doesn't support hand-edited URLs, so that stays.
 
 ## Docs and style
 

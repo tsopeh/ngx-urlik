@@ -86,7 +86,7 @@ const headings = { episodes: 'Episodes', movies: 'Movies', shows: 'TV shows' } a
               [item]="card.item"
               [state]="card.state"
               [url]="links.item(card.item)"
-              (favorite)="toggleFavorite(card.item.id)"
+              (favorite)="toggleFavorite(card.item)"
             />
           } @empty {
             <p class="empty">No titles match these filters.</p>
@@ -183,8 +183,11 @@ export class CatalogPage {
         : [...genres, genre],
     });
   }
-  protected toggleFavorite(id: CatalogItem['id']) {
-    void this.backendApi.toggleFavorite(id);
+  // Episode cards have no favorite button: an episode counts toward its show.
+  protected toggleFavorite(item: CatalogItem) {
+    if (item.kind !== 'episode') {
+      void this.backendApi.toggleFavorite(item.id);
+    }
   }
 
   // Every control changes the model, and the binding decides when the URL follows.

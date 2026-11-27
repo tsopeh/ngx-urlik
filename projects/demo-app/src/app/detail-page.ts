@@ -1,15 +1,15 @@
-import { DatePipe, ViewportScroller } from '@angular/common';
+import { DatePipe, DOCUMENT, ViewportScroller } from '@angular/common';
 import {
   afterNextRender,
   Component,
   computed,
+  DestroyRef,
   effect,
   inject,
   Injector,
   signal,
 } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
-import { Title } from '@angular/platform-browser';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AppRouter } from './app-router';
@@ -22,7 +22,7 @@ import {
 } from './backend';
 import { CatalogLinks } from './catalog-links';
 import { LoadingIndicator } from './loading-indicator';
-import { tabTitle } from './page-titles';
+import { TabTitle } from './tab-title';
 import { Preferences } from './preferences';
 
 /** The date as `YYYY-MM-DD` in the browser's timezone. */
@@ -146,6 +146,9 @@ function localDate(date: Date): string {
               <time [attr.datetime]="viewing.occurredAt">{{
                 viewing.occurredAt | date: 'mediumDate' : 'UTC'
               }}</time>
+              @if (viewing.episode) {
+                · {{ viewing.episode }}
+              }
               @if (viewing.rating) {
                 · ★ {{ viewing.rating }}
               }
@@ -298,13 +301,7 @@ export class DetailPage {
   }
   constructor() {
     this.scrollToSectionOnLoad();
-    const title = inject(Title);
-    effect(() => {
-      const heading = this.heading();
-      if (heading) {
-        title.setTitle(tabTitle(heading));
-      }
-    });
+    inject(TabTitle).showHeading(this.heading);
     effect(() => {
       const current = this.state();
       this.statusControl.setValue(current?.status ?? '', { emitEvent: false });
@@ -314,24 +311,34 @@ export class DetailPage {
 
   // Angular scrolls to the URL's fragment, like #credits, when the navigation ends. On a fresh load
   // or after Back, the title hasn't loaded by then, so the section isn't on the page and nothing
-  // scrolls. The page scrolls once, after the title's sections render.
+  // scrolls. The page scrolls once, after the title's sections render, unless the user scrolled
+  // the page while it loaded.
   private scrollToSectionOnLoad() {
     const section = this.escapeHatch.parseUrl(this.escapeHatch.url).fragment;
     if (!section) {
       return;
     }
     const injector = inject(Injector);
+    const document = inject(DOCUMENT);
+    const userScrollEvents = ['wheel', 'touchmove', 'keydown'] as const;
+    const stop = () => {
+      scrollOnce.destroy();
+      userScrollEvents.forEach((type) => document.removeEventListener(type, stop));
+    };
+    userScrollEvents.forEach((type) => document.addEventListener(type, stop, { passive: true }));
+    inject(DestroyRef).onDestroy(stop);
     const scrollOnce = effect(() => {
       if (this.item()) {
-        scrollOnce.destroy();
+        stop();
         afterNextRender(() => this.viewportScroller.scrollToAnchor(section), { injector });
       }
     });
   }
 
+  // An episode page has no status or rating, so only a movie or show gets here.
   protected async setStatus() {
     const item = this.item();
-    if (item) {
+    if (item && item.kind !== 'episode') {
       const status = this.statusControl.value as LibraryStatus;
       await this.persist(
         () => this.backendApi.updatePersonal(item.id, { status }),
@@ -341,7 +348,7 @@ export class DetailPage {
   }
   protected async setRating() {
     const item = this.item();
-    if (item) {
+    if (item && item.kind !== 'episode') {
       const value = this.ratingControl.value;
       const rating = value ? Number(value) : null;
       await this.persist(

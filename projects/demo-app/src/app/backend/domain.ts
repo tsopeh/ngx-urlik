@@ -51,8 +51,13 @@ export type Contributor = {
   | { readonly kind: 'studio'; readonly id: StudioId }
 );
 
+/** A movie or show: what the Library holds. */
+export type LibraryItem = Extract<CatalogItem, { kind: LibraryKind }>;
+export type LibraryItemId = LibraryItem['id'];
+
+/** A Library entry. Only movies and shows have one, because an episode counts toward its show. */
 export interface PersonalState {
-  readonly itemId: CatalogId;
+  readonly itemId: LibraryItemId;
   readonly status: LibraryStatus;
   readonly favorite: boolean;
   readonly rating: number | null;

@@ -5,6 +5,7 @@ import {
   type Contributor,
   isViewingDate,
   type JournalEvent,
+  type LibraryItemId,
   type PersonalState,
   type Season,
 } from './domain';
@@ -19,13 +20,23 @@ class TasteTrackDatabase extends Dexie {
 
   constructor() {
     super('taste-track');
-    this.version(1).stores({
+    const schema = {
       items: 'id, kind, year, showId, [showId+seasonNumber+episodeNumber], *genres',
       seasons: 'id, [showId+number]',
       contributors: 'id, kind, name',
       personalStates: 'itemId, status, favorite, rating',
       events: 'id, itemId, occurredAt, rating',
-    });
+    };
+    this.version(1).stores(schema);
+    // Journals from version 1 can have Library entries for episodes.
+    this.version(2)
+      .stores(schema)
+      .upgrade(async (transaction) => {
+        const states = await transaction.table<StoredState>('personalStates').toArray();
+        const items = await transaction.table<CatalogItem>('items').toArray();
+        await transaction.table('personalStates').clear();
+        await transaction.table('personalStates').bulkAdd(withoutEpisodeEntries(states, items));
+      });
     this.on('populate', (transaction) =>
       Promise.all(
         Object.entries(tasteTrackSeed).map(([table, rows]) =>
@@ -34,6 +45,42 @@ class TasteTrackDatabase extends Dexie {
       ),
     );
   }
+}
+
+/** A Library entry as a journal from version 1 stored it, possibly for an episode. */
+export type StoredState = Omit<PersonalState, 'itemId'> & { readonly itemId: string };
+
+/**
+ * The Library entries of a version 1 journal, with each episode's entry moved to its show. A show
+ * without its own entry gets one: Watching if any of its episodes was past the watchlist, or else
+ * on the watchlist. Movie and show entries stay as they are.
+ */
+export function withoutEpisodeEntries(
+  states: readonly StoredState[],
+  items: readonly CatalogItem[],
+): PersonalState[] {
+  const showOf = new Map<string, LibraryItemId>(
+    items.flatMap((item) => (item.kind === 'episode' ? [[item.id, item.showId] as const] : [])),
+  );
+  const kept = states.filter((state): state is PersonalState => !showOf.has(state.itemId));
+  const started = new Map<LibraryItemId, boolean>();
+  for (const state of states) {
+    const showId = showOf.get(state.itemId);
+    if (showId) {
+      started.set(showId, (started.get(showId) ?? false) || state.status !== 'saved');
+    }
+  }
+  const tracked = new Set(kept.map((state) => state.itemId));
+  const added = [...started]
+    .filter(([showId]) => !tracked.has(showId))
+    .map(([showId, isStarted]): PersonalState => ({
+      itemId: showId,
+      status: isStarted ? 'in-progress' : 'saved',
+      favorite: false,
+      rating: null,
+      count: { kind: 'exact', value: 0 },
+    }));
+  return [...kept, ...added];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -89,20 +136,20 @@ export class TasteTrackRepository {
   }
 
   async updatePersonal(
-    itemId: CatalogItem['id'],
+    itemId: LibraryItemId,
     patch: Partial<Omit<PersonalState, 'itemId'>>,
   ): Promise<void> {
     await this.writePersonal(itemId, () => patch);
   }
 
-  async toggleFavorite(itemId: CatalogItem['id']): Promise<void> {
+  async toggleFavorite(itemId: LibraryItemId): Promise<void> {
     await this.writePersonal(itemId, (existing) => ({ favorite: !existing?.favorite }));
   }
 
   // Reads the entry inside the transaction. A double click starts two toggles before the first
   // reload, so a toggle that read the signals would see the same old value twice.
   private async writePersonal(
-    itemId: CatalogItem['id'],
+    itemId: LibraryItemId,
     change: (existing?: PersonalState) => Partial<Omit<PersonalState, 'itemId'>>,
   ): Promise<void> {
     await this.database.transaction('rw', this.database.personalStates, async () => {

@@ -3,6 +3,7 @@ import type {
   Contributor,
   Credit,
   JournalEvent,
+  LibraryItem,
   PersonId,
   PersonalState,
   Season,
@@ -370,7 +371,7 @@ const episodeTitles = [
   'Full Circle on a Square Table',
 ];
 
-const movies: CatalogItem[] = movieRows.map(([title, subtitle, year, genres], index) => ({
+const movies: LibraryItem[] = movieRows.map(([title, subtitle, year, genres], index) => ({
   id: `mov_${slug(title)}`,
   kind: 'movie',
   title,

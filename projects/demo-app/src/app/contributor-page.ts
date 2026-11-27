@@ -1,12 +1,11 @@
-import { Component, computed, effect, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
-import { Title } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
 import { AppRouter } from './app-router';
 import { BackendApi, type ContributorCredit } from './backend';
 import { CatalogLinks } from './catalog-links';
 import { LoadingIndicator } from './loading-indicator';
-import { tabTitle } from './page-titles';
+import { TabTitle } from './tab-title';
 
 type CreditRole = ContributorCredit['roles'][number];
 
@@ -105,13 +104,7 @@ export class ContributorPage {
   });
 
   constructor() {
-    const title = inject(Title);
-    effect(() => {
-      const name = this.profile()?.contributor.name;
-      if (name) {
-        title.setTitle(tabTitle(name));
-      }
-    });
+    inject(TabTitle).showHeading(() => this.profile()?.contributor.name);
   }
 
   // A chip changes one query parameter and no form edits it, so it calls patchQuery() directly.

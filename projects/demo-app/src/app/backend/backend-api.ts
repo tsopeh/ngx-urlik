@@ -8,6 +8,8 @@ import type {
   Contributor,
   ExperienceCount,
   JournalEvent,
+  LibraryItem,
+  LibraryItemId,
   LibraryKind,
   PersonalState,
   Season,
@@ -46,6 +48,11 @@ export interface ItemDetailRequest {
   readonly episodeNumber?: number;
 }
 
+/** A viewing, and which episode it was when the page is a show or a season. */
+export interface RecentViewing extends JournalEvent {
+  readonly episode?: string;
+}
+
 /** A cast or crew credit, with the person or studio it names. */
 export interface ItemCredit {
   readonly person: Contributor;
@@ -59,7 +66,7 @@ export interface ItemDetail {
   readonly state?: PersonalState;
   readonly eventCount: number;
   /** The three newest viewings of this title, newest first. */
-  readonly recentViewings: readonly JournalEvent[];
+  readonly recentViewings: readonly RecentViewing[];
   readonly credits: readonly ItemCredit[];
 }
 
@@ -82,7 +89,7 @@ export interface EpisodeProgress {
 
 /** A library title with the user's entry for it, and a show's episode progress once one is logged. */
 export interface LibraryItemCard {
-  readonly item: CatalogItem;
+  readonly item: LibraryItem;
   readonly state: PersonalState;
   readonly episodes?: EpisodeProgress;
 }
@@ -206,7 +213,7 @@ export class BackendApi {
 
         const start = (query.page - 1) * query.pageSize;
         const pageItems = matched.slice(start, start + query.pageSize);
-        const stateMap = new Map(personalStates.map((s) => [s.itemId, s]));
+        const stateMap = new Map<string, PersonalState>(personalStates.map((s) => [s.itemId, s]));
 
         return {
           total: matched.length,
@@ -261,9 +268,26 @@ export class BackendApi {
         const isSeason = request.route === 'season';
         const heading = isSeason ? `${item.title} · Season ${request.seasonNumber}` : item.title;
         const state = this.repository.personalStates().find((s) => s.itemId === item.id);
-        const viewings = this.repository
+        // A show counts its own viewings and its episodes'. A season counts its episodes'.
+        const itemMap = new Map(items.map((candidate) => [candidate.id, candidate]));
+        const viewings: RecentViewing[] = this.repository
           .events()
-          .filter((e) => e.itemId === item.id)
+          .flatMap((event) => {
+            const watched = itemMap.get(event.itemId);
+            if (watched?.kind !== 'episode' || watched.id === item.id) {
+              return event.itemId === item.id && !isSeason ? [event] : [];
+            }
+            const inShow = watched.showId === item.id;
+            const inPage = !isSeason || watched.seasonNumber === request.seasonNumber;
+            return inShow && inPage
+              ? [
+                  {
+                    ...event,
+                    episode: `Season ${watched.seasonNumber}, episode ${watched.episodeNumber}`,
+                  },
+                ]
+              : [];
+          })
           .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
         const contributors = this.repository.contributors();
         const contributorMap = new Map(contributors.map((c) => [c.id, c]));
@@ -300,13 +324,13 @@ export class BackendApi {
     return this.dataVersion$.pipe(
       this.respond('getLibrary'),
       map(() => {
-        const stateMap = new Map(
+        const stateMap = new Map<string, PersonalState>(
           this.repository.personalStates().map((state) => [state.itemId, state]),
         );
         const episodes = this.episodeProgress();
         const filtered = this.repository
           .items()
-          .filter((item): item is Extract<CatalogItem, { kind: LibraryKind }> => {
+          .filter((item): item is LibraryItem => {
             const state = stateMap.get(item.id);
             if (!state || item.kind === 'episode') {
               return false;
@@ -375,7 +399,9 @@ export class BackendApi {
           const item = itemMap.get(event.itemId);
           const matchesSearch =
             !query.search ||
-            (item?.title.toLowerCase().includes(query.search.toLowerCase()) ?? false);
+            // The subtitle names an episode's show, so a show's search finds its episodes.
+            (item !== undefined &&
+              `${item.title} ${item.subtitle}`.toLowerCase().includes(query.search.toLowerCase()));
           const afterFrom = !query.from || event.occurredAt >= query.from;
           const beforeTo = !query.to || event.occurredAt <= `${query.to}T23:59:59.999Z`;
           return matchesSearch && afterFrom && beforeTo;
@@ -442,13 +468,13 @@ export class BackendApi {
     );
   }
 
-  async toggleFavorite(itemId: CatalogItem['id']): Promise<void> {
+  async toggleFavorite(itemId: LibraryItemId): Promise<void> {
     await this.repository.toggleFavorite(itemId);
   }
 
   /** Changes a title's status, rating, or favorite mark. */
   async updatePersonal(
-    itemId: CatalogItem['id'],
+    itemId: LibraryItemId,
     patch: Partial<Omit<PersonalState, 'itemId'>>,
   ): Promise<void> {
     await this.repository.updatePersonal(itemId, patch);

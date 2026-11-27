@@ -9,6 +9,13 @@ const latencies: Readonly<Record<BackendSpeed, () => number>> = {
   slow: () => 2000,
 };
 
+/** The speeds a visitor can pick, in the order Settings and the inspector show them. */
+export const backendSpeeds: readonly { readonly value: BackendSpeed; readonly label: string }[] = [
+  { value: 'instant', label: 'Instant' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'slow', label: 'Slow (2 s)' },
+];
+
 /** The lowest minimum rating that the Library guard declines while the lab setting is on. */
 export const declinedMinRating = 9;
 
