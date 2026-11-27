@@ -34,6 +34,7 @@ async function setup(backend: Partial<BackendApi>) {
     isSeason: false,
     state,
     eventCount: 0,
+    recentViewings: [],
     credits: [],
   };
   TestBed.configureTestingModule({

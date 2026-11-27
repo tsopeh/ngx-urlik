@@ -1,4 +1,13 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { DatePipe, ViewportScroller } from '@angular/common';
+import {
+  afterNextRender,
+  Component,
+  computed,
+  effect,
+  inject,
+  Injector,
+  signal,
+} from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -22,7 +31,7 @@ function localDate(date: Date): string {
 }
 
 @Component({
-  imports: [LoadingIndicator, ReactiveFormsModule, RouterLink],
+  imports: [DatePipe, LoadingIndicator, ReactiveFormsModule, RouterLink],
   template: `
     <section class="page-stack" [attr.aria-busy]="loaded.isLoading()">
       @if (item(); as title) {
@@ -120,6 +129,16 @@ function localDate(date: Date): string {
         </section>
         <section id="history" class="panel">
           <h2>{{ eventCount() }} recorded viewings</h2>
+          @for (viewing of recentViewings(); track viewing.id) {
+            <p>
+              <time [attr.datetime]="viewing.occurredAt">{{
+                viewing.occurredAt | date: 'mediumDate' : 'UTC'
+              }}</time>
+              @if (viewing.rating) {
+                · ★ {{ viewing.rating }}
+              }
+            </p>
+          }
           <a [routerLink]="historyUrl()">View history for {{ title.title }}</a>
         </section>
       } @else if (detail() === null) {
@@ -133,6 +152,8 @@ function localDate(date: Date): string {
 })
 export class DetailPage {
   private readonly routes = inject(AppRouter).routes;
+  private readonly escapeHatch = inject(AppRouter).escapeHatch;
+  private readonly viewportScroller = inject(ViewportScroller);
   private readonly backendApi = inject(BackendApi);
   private readonly preferences = inject(Preferences);
   protected readonly links = inject(CatalogLinks);
@@ -180,6 +201,7 @@ export class DetailPage {
   protected readonly heading = computed(() => this.detail()?.heading ?? '');
   protected readonly state = computed(() => this.detail()?.state);
   protected readonly eventCount = computed(() => this.detail()?.eventCount ?? 0);
+  protected readonly recentViewings = computed(() => this.detail()?.recentViewings ?? []);
   protected readonly credits = computed(() => this.detail()?.credits ?? []);
 
   // Every detail route sits under BROWSE, so links up and across keep its catalog filters.
@@ -263,10 +285,28 @@ export class DetailPage {
     });
   }
   constructor() {
+    this.scrollToSectionOnLoad();
     effect(() => {
       const current = this.state();
       this.statusControl.setValue(current?.status ?? '', { emitEvent: false });
       this.ratingControl.setValue(String(current?.rating ?? ''), { emitEvent: false });
+    });
+  }
+
+  // Angular scrolls to the URL's fragment, like #credits, when the navigation ends. On a fresh load
+  // or after Back, the title hasn't loaded by then, so the section isn't on the page and nothing
+  // scrolls. The page scrolls once, after the title's sections render.
+  private scrollToSectionOnLoad() {
+    const section = this.escapeHatch.parseUrl(this.escapeHatch.url).fragment;
+    if (!section) {
+      return;
+    }
+    const injector = inject(Injector);
+    const scrollOnce = effect(() => {
+      if (this.item()) {
+        scrollOnce.destroy();
+        afterNextRender(() => this.viewportScroller.scrollToAnchor(section), { injector });
+      }
     });
   }
 

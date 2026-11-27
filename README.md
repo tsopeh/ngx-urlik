@@ -514,6 +514,11 @@ For a link to a section of the current page, use Angular's own form:
 <a [routerLink]="[]" fragment="credits" queryParamsHandling="preserve">Credits</a>
 ```
 
+Angular scrolls to the section only when you turn on anchor scrolling:
+`provideAppRouter(withInMemoryScrolling({ anchorScrolling: 'enabled' }))`. It scrolls when the
+navigation ends, so a section that renders after its data loads isn't on the page yet. TasteTrack's
+detail page reads the fragment once and scrolls after its sections render.
+
 ## Read the URL
 
 Every named route has a `params` signal that returns `{ path, query }`: its path and query

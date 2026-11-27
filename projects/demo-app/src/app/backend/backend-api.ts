@@ -58,6 +58,8 @@ export interface ItemDetail {
   readonly isSeason: boolean;
   readonly state?: PersonalState;
   readonly eventCount: number;
+  /** The three newest viewings of this title, newest first. */
+  readonly recentViewings: readonly JournalEvent[];
   readonly credits: readonly ItemCredit[];
 }
 
@@ -232,7 +234,10 @@ export class BackendApi {
         const isSeason = request.route === 'season';
         const heading = isSeason ? `${item.title} · Season ${request.seasonNumber}` : item.title;
         const state = this.repository.personalStates().find((s) => s.itemId === item.id);
-        const eventCount = this.repository.events().filter((e) => e.itemId === item.id).length;
+        const viewings = this.repository
+          .events()
+          .filter((e) => e.itemId === item.id)
+          .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
         const contributors = this.repository.contributors();
         const contributorMap = new Map(contributors.map((c) => [c.id, c]));
         const credits = item.credits.flatMap((credit) => {
@@ -245,7 +250,8 @@ export class BackendApi {
           heading,
           isSeason,
           state,
-          eventCount,
+          eventCount: viewings.length,
+          recentViewings: viewings.slice(0, 3),
           credits,
         };
       }),

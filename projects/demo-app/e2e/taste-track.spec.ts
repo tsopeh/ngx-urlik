@@ -258,10 +258,21 @@ test('shows only the error when the journal fails to open', async ({ page }) => 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(0);
 });
 
-test('section links keep the catalog filters', async ({ page }) => {
+test('section links scroll to their section and keep the catalog filters', async ({ page }) => {
   await page.goto('/movies/quillons-last-inference?genres=Drama');
+  const credits = page.locator('#credits');
+  await expect(credits).not.toBeInViewport();
   await page.getByRole('link', { name: 'Credits', exact: true }).click();
   await expect(page).toHaveURL(/\/movies\/quillons-last-inference\?genres=Drama#credits$/);
+  await expect(credits).toBeInViewport();
+});
+
+test('opens a detail page at the section in its URL', async ({ page }) => {
+  await page.goto(`${movieUrl}#history`);
+  const history = page.locator('#history');
+  await expect(history).toBeInViewport();
+  // The section lists the newest viewings, newest first.
+  await expect(history.locator('time')).toHaveText([/^Jul \d+, 2026$/, /^Jun \d+, 2026$/]);
 });
 
 test('a double-clicked favorite ends where it started', async ({ page }) => {
