@@ -14,6 +14,7 @@ import { filter, map } from 'rxjs';
 import { AppRouter } from '../app-router';
 import { backendSpeeds, DemoLab } from '../demo-lab';
 import { describe, EventLog } from './event-log';
+import { ReplayAnimation } from './replay-animation';
 
 /** The part of a typed route the inspector reads. Every route in `AppRouter.routes` has it. */
 interface InspectedRoute {
@@ -78,7 +79,7 @@ function writeHintDismissed(): void {
  */
 @Component({
   selector: 'app-inspector',
-  imports: [DatePipe],
+  imports: [DatePipe, ReplayAnimation],
   host: { '[class.open]': 'open()' },
   template: `
     @if (open()) {
@@ -86,9 +87,7 @@ function writeHintDismissed(): void {
         <header class="title-bar">
           <div>
             <h2 id="inspector-title">
-              @for (count of [log.added()]; track count) {
-                <span class="live" aria-hidden="true"></span>
-              }
+              <span class="live" aria-hidden="true" [appReplayAnimation]="log.added()"></span>
               <span class="library">ngx-urlik</span> inspector
             </h2>
             <p class="lede">What the library reads from this URL, and what the app does with it.</p>
@@ -116,7 +115,7 @@ function writeHintDismissed(): void {
           <h3>Active routes</h3>
           @if (activeNames().length) {
             <p class="routes">
-              @for (name of activeNames(); track name; let last = $last) {
+              @for (name of activeNames(); track $index; let last = $last) {
                 <code [class.deepest]="last">{{ name }}</code>
                 @if (!last) {
                   <span aria-hidden="true">›</span>
@@ -206,11 +205,9 @@ function writeHintDismissed(): void {
         <span class="live" aria-hidden="true"></span>
         <span><span class="library">ngx-urlik</span> inspector</span>
         @if (unseen() > 0) {
-          @for (count of [log.added()]; track count) {
-            <span class="badge"
-              >{{ unseen() }}<span class="visually-hidden"> new events</span></span
-            >
-          }
+          <span class="badge" [appReplayAnimation]="log.added()"
+            >{{ unseen() }}<span class="visually-hidden"> new events</span></span
+          >
         }
       </button>
     }
@@ -509,6 +506,8 @@ export class Inspector {
   private readonly active = computed(() =>
     this.routes.filter(([, route]) => route.ifActive() !== null),
   );
+  // The template tracks these by position. Going from one page to another often changes every
+  // name, and tracking by name would then re-create each item, which NG0956 warns about.
   protected readonly activeNames = computed(() => this.active().map(([name]) => name));
   private readonly deepest = computed(() => this.active().at(-1));
   protected readonly deepestName = computed(() => this.deepest()?.[0]);
