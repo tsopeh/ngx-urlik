@@ -6,6 +6,7 @@ import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
 import { AppRouter } from './app-router';
 import { BackendApi, type CatalogItem, type CatalogQuery } from './backend';
 import { CatalogLinks } from './catalog-links';
+import { EventLog } from './inspector/event-log';
 import type { PageSize } from './codecs';
 import { LoadingIndicator } from './loading-indicator';
 import { MediaCard } from './media-card';
@@ -117,14 +118,15 @@ export class CatalogPage {
   private readonly backendApi = inject(BackendApi);
   private readonly preferences = inject(Preferences);
   protected readonly links = inject(CatalogLinks);
+  private readonly log = inject(EventLog);
   private readonly route = this.routes.BROWSE;
   protected readonly binding = createQueryParamsSignalForm(this.route, {
     schema: (fields) => debounce(fields.search, 300),
     // Any change other than the page itself starts from the first page, in the same navigation.
-    beforeWrite: (patch) => {
+    beforeWrite: this.log.formWrite('Catalog form', (patch) => {
       const changesMoreThanPage = Object.keys(patch).some((field) => field !== 'page');
       return changesMoreThanPage ? { page: 1, ...patch } : patch;
-    },
+    }),
   });
   private readonly catalog = computed(() => {
     const episodes = this.routes.EPISODES.ifActive();
@@ -156,6 +158,10 @@ export class CatalogPage {
     }),
   );
   protected readonly response = this.titles.value;
+
+  constructor() {
+    this.log.watchSignalForm('Catalog form', this.binding.form, () => this.query());
+  }
 
   protected setSort(field: 'title' | 'year') {
     this.edit({ sort: { ...this.binding.model().sort, field } });

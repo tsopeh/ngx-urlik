@@ -1150,6 +1150,13 @@ removes the `tv_` prefix when it writes and adds it back when it parses.
 | Sidebar                 | `ifActive()` with query parameters, for the Library shortcuts                 |
 | Tab titles              | `paramsSnapshot()` in title resolvers                                         |
 | Settings                | A demo lab: a slower backend, and the Library guard                           |
+| Inspector               | `params()`, `escapeHatch.events`, and `diagnostics: { warn }`                 |
+
+The inspector beside the page shows the URL, the active routes, and what the deepest route's
+`params()` returns, with the source of each value: the path, the query text, or the default. It
+marks each value that's new since the last URL. Its log lists navigations, form edits and writes,
+backend answers, and router warnings. Type a catalog search, and the log shows the write 300 ms
+after the last keystroke.
 
 ## Develop
 

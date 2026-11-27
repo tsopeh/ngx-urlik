@@ -1,12 +1,13 @@
 import { Component, inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { AppRouter } from './app-router';
+import { Inspector } from './inspector/inspector';
 import { type LibraryStatus, TasteTrackRepository } from './backend';
 import { statusLabels } from './status-labels';
 import { type ThemePreference, ThemeService } from './theme';
 
 @Component({
-  imports: [RouterLink, RouterOutlet],
+  imports: [Inspector, RouterLink, RouterOutlet],
   template: `
     <div class="app-frame">
       <aside class="sidebar">
@@ -57,6 +58,7 @@ import { type ThemePreference, ThemeService } from './theme';
           <router-outlet />
         }
       </main>
+      <app-inspector />
     </div>
   `,
   styles: `
@@ -68,6 +70,15 @@ import { type ThemePreference, ThemeService } from './theme';
       display: grid;
       grid-template-columns: 16rem minmax(0, 1fr);
       min-height: 100vh;
+    }
+    main {
+      container-type: inline-size;
+    }
+    /* On wide screens, the open inspector is a column beside the page. */
+    @media (min-width: 1200px) {
+      .app-frame:has(app-inspector.open) {
+        grid-template-columns: 16rem minmax(0, 1fr) 24rem;
+      }
     }
     .sidebar {
       position: sticky;

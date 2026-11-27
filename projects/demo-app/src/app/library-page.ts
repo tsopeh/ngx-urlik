@@ -17,6 +17,7 @@ import {
 } from './backend';
 import { MediaCard } from './media-card';
 import { statusLabels } from './status-labels';
+import { EventLog } from './inspector/event-log';
 
 @Component({
   imports: [FormField, LoadingIndicator, MediaCard],
@@ -167,16 +168,17 @@ export class LibraryPage {
   private readonly routes = inject(AppRouter).routes;
   private readonly backendApi = inject(BackendApi);
   private readonly preferences = inject(Preferences);
+  private readonly log = inject(EventLog);
   protected readonly binding = createQueryParamsSignalForm(this.routes.LIBRARY, {
     schema: (fields) => {
       debounce(fields.search, 300);
       minLength(fields.search, 3);
     },
     // Any change other than the page itself starts from the first page, in the same navigation.
-    beforeWrite: (patch) => {
+    beforeWrite: this.log.formWrite('Library form', (patch) => {
       const changesMoreThanPage = Object.keys(patch).some((field) => field !== 'page');
       return changesMoreThanPage ? { page: 1, ...patch } : patch;
-    },
+    }),
     onWriteFailure: (failure) => this.writeFailure.set(describeFailure(failure)),
   });
   // A failed write leaves the URL as it was, so the message stays until the URL changes.
@@ -203,6 +205,14 @@ export class LibraryPage {
     }),
   );
   protected readonly response = this.library.value;
+
+  constructor() {
+    this.log.watchSignalForm(
+      'Library form',
+      this.binding.form,
+      () => this.routes.LIBRARY.params().query,
+    );
+  }
 
   protected countValue() {
     const count = this.binding.model().replayCount;

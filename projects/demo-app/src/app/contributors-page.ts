@@ -7,6 +7,7 @@ import { AppRouter } from './app-router';
 import { BackendApi } from './backend';
 import { CatalogLinks } from './catalog-links';
 import { LoadingIndicator } from './loading-indicator';
+import { EventLog } from './inspector/event-log';
 
 @Component({
   imports: [FormField, FormRoot, LoadingIndicator, RouterLink],
@@ -75,7 +76,12 @@ export class ContributorsPage {
     ? 'person'
     : 'studio';
   private readonly route = this.kind === 'person' ? this.routes.PEOPLE : this.routes.STUDIOS;
-  protected readonly search = createQueryParamsSignalForm(this.route, { writeOn: 'submit' });
+  private readonly log = inject(EventLog);
+  private readonly source = this.kind === 'person' ? 'People search' : 'Studios search';
+  protected readonly search = createQueryParamsSignalForm(this.route, {
+    writeOn: 'submit',
+    beforeWrite: this.log.formWrite(this.source),
+  });
   protected readonly searchInUrl = computed(() => this.route.params().query.search);
   // The model changes on every keystroke, while the URL changes only on Search.
   protected readonly unsubmitted = computed(
@@ -85,6 +91,10 @@ export class ContributorsPage {
     params: () => ({ kind: this.kind, search: this.searchInUrl() }),
     stream: ({ params }) => this.backendApi.getContributors(params),
   });
+
+  constructor() {
+    this.log.watchSignalForm(this.source, this.search.form, () => this.route.params().query);
+  }
 
   protected clear() {
     this.search.model.set({ search: '' });

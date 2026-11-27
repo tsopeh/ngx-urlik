@@ -769,6 +769,20 @@ Three more were possible but not fixed that day. We fixed them on Nov 13:
 - `e365058` (Oct 14) deploys the demo to GitHub Pages from master.
 - On Nov 14 the Angular project and its folder became `demo-app` (`projects/demo-app`), so the
   workspace names the demo plainly. The app is still called TasteTrack.
+- On Nov 27 the maintainer asked for the demo to show more of the library, in three commits.
+  `4ceb6a6` made the detail page's Overview, Credits, and History links scroll. They had changed
+  the fragment, but the app never turned on Angular's anchor scrolling. `e3cc465` added the
+  Library shortcuts (`ifActive()` with values), tab titles from resolvers (`paramsSnapshot()`), a
+  search that writes on submit, a role filter that calls `patchQuery()`, and a demo lab with a
+  guard that declines a Library write. The guard first lived in its own file, which imported
+  `AppRouter` while the route file imported the guard. The bundle ran that file second, so the
+  route read `undefined`. Resolvers and guards now live in the route file. The third commit added
+  the inspector. The maintainer suggested a flashing window at the top left. It became a panel
+  docked on the right whose new events highlight once, because constant flashing is hard to read
+  next to the app and can trigger seizures, and the brand sits at the top left.
+- The maintainer then almost missed the inspector, because it used TasteTrack's colors and fonts.
+  It now looks like a developer tool: a dark panel in both themes, bluer on a dark page, named
+  "ngx-urlik inspector", with a hint at the top until the visitor dismisses it.
 
 ## Docs and style
 

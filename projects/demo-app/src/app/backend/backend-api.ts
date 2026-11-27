@@ -134,6 +134,12 @@ export const BACKEND_LATENCY = new InjectionToken<() => number>('BACKEND_LATENCY
   factory: () => normalLatency,
 });
 
+/** Called each time the fake backend answers a query, with the query's name and its delay in ms. */
+export const BACKEND_MONITOR = new InjectionToken<(query: string, latency: number) => void>(
+  'BACKEND_MONITOR',
+  { providedIn: 'root', factory: () => () => undefined },
+);
+
 /**
  * The fake backend. Every page reads and changes data through it.
  *
@@ -145,19 +151,28 @@ export const BACKEND_LATENCY = new InjectionToken<() => number>('BACKEND_LATENCY
 export class BackendApi {
   private readonly repository = inject(TasteTrackRepository);
   private readonly latency = inject(BACKEND_LATENCY);
+  private readonly monitor = inject(BACKEND_MONITOR);
   private readonly dataVersion$ = toObservable(this.repository.dataVersion).pipe(
     filter(() => this.repository.ready()),
   );
 
   /** Waits a fresh latency for each data version before the query reads the data. */
-  private respond() {
-    return switchMap((version: number) => timer(this.latency()).pipe(map(() => version)));
+  private respond(query: string) {
+    return switchMap((version: number) => {
+      const latency = this.latency();
+      return timer(latency).pipe(
+        map(() => {
+          this.monitor(query, latency);
+          return version;
+        }),
+      );
+    });
   }
 
   /** One page of catalog titles that match the search, genres, and sort order. */
   getCatalog(query: CatalogQuery): Observable<CatalogResponse> {
     return this.dataVersion$.pipe(
-      this.respond(),
+      this.respond('getCatalog'),
       map(() => {
         const items = this.repository.items();
         const personalStates = this.repository.personalStates();
@@ -200,7 +215,7 @@ export class BackendApi {
   /** The detail page for a movie, show, season, or episode, or `null` if there's no such title. */
   getItemDetail(request: ItemDetailRequest): Observable<ItemDetail | null> {
     return this.dataVersion$.pipe(
-      this.respond(),
+      this.respond('getItemDetail'),
       map(() => {
         const items = this.repository.items();
         let item: CatalogItem | undefined;
@@ -265,7 +280,7 @@ export class BackendApi {
 
   getSeasons(showId: string): Observable<readonly Season[]> {
     return this.dataVersion$.pipe(
-      this.respond(),
+      this.respond('getSeasons'),
       map(() => this.repository.seasons().filter((season) => season.showId === showId)),
     );
   }
@@ -273,7 +288,7 @@ export class BackendApi {
   /** One page of library titles, filtered by search, kind, status, viewing count, and rating. */
   getLibrary(query: LibraryQuery): Observable<LibraryResponse> {
     return this.dataVersion$.pipe(
-      this.respond(),
+      this.respond('getLibrary'),
       map(() => {
         const stateMap = new Map(
           this.repository.personalStates().map((state) => [state.itemId, state]),
@@ -319,7 +334,7 @@ export class BackendApi {
   /** One page of viewings, filtered by title and date range. */
   getHistory(query: HistoryQuery): Observable<HistoryResponse> {
     return this.dataVersion$.pipe(
-      this.respond(),
+      this.respond('getHistory'),
       map(() => {
         const itemMap = new Map(this.repository.items().map((item) => [item.id, item]));
         const matched = this.repository.events().filter((event) => {
@@ -356,7 +371,7 @@ export class BackendApi {
   getContributors(query: ContributorQuery): Observable<readonly Contributor[]> {
     const search = query.search.toLowerCase();
     return this.dataVersion$.pipe(
-      this.respond(),
+      this.respond('getContributors'),
       map(() =>
         this.repository
           .contributors()
@@ -368,7 +383,7 @@ export class BackendApi {
   /** A person or studio with their credits, or `null` if the ID is unknown. */
   getContributorProfile(id: string): Observable<ContributorProfile | null> {
     return this.dataVersion$.pipe(
-      this.respond(),
+      this.respond('getContributorProfile'),
       map(() => {
         const contributor = this.repository.contributors().find((c) => c.id === id);
         if (!contributor) {

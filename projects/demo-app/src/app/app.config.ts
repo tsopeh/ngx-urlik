@@ -6,8 +6,10 @@ import {
 } from '@angular/core';
 import { withInMemoryScrolling } from '@angular/router';
 import { provideAppRouter } from './app-router';
-import { BACKEND_LATENCY } from './backend';
+import { BACKEND_LATENCY, BACKEND_MONITOR } from './backend';
 import { DemoLab } from './demo-lab';
+import { EventLog } from './inspector/event-log';
+import { recordAppEvents } from './inspector/record-events';
 import { Preferences } from './preferences';
 
 export const appConfig: ApplicationConfig = {
@@ -24,6 +26,16 @@ export const appConfig: ApplicationConfig = {
         return () => lab.latency();
       },
     },
+    // The inspector's event log shows each answer, and every navigation from the start.
+    {
+      provide: BACKEND_MONITOR,
+      useFactory: () => {
+        const log = inject(EventLog);
+        return (query: string, latency: number) =>
+          log.add('backend', 'Backend', `answered ${query} after ${Math.round(latency)} ms`);
+      },
+    },
+    provideEnvironmentInitializer(recordAppEvents),
     // Start Preferences with the app so it saves remembered values from every page.
     provideEnvironmentInitializer(() => {
       inject(Preferences);

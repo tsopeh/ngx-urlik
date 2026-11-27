@@ -17,6 +17,7 @@ import {
   sortCodec,
 } from './codecs';
 import { declinedMinRating, DemoLab } from './demo-lab';
+import { diagnosticsRelay } from './inspector/diagnostics-relay';
 import { catalogTitle, contributorsTitle, historyTitle, libraryTitle } from './page-titles';
 
 const statusCodec = enumCodec(['saved', 'in-progress', 'completed'] as const);
@@ -68,6 +69,8 @@ enum RouteNames {
 }
 
 export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
+  // Warnings go to the console and to the inspector's event log.
+  diagnostics: { warn: diagnosticsRelay.warn },
   routes: [
     {
       path: '',

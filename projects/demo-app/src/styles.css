@@ -52,6 +52,13 @@
     --shadow-card: 0 1rem 2rem rgb(0 0 0 / 30%);
     --focus-ring: #f093b8;
   }
+  /* A dark page needs a cooler, bluer inspector to stand apart from it. */
+  :root:not([data-theme]) app-inspector {
+    --inspector-bg: #0f1724;
+    --inspector-surface: #172235;
+    --inspector-border: #283851;
+    --inspector-muted: #93a3bb;
+  }
 }
 
 :root[data-theme='dark'] {
@@ -80,9 +87,65 @@
   --shadow-card: 0 1rem 2rem rgb(0 0 0 / 30%);
   --focus-ring: #f093b8;
 }
+:root[data-theme='dark'] app-inspector {
+  --inspector-bg: #0f1724;
+  --inspector-surface: #172235;
+  --inspector-border: #283851;
+  --inspector-muted: #93a3bb;
+}
 
 :root[data-theme='light'] {
   color-scheme: light;
+}
+
+/* The inspector looks like a developer tool beside TasteTrack: dark, in both themes. */
+app-inspector {
+  --inspector-bg: #1c1822;
+  --inspector-surface: #26212d;
+  --inspector-border: #3d3547;
+  --inspector-text: #eee8f2;
+  --inspector-muted: #aaa1b3;
+  --inspector-teal: #7fd6cb;
+  --inspector-pink: #f29bc0;
+  --inspector-amber: #f2b66d;
+  --inspector-red: #ff8f94;
+  --inspector-mark: rgb(242 182 109 / 16%);
+  --inspector-flash: rgb(242 182 109 / 35%);
+}
+
+/* The inspector's animations: a new event, the live dot, and the count of unseen events. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+@keyframes inspector-arrive {
+  from {
+    background: var(--inspector-flash);
+  }
+  to {
+    background: var(--inspector-surface);
+  }
+}
+@keyframes inspector-blink {
+  from {
+    background: var(--inspector-amber);
+    transform: scale(1.6);
+  }
+  to {
+    background: var(--inspector-teal);
+    transform: scale(1);
+  }
+}
+@keyframes inspector-pop {
+  from {
+    transform: scale(1.4);
+  }
+  to {
+    transform: scale(1);
+  }
 }
 
 * {
@@ -133,6 +196,8 @@ a {
   padding: clamp(1.25rem, 4vw, 4rem);
   display: grid;
   gap: clamp(2rem, 4vw, 4rem);
+  /* A filter grid inside sizes its columns to the page. */
+  container-type: inline-size;
 }
 .page-stack.inset {
   padding-top: 1rem;
@@ -161,7 +226,8 @@ a {
 .empty-state h1 {
   margin: 0.25rem 0;
   color: var(--text-strong);
-  font-size: clamp(2.25rem, 6vw, 5.5rem);
+  /* Sized by the main column, which is narrower while the inspector is open. */
+  font-size: clamp(2.25rem, 6cqi, 5.5rem);
   line-height: 0.95;
   letter-spacing: -0.065em;
   max-width: 13ch;
@@ -222,6 +288,8 @@ h2 {
   border-color: var(--accent-danger);
 }
 .panel {
+  /* A filter grid inside sizes its columns to the panel. */
+  container-type: inline-size;
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: 1.25rem;
@@ -406,8 +474,16 @@ pre {
   .detail-cover {
     max-width: 18rem;
   }
+}
+/* Four columns need about 43rem, so a narrower page or panel shows two, and then one. */
+@container (max-width: 44rem) {
   .filter-panel {
     grid-template-columns: 1fr 1fr;
+  }
+}
+@container (max-width: 28rem) {
+  .filter-panel {
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 560px) {
@@ -415,9 +491,6 @@ pre {
   .section-heading {
     align-items: start;
     flex-direction: column;
-  }
-  .filter-panel {
-    grid-template-columns: 1fr;
   }
   .history-list article {
     grid-template-columns: 1fr auto;

@@ -9,6 +9,7 @@ import { AppRouter } from './app-router';
 import { Preferences } from './preferences';
 import { CatalogLinks } from './catalog-links';
 import { LoadingIndicator } from './loading-indicator';
+import { EventLog } from './inspector/event-log';
 import { withPreviousValue } from './with-previous-value';
 import type { PageSize } from './codecs';
 
@@ -100,11 +101,12 @@ export class HistoryPage {
   private readonly routes = inject(AppRouter).routes;
   private readonly backendApi = inject(BackendApi);
   private readonly preferences = inject(Preferences);
+  private readonly log = inject(EventLog);
   protected readonly form = createQueryParamsFormGroup(this.routes.HISTORY, {
     debounce: { search: 250 },
     // A cleared date input produces ''; turning it into null removes the parameter from the URL.
     // A new filter or order starts from the first page, in the same navigation.
-    beforeWrite: (patch) => {
+    beforeWrite: this.log.formWrite('History form', (patch) => {
       for (const field of ['from', 'to'] as const) {
         if (patch[field] === '') {
           patch = { ...patch, [field]: null };
@@ -113,7 +115,7 @@ export class HistoryPage {
       const filters = ['search', 'from', 'to', 'sort', 'pageSize'] as const;
       const changesFilter = filters.some((field) => field in patch);
       return changesFilter ? { page: 1, ...patch } : patch;
-    },
+    }),
   }).form;
   protected readonly query = computed(() => this.routes.HISTORY.params().query);
   protected readonly pageSize = computed(() => this.preferences.pageSize(this.query().pageSize));
@@ -133,6 +135,7 @@ export class HistoryPage {
 
   constructor() {
     this.form.controls.search.addValidators(Validators.minLength(3));
+    this.log.watchFormGroup('History form', this.form);
   }
 
   protected setPageSize(value: string) {

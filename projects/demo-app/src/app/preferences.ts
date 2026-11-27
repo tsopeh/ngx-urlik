@@ -1,6 +1,7 @@
 import { effect, inject, Injectable, signal } from '@angular/core';
 import { queryParam } from 'ngx-urlik';
 import { AppRouter } from './app-router';
+import { EventLog } from './inspector/event-log';
 import { type PageSize, pageSizeCodec, positiveIntegerCodec, prefixedIdCodec } from './codecs';
 
 const pageSizeKey = 'taste-track:pageSize';
@@ -56,6 +57,7 @@ function readSeasons(): Readonly<Record<string, number>> {
 @Injectable({ providedIn: 'root' })
 export class Preferences {
   private readonly appRouter = inject(AppRouter);
+  private readonly log = inject(EventLog);
 
   // Saved from the URL. `pageSize` has no default, so the URL holds it only when the user picked
   // one.
@@ -77,6 +79,7 @@ export class Preferences {
       }
       this.savedPageSize.set(pageSize);
       writeJson(pageSizeKey, pageSize);
+      this.log.add('app', 'Preferences', `saved page size ${pageSize} from globalParams()`);
     });
     effect(() => {
       const { showId, seasonNumber } = current().path;
@@ -87,6 +90,7 @@ export class Preferences {
       }
       this.seasons.update((seasons) => ({ ...seasons, [showId]: seasonNumber }));
       writeJson(seasonsKey, this.seasons());
+      this.log.add('app', 'Preferences', `saved season ${seasonNumber} for ${showId}`);
     });
   }
 

@@ -563,7 +563,7 @@ test('the people search changes the URL only when submitted', async ({ page }) =
   await page.goto('/people');
   const search = page.getByRole('searchbox', { name: 'Search people' });
   const hint = page.getByText('Press Search to filter the list.');
-  const names = page.getByRole('heading', { level: 2 });
+  const names = page.getByRole('main').getByRole('heading', { level: 2 });
   await expect(names).not.toHaveCount(0);
   const everyone = await names.count();
 
@@ -619,4 +619,111 @@ test('a guard declines a Library filter, and the form keeps the choice', async (
   await rating.selectOption('7');
   await expect(page).toHaveURL(/\/library\?minRating=7$/);
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test.describe('inspector', () => {
+  const inspectorOf = (page: Page) =>
+    page.getByRole('complementary', { name: 'ngx-urlik inspector' });
+  const paramRow = (page: Page, name: string) =>
+    inspectorOf(page)
+      .locator('.params div')
+      .filter({ has: page.locator('dt', { hasText: new RegExp(`^${name}$`) }) });
+
+  test('decodes the URL into the deepest active route and its params()', async ({ page }) => {
+    await page.goto('/tv/brambleworth-manor/s/2/e/1?sort=year:desc');
+    const inspector = inspectorOf(page);
+    await expect(inspector.locator('.routes')).toHaveText(
+      /^BROWSE\s*›\s*SEASON\s*›\s*EPISODE_DETAIL$/,
+    );
+    await expect(paramRow(page, 'showId')).toContainText("'tv_brambleworth-manor'from the path");
+    await expect(paramRow(page, 'sort')).toContainText(
+      "{ field: 'year', direction: 'desc' }from ?sort=year:desc",
+    );
+    await expect(paramRow(page, 'page')).toContainText('1the default, left out of the URL');
+  });
+
+  test('marks only the parameters that params() returns new values for', async ({ page }) => {
+    await page.goto('/movies?sort=year:desc');
+    await expect(page.locator('app-media-card').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Drama', exact: true }).click();
+    await expect(page).toHaveURL(/genres=Drama/);
+    await expect(paramRow(page, 'genres')).toContainText('new value');
+    await expect(paramRow(page, 'sort')).not.toContainText('new value');
+  });
+
+  test('logs typing as one edit, then one write after the debounce', async ({ page }) => {
+    await page.goto('/movies');
+    await expect(page.locator('app-media-card').first()).toBeVisible();
+    await page
+      .getByRole('searchbox', { name: 'Search', exact: true })
+      .pressSequentially('the', { delay: 50 });
+    await expect(page).toHaveURL(/search=the/);
+    const events = inspectorOf(page).getByRole('listitem');
+    await expect(events.filter({ hasText: "edits search = 'the'" })).toHaveCount(1);
+    await expect(events.filter({ hasText: /edits search = '(t|th)'$/ })).toHaveCount(0);
+    const write = events.filter({ hasText: "writes { page: 1, search: 'the' }" });
+    await expect(write).toHaveCount(1);
+    const wait = Number(/(\d+) ms after the last edit/.exec(await write.innerText())?.[1]);
+    // The catalog search waits 300 ms after the last keystroke.
+    expect(wait).toBeGreaterThanOrEqual(300);
+  });
+
+  test("logs a warning for a value the codec can't read", async ({ page }) => {
+    await page.goto('/movies');
+    await inspectorOf(page).getByRole('button', { name: 'Open /library?minRating=abc' }).click();
+    await expect(page).toHaveURL(/\/library\?minRating=abc$/);
+    await expect(paramRow(page, 'minRating')).toContainText('nullfrom ?minRating=abc');
+    await expect(
+      inspectorOf(page)
+        .getByRole('listitem')
+        .filter({ hasText: 'PARAM_DESERIALIZE_FAILED for minRating' }),
+    ).not.toHaveCount(0);
+  });
+
+  test('logs a navigation that a guard declines', async ({ page }) => {
+    await page.goto('/settings');
+    await page.getByRole('checkbox', { name: /Decline a Library minimum rating/ }).check();
+    await page.getByRole('link', { name: /Library$/ }).click();
+    await page.getByRole('combobox', { name: 'Minimum rating' }).selectOption('10');
+    await expect(
+      inspectorOf(page)
+        .getByRole('listitem')
+        .filter({ hasText: 'cancelled /library?minRating=10: a guard declined it' }),
+    ).toHaveCount(1);
+  });
+
+  test('detail panels fit beside the open inspector', async ({ page }) => {
+    await page.goto(movieUrl);
+    // Columns too wide for the panel overflow past it, so the last control is what to measure.
+    const logButton = page.getByRole('button', { name: 'Log viewing' });
+    await expect(logButton).toBeVisible();
+    const buttonBox = (await logButton.boundingBox())!;
+    const inspectorBox = (await inspectorOf(page).boundingBox())!;
+    expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(inspectorBox.x);
+  });
+
+  test('shows a first-visit hint until it is dismissed', async ({ page }) => {
+    await page.goto('/movies');
+    const hint = inspectorOf(page).getByText('Change a filter or open a title');
+    await expect(hint).toBeVisible();
+    await inspectorOf(page).getByRole('button', { name: 'Got it' }).click();
+    await expect(hint).toHaveCount(0);
+    await page.reload();
+    await expect(
+      inspectorOf(page).getByRole('heading', { name: 'ngx-urlik inspector' }),
+    ).toBeVisible();
+    await expect(hint).toHaveCount(0);
+  });
+
+  test('hides, remembers that after a reload, and counts new events', async ({ page }) => {
+    await page.goto('/movies');
+    await inspectorOf(page).getByRole('button', { name: 'Hide' }).click();
+    await page.reload();
+    await expect(inspectorOf(page)).toHaveCount(0);
+    const opener = page.getByRole('button', { name: /^ngx-urlik inspector/ });
+    await page.getByRole('link', { name: /Library$/ }).click();
+    await expect(opener).toContainText(/\d+ new events/);
+    await opener.click();
+    await expect(inspectorOf(page)).toBeVisible();
+  });
 });
