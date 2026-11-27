@@ -3,6 +3,7 @@ import { AppRouter } from './app-router';
 import { Preferences } from './preferences';
 import { TasteTrackRepository } from './backend';
 import { ThemeService, type ThemePreference } from './theme';
+import { type BackendSpeed, declinedMinRating, DemoLab } from './demo-lab';
 
 @Component({
   template: `
@@ -28,6 +29,34 @@ import { ThemeService, type ThemePreference } from './theme';
           }
         </div>
       </section>
+      <section class="panel">
+        <h2>Demo lab</h2>
+        <p>
+          See how ngx-urlik handles a slow backend and a write that a guard declines. These settings
+          reset when you reload the page.
+        </p>
+        <fieldset class="segmented">
+          <legend>Backend speed</legend>
+          @for (speed of speeds; track speed.value) {
+            <button
+              type="button"
+              [class.selected]="lab.backendSpeed() === speed.value"
+              [attr.aria-pressed]="lab.backendSpeed() === speed.value"
+              (click)="lab.backendSpeed.set(speed.value)"
+            >
+              {{ speed.label }}
+            </button>
+          }
+        </fieldset>
+        <label class="checkbox"
+          ><input
+            type="checkbox"
+            [checked]="lab.declineTopRatings()"
+            (change)="lab.declineTopRatings.set($any($event.target).checked)"
+          />
+          Decline a Library minimum rating of {{ declinedMinRating }} or more</label
+        >
+      </section>
       <section class="panel danger">
         <h2>Reset demo data</h2>
         <p>
@@ -48,8 +77,41 @@ import { ThemeService, type ThemePreference } from './theme';
       </section>
     </section>
   `,
+  styles: `
+    fieldset button {
+      text-transform: none;
+    }
+    fieldset {
+      border: 0;
+      padding: 0;
+      margin: 0 0 1rem;
+      flex-wrap: wrap;
+    }
+    legend {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .checkbox {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      font-size: 0.9rem;
+      color: var(--text-body);
+    }
+    .checkbox input {
+      width: auto;
+    }
+  `,
 })
 export class SettingsPage {
+  protected readonly lab = inject(DemoLab);
+  protected readonly declinedMinRating = declinedMinRating;
+  protected readonly speeds: readonly { value: BackendSpeed; label: string }[] = [
+    { value: 'instant', label: 'Instant' },
+    { value: 'normal', label: 'Normal' },
+    { value: 'slow', label: 'Slow (2 s)' },
+  ];
   private readonly routes = inject(AppRouter).routes;
   private readonly repository = inject(TasteTrackRepository);
   private readonly preferences = inject(Preferences);

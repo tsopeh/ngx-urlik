@@ -107,6 +107,11 @@ export interface HistoryResponse {
   readonly total: number;
 }
 
+export interface ContributorQuery {
+  readonly kind: 'person' | 'studio';
+  readonly search: string;
+}
+
 /** A title someone worked on, and their roles in it. */
 export interface ContributorCredit {
   readonly item: CatalogItem;
@@ -119,14 +124,14 @@ export interface ContributorProfile {
   readonly credits: readonly ContributorCredit[];
 }
 
-/**
- * How long the fake backend takes to answer, in milliseconds. Three answers in four take 150 to
- * 300 ms, and the rest take 300 to 500 ms.
- */
+/** A network-like delay in milliseconds: four answers in five take 150 to 300 ms, the rest 300 to 500 ms. */
+export const normalLatency = (): number =>
+  Math.random() < 0.8 ? 150 + Math.random() * 150 : 300 + Math.random() * 200;
+
+/** How long the fake backend takes to answer, in milliseconds. */
 export const BACKEND_LATENCY = new InjectionToken<() => number>('BACKEND_LATENCY', {
   providedIn: 'root',
-  factory: () => () =>
-    Math.random() < 0.8 ? 150 + Math.random() * 150 : 300 + Math.random() * 200,
+  factory: () => normalLatency,
 });
 
 /**
@@ -347,10 +352,16 @@ export class BackendApi {
     );
   }
 
-  getContributors(kind: 'person' | 'studio'): Observable<readonly Contributor[]> {
+  /** People or studios whose name contains the search, ignoring case. */
+  getContributors(query: ContributorQuery): Observable<readonly Contributor[]> {
+    const search = query.search.toLowerCase();
     return this.dataVersion$.pipe(
       this.respond(),
-      map(() => this.repository.contributors().filter((c) => c.kind === kind)),
+      map(() =>
+        this.repository
+          .contributors()
+          .filter((c) => c.kind === query.kind && c.name.toLowerCase().includes(search)),
+      ),
     );
   }
 

@@ -1138,13 +1138,18 @@ because they're in the URL. Then open Brambleworth Manor, season 2, episode 1. T
 `/tv/brambleworth-manor/s/2/e/1`, while the show's ID is `tv_brambleworth-manor`, because its codec
 removes the `tv_` prefix when it writes and adds it back when it parses.
 
-| Page                    | Shows                                                           |
-| ----------------------- | --------------------------------------------------------------- |
-| Movie and TV browsing   | Query parameters on a parent, a genre list, sorting, pagination |
-| Show → season → episode | Inherited path parameters, custom codecs                        |
-| Detail pages            | One page on several routes, fragments                           |
-| Library                 | Signal Forms with validation                                    |
-| Viewing history         | Reactive Forms with a debounced, validated search               |
+| Page                    | Shows                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| Movie and TV browsing   | Query parameters on a parent, a genre list, sorting, pagination               |
+| Show → season → episode | Inherited path parameters, custom codecs                                      |
+| Detail pages            | One page on several routes, fragments                                         |
+| Library                 | Signal Forms with validation, a guard that declines a write, `onWriteFailure` |
+| Viewing history         | Reactive Forms with a debounced, validated search                             |
+| People and studios      | A search that writes only when submitted                                      |
+| A person's page         | `patchQuery()` from buttons, with no form                                     |
+| Sidebar                 | `ifActive()` with query parameters, for the Library shortcuts                 |
+| Tab titles              | `paramsSnapshot()` in title resolvers                                         |
+| Settings                | A demo lab: a slower backend, and the Library guard                           |
 
 ## Develop
 

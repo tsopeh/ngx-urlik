@@ -1,7 +1,8 @@
 import { Component, inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { AppRouter } from './app-router';
-import { TasteTrackRepository } from './backend';
+import { type LibraryStatus, TasteTrackRepository } from './backend';
+import { statusLabels } from './status-labels';
 import { type ThemePreference, ThemeService } from './theme';
 
 @Component({
@@ -21,6 +22,17 @@ import { type ThemePreference, ThemeService } from './theme';
               [attr.aria-current]="item.route.ifActive() ? 'page' : null"
               >{{ item.icon }} <span>{{ item.label }}</span></a
             >
+            @if (item.route === routes.LIBRARY) {
+              @for (shortcut of libraryShortcuts; track shortcut.label) {
+                <a
+                  class="shortcut"
+                  [routerLink]="shortcut.url"
+                  [class.active]="routes.LIBRARY.ifActive(shortcut.values)"
+                  [attr.aria-current]="routes.LIBRARY.ifActive(shortcut.values) ? 'page' : null"
+                  >{{ shortcut.label }}</a
+                >
+              }
+            }
           }
         </nav>
         <fieldset class="theme-switcher">
@@ -114,6 +126,10 @@ import { type ThemePreference, ThemeService } from './theme';
       color: var(--text-strong);
       background: var(--surface-selected);
     }
+    nav a.shortcut {
+      padding: 0.4rem 0.8rem 0.4rem 2.6rem;
+      font-size: 0.85rem;
+    }
     .theme-switcher {
       margin-top: auto;
       border: 0;
@@ -154,7 +170,8 @@ import { type ThemePreference, ThemeService } from './theme';
         border-top: 1px solid var(--border-subtle);
       }
       .brand,
-      .theme-switcher {
+      .theme-switcher,
+      nav a.shortcut {
         display: none;
       }
       nav {
@@ -178,9 +195,21 @@ import { type ThemePreference, ThemeService } from './theme';
 })
 export class Shell {
   protected readonly repository = inject(TasteTrackRepository);
-  private readonly routes = inject(AppRouter).routes;
+  protected readonly routes = inject(AppRouter).routes;
   protected readonly theme = inject(ThemeService);
   protected readonly themes: readonly ThemePreference[] = ['system', 'light', 'dark'];
+  // Each shortcut is active only while the status filter is exactly its status. The other
+  // Library filters, like the search, don't count.
+  protected readonly libraryShortcuts = (['saved', 'in-progress', 'completed'] as const).map(
+    (status: LibraryStatus) => {
+      const values = { query: { statuses: [status] } };
+      return {
+        label: statusLabels[status],
+        url: this.routes.LIBRARY.createUrlTree(values),
+        values,
+      };
+    },
+  );
   protected readonly navigation = [
     // Browse opens movies, and stays highlighted on every movie and TV page.
     {

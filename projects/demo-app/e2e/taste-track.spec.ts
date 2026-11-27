@@ -407,7 +407,8 @@ test('a bad remembered season leaves the show page working', async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
-test('writes a typed catalog search to the URL once, not per keystroke', async ({ page }) => {
+// Records every URL the app writes to the browser history, and returns a function that reads them.
+async function recordUrlWrites(page: Page) {
   await page.addInitScript(() => {
     const writes: string[] = [];
     Object.assign(window, { writes });
@@ -419,6 +420,11 @@ test('writes a typed catalog search to the URL once, not per keystroke', async (
       };
     }
   });
+  return () => page.evaluate(() => (window as unknown as { writes: string[] }).writes);
+}
+
+test('writes a typed catalog search to the URL once, not per keystroke', async ({ page }) => {
+  const urlWrites = await recordUrlWrites(page);
   await page.goto('/movies?pageSize=12&page=2');
   const search = page.getByRole('searchbox', { name: 'Search', exact: true });
   await expect(page.locator('app-media-card')).not.toHaveCount(0);
@@ -426,7 +432,7 @@ test('writes a typed catalog search to the URL once, not per keystroke', async (
   await search.pressSequentially('nine cells', { delay: 50 });
   await expect(page).toHaveURL(/\/movies\?pageSize=12&search=nine%20cells$/);
   await expect(page.locator('app-media-card')).toHaveCount(1);
-  const writes = await page.evaluate(() => (window as unknown as { writes: string[] }).writes);
+  const writes = await urlWrites();
   expect(writes.filter((url) => url.includes('search='))).toHaveLength(1);
 });
 
@@ -521,4 +527,96 @@ test('dims the results while they reload', async ({ page }) => {
   );
   expect(busyCards.length).toBeGreaterThan(0);
   expect(busyCards.every((count) => count > 0)).toBe(true);
+});
+
+test('a Library shortcut is active only while the status filter is exactly its status', async ({
+  page,
+}) => {
+  await page.goto('/movies');
+  const watchlist = page.getByRole('link', { name: 'Watchlist', exact: true });
+  await watchlist.click();
+  await expect(page).toHaveURL(/\/library\?statuses=saved$/);
+  await expect(watchlist).toHaveAttribute('aria-current', 'page');
+  // Filters other than the status don't count.
+  await page.getByRole('searchbox', { name: 'Search library' }).fill('the');
+  await expect(page).toHaveURL(/statuses=saved&search=the/);
+  await expect(watchlist).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('button', { name: 'Watching', exact: true }).click();
+  await expect(page).toHaveURL(/statuses=saved(,|%2C)in-progress/);
+  await expect(watchlist).not.toHaveAttribute('aria-current');
+});
+
+test('tab titles describe what the URL shows', async ({ page }) => {
+  await page.goto('/movies?genres=Drama&page=2');
+  await expect(page).toHaveTitle('Movies · Drama · page 2 · TasteTrack');
+  // A new search starts from page 1, and the title follows the URL without a new page load.
+  await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('the');
+  await expect(page).toHaveTitle('Movies · “the” · Drama · TasteTrack');
+  await page.goto('/library?statuses=saved,completed');
+  await expect(page).toHaveTitle('Library · Watchlist, Watched · TasteTrack');
+  await page.goto(movieUrl);
+  await expect(page).toHaveTitle("Quillon's Last Inference · TasteTrack");
+});
+
+test('the people search changes the URL only when submitted', async ({ page }) => {
+  const urlWrites = await recordUrlWrites(page);
+  await page.goto('/people');
+  const search = page.getByRole('searchbox', { name: 'Search people' });
+  const hint = page.getByText('Press Search to filter the list.');
+  const names = page.getByRole('heading', { level: 2 });
+  await expect(names).not.toHaveCount(0);
+  const everyone = await names.count();
+
+  await search.pressSequentially('march', { delay: 50 });
+  await expect(hint).toBeVisible();
+  await search.press('Enter');
+  await expect(page).toHaveURL(/\/people\?search=march$/);
+  await expect(names).toHaveText(['Wendell Marchbank']);
+  await expect(hint).toHaveCount(0);
+  // Typing wrote nothing. The one search in the URL history is the submitted one.
+  expect((await urlWrites()).filter((url) => url.includes('search='))).toEqual([
+    '/people?search=march',
+  ]);
+
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(page).toHaveURL(/\/people$/);
+  await expect(names).toHaveCount(everyone);
+  await expect(search).toHaveValue('');
+});
+
+test("a person's role chips filter the filmography through the URL", async ({ page }) => {
+  await page.goto('/people/wendell');
+  const credits = page.locator('.panel p');
+  await expect(credits).not.toHaveCount(0);
+  const allCredits = await credits.count();
+
+  await page.getByRole('button', { name: 'Writer', exact: true }).click();
+  await expect(page).toHaveURL(/\/people\/wendell\?role=Writer$/);
+  await expect(credits).not.toHaveCount(allCredits);
+  await expect(credits).not.toHaveCount(0);
+  for (const credit of await credits.allTextContents()) {
+    expect(credit).toContain('Writer');
+  }
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/people\/wendell$/);
+  await expect(credits).toHaveCount(allCredits);
+});
+
+test('a guard declines a Library filter, and the form keeps the choice', async ({ page }) => {
+  await page.goto('/settings');
+  await page.getByRole('checkbox', { name: /Decline a Library minimum rating/ }).check();
+  // The lab setting lives in memory, so the test stays in the app instead of loading a URL.
+  await page.getByRole('link', { name: /Library$/ }).click();
+  await expect(page).toHaveURL(/\/library$/);
+  const rating = page.getByRole('combobox', { name: 'Minimum rating' });
+
+  await rating.selectOption('9');
+  await expect(page.getByRole('alert')).toContainText('A guard declined this filter change');
+  await expect(page).toHaveURL(/\/library$/);
+  await expect(rating).toHaveValue('9');
+
+  await rating.selectOption('7');
+  await expect(page).toHaveURL(/\/library\?minRating=7$/);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });

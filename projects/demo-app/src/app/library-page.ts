@@ -1,7 +1,7 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, linkedSignal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { debounce, FormField, minLength } from '@angular/forms/signals';
-import { createQueryParamsSignalForm } from 'ngx-urlik/forms';
+import { createQueryParamsSignalForm, type QueryWriteFailure } from 'ngx-urlik/forms';
 import { AppRouter } from './app-router';
 import { Preferences } from './preferences';
 import { CatalogLinks } from './catalog-links';
@@ -16,6 +16,7 @@ import {
   type MediaKind,
 } from './backend';
 import { MediaCard } from './media-card';
+import { statusLabels } from './status-labels';
 
 @Component({
   imports: [FormField, LoadingIndicator, MediaCard],
@@ -105,12 +106,13 @@ import { MediaCard } from './media-card';
             [attr.aria-pressed]="binding.model().statuses.includes(status)"
             (click)="toggleStatus(status)"
           >
-            {{
-              status === 'saved' ? 'Watchlist' : status === 'in-progress' ? 'Watching' : 'Watched'
-            }}
+            {{ statusLabels[status] }}
           </button>
         }
       </div>
+      @if (writeFailure(); as message) {
+        <p role="alert">{{ message }}</p>
+      }
       <div class="section-heading">
         <div>
           <p class="eyebrow">Your titles</p>
@@ -161,6 +163,7 @@ export class LibraryPage {
   protected readonly links = inject(CatalogLinks);
   protected readonly kinds: readonly MediaKind[] = ['movie', 'show', 'episode'];
   protected readonly statuses: readonly LibraryStatus[] = ['saved', 'in-progress', 'completed'];
+  protected readonly statusLabels = statusLabels;
   private readonly routes = inject(AppRouter).routes;
   private readonly backendApi = inject(BackendApi);
   private readonly preferences = inject(Preferences);
@@ -174,6 +177,12 @@ export class LibraryPage {
       const changesMoreThanPage = Object.keys(patch).some((field) => field !== 'page');
       return changesMoreThanPage ? { page: 1, ...patch } : patch;
     },
+    onWriteFailure: (failure) => this.writeFailure.set(describeFailure(failure)),
+  });
+  // A failed write leaves the URL as it was, so the message stays until the URL changes.
+  protected readonly writeFailure = linkedSignal({
+    source: () => this.routes.LIBRARY.params(),
+    computation: () => '',
   });
   protected readonly ratings = [6, 7, 8, 9, 10];
   protected readonly pageSizes = [12, 24, 48] as const;
@@ -231,6 +240,13 @@ export class LibraryPage {
   private edit(change: Partial<ReturnType<typeof this.binding.model>>) {
     this.binding.model.update((query) => ({ ...query, ...change }));
   }
+}
+
+function describeFailure(failure: QueryWriteFailure): string {
+  return failure.kind === 'declined'
+    ? 'A guard declined this filter change, so the URL and the list stay as they were. ' +
+        'Your choice remains in the form, and the next filter change tries it again.'
+    : 'Could not change the filters. Please try again.';
 }
 
 /** The list with `item` added, or removed if it's already there. */

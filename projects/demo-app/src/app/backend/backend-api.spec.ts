@@ -273,7 +273,7 @@ describe('BackendApi', () => {
       const { api } = setup();
       let resolvedSynchronously = false;
 
-      const obs$ = api.getContributors('person');
+      const obs$ = api.getContributors({ kind: 'person', search: '' });
       obs$.subscribe(() => {
         resolvedSynchronously = true;
       });
@@ -283,6 +283,14 @@ describe('BackendApi', () => {
       const people = await firstValueFrom(obs$);
       expect(people.length).toBeGreaterThan(0);
       expect(people.every((p) => p.kind === 'person')).toBe(true);
+    });
+
+    it('returns only contributors whose name contains the search, ignoring case', async () => {
+      const { api } = setup();
+
+      const people = await firstValueFrom(api.getContributors({ kind: 'person', search: 'MARCH' }));
+
+      expect(people.map((person) => person.name)).toEqual(['Wendell Marchbank']);
     });
 
     it('resolves contributor profile and filmography', async () => {

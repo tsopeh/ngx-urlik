@@ -9,6 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
+import { Title } from '@angular/platform-browser';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AppRouter } from './app-router';
@@ -21,6 +22,7 @@ import {
 } from './backend';
 import { CatalogLinks } from './catalog-links';
 import { LoadingIndicator } from './loading-indicator';
+import { tabTitle } from './page-titles';
 import { Preferences } from './preferences';
 
 /** The date as `YYYY-MM-DD` in the browser's timezone. */
@@ -286,6 +288,13 @@ export class DetailPage {
   }
   constructor() {
     this.scrollToSectionOnLoad();
+    const title = inject(Title);
+    effect(() => {
+      const heading = this.heading();
+      if (heading) {
+        title.setTitle(tabTitle(heading));
+      }
+    });
     effect(() => {
       const current = this.state();
       this.statusControl.setValue(current?.status ?? '', { emitEvent: false });
