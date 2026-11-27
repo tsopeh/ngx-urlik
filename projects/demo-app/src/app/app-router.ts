@@ -22,7 +22,8 @@ import { catalogTitle, contributorsTitle, historyTitle, libraryTitle } from './p
 
 const statusCodec = enumCodec(['saved', 'in-progress', 'completed'] as const);
 
-const mediaKindCodec = enumCodec(['movie', 'show', 'episode'] as const);
+// The Library holds movies and shows. An episode counts toward its show.
+const libraryKindCodec = enumCodec(['movie', 'show'] as const);
 
 const creditRoleCodec = enumCodec(['Actor', 'Director', 'Writer', 'Production'] as const);
 
@@ -213,7 +214,7 @@ export const { AppRouter, provideAppRouter } = defineAppRouter(RouteNames, {
           runGuardsAndResolvers: resolveOnQueryChange,
           queryParams: {
             search: queryParam({ codec: stringCodec(), defaultValue: '' }),
-            media: queryParam({ codec: listCodec(mediaKindCodec, ','), defaultValue: [] }),
+            media: queryParam({ codec: listCodec(libraryKindCodec, ','), defaultValue: [] }),
             statuses: queryParam({ codec: listCodec(statusCodec, ','), defaultValue: [] }),
             replayCount: queryParam({ codec: experienceCountCodec() }),
             minRating: queryParam({ codec: numberCodec() }),

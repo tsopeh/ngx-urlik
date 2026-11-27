@@ -80,24 +80,34 @@ function localDate(date: Date): string {
         </section>
         @if (!isSeason()) {
           <section class="panel">
-            <h2>Your library</h2>
+            @if (title.kind === 'episode') {
+              <h2>Your viewings</h2>
+              <p>
+                An episode counts toward its show. Logging one puts the show in your Library as
+                Watching, unless you're already watching it or watched it.
+              </p>
+            } @else {
+              <h2>Your library</h2>
+            }
             <div class="filter-panel">
-              <label
-                >Status<select [formControl]="statusControl" (change)="setStatus()">
-                  <option value="" disabled>Not in library</option>
-                  <option value="saved">Watchlist</option>
-                  <option value="in-progress">Watching</option>
-                  <option value="completed">Watched</option>
-                </select></label
-              >
-              <label
-                >Rating<select [formControl]="ratingControl" (change)="setRating()">
-                  <option value="">Unrated</option>
-                  @for (rating of ratings; track rating) {
-                    <option [value]="rating">{{ rating }}/10</option>
-                  }
-                </select></label
-              >
+              @if (title.kind !== 'episode') {
+                <label
+                  >Status<select [formControl]="statusControl" (change)="setStatus()">
+                    <option value="" disabled>Not in library</option>
+                    <option value="saved">Watchlist</option>
+                    <option value="in-progress">Watching</option>
+                    <option value="completed">Watched</option>
+                  </select></label
+                >
+                <label
+                  >Rating<select [formControl]="ratingControl" (change)="setRating()">
+                    <option value="">Unrated</option>
+                    @for (rating of ratings; track rating) {
+                      <option [value]="rating">{{ rating }}/10</option>
+                    }
+                  </select></label
+                >
+              }
               <label
                 >Viewing date<input
                   type="date"

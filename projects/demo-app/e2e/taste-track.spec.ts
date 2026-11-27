@@ -100,14 +100,14 @@ test('restores Signal Forms and writes array and structured query values', async
   await page.goto('/library?search=inference&pageSize=12&sort=rating%3Adesc');
   await expect(page.getByRole('searchbox', { name: 'Search library' })).toHaveValue('inference');
   await expect(page.getByText("Quillon's Last Inference", { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'movie', exact: true }).click();
-  await page.getByRole('button', { name: 'show', exact: true }).click();
+  await page.getByRole('button', { name: 'Movies', exact: true }).click();
+  await page.getByRole('button', { name: 'Shows', exact: true }).click();
   await expect(page).toHaveURL(/media=movie(?:%2C|,)show/);
   await page.getByLabel('Viewing count').selectOption('countless');
   await expect(page).toHaveURL(/replayCount=countless/);
   await page.reload();
   await expect(page.getByLabel('Viewing count')).toHaveValue('countless');
-  await expect(page.getByRole('button', { name: 'movie', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('button', { name: 'Movies', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -527,6 +527,24 @@ test('dims the results while they reload', async ({ page }) => {
   );
   expect(busyCards.length).toBeGreaterThan(0);
   expect(busyCards.every((count) => count > 0)).toBe(true);
+});
+
+test('logging an episode puts its show in the Library as Watching', async ({ page }) => {
+  const cards = page.locator('app-media-card');
+  await page.goto('/library?search=Paperweight');
+  await expect(page.getByText('No library items match these filters.')).toBeVisible();
+
+  await page.goto('/tv/paperweight-and-sons/s/1/e/1');
+  await expect(page.getByRole('heading', { name: 'Your viewings' })).toBeVisible();
+  // An episode has no status of its own.
+  await expect(page.getByRole('combobox', { name: 'Status' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Log viewing' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Viewing saved.' })).toBeVisible();
+
+  await page.goto('/library?search=Paperweight&statuses=in-progress');
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toContainText('Paperweight & Sons');
+  await expect(cards).toContainText(/^.*1 of \d+ episodes logged/s);
 });
 
 test('a Library shortcut is active only while the status filter is exactly its status', async ({

@@ -13,7 +13,7 @@ import {
   type CatalogItem,
   type LibraryQuery,
   type LibraryStatus,
-  type MediaKind,
+  type LibraryKind,
 } from './backend';
 import { MediaCard } from './media-card';
 import { statusLabels } from './status-labels';
@@ -27,7 +27,10 @@ import { EventLog } from './inspector/event-log';
         <div>
           <p class="eyebrow">Personal archive</p>
           <h1>Your library</h1>
-          <p>Your watchlist, ratings, and watched titles.</p>
+          <p>
+            Your movies and shows: what you plan to watch, are watching, and watched. Logging an
+            episode puts its show here.
+          </p>
         </div>
       </header>
       <section class="filter-panel" aria-label="Library filters">
@@ -89,18 +92,20 @@ import { EventLog } from './inspector/event-log';
           </select></label
         >
       </section>
-      <div class="chip-row" aria-label="Media filters">
-        @for (kind of kinds; track kind) {
+      <div class="chip-row" role="group" aria-label="Type filters">
+        <span class="row-label" aria-hidden="true">Type</span>
+        @for (kind of kinds; track kind.value) {
           <button
-            [class.selected]="binding.model().media.includes(kind)"
-            [attr.aria-pressed]="binding.model().media.includes(kind)"
-            (click)="toggleMedia(kind)"
+            [class.selected]="binding.model().media.includes(kind.value)"
+            [attr.aria-pressed]="binding.model().media.includes(kind.value)"
+            (click)="toggleMedia(kind.value)"
           >
-            {{ kind }}
+            {{ kind.label }}
           </button>
         }
       </div>
-      <div class="chip-row" aria-label="Status filters">
+      <div class="chip-row" role="group" aria-label="Status filters">
+        <span class="row-label" aria-hidden="true">Status</span>
         @for (status of statuses; track status) {
           <button
             [class.selected]="binding.model().statuses.includes(status)"
@@ -133,6 +138,7 @@ import { EventLog } from './inspector/event-log';
             <app-media-card
               [item]="card.item"
               [state]="card.state"
+              [episodes]="card.episodes"
               [url]="links.item(card.item)"
               (favorite)="toggleFavorite(card.item.id)"
             />
@@ -159,10 +165,24 @@ import { EventLog } from './inspector/event-log';
       </nav>
     </section>
   `,
+  styles: `
+    .chip-row .row-label {
+      min-width: 3.5rem;
+      border: 0;
+      background: none;
+      padding-left: 0;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      align-self: center;
+    }
+  `,
 })
 export class LibraryPage {
   protected readonly links = inject(CatalogLinks);
-  protected readonly kinds: readonly MediaKind[] = ['movie', 'show', 'episode'];
+  protected readonly kinds: readonly { value: LibraryKind; label: string }[] = [
+    { value: 'movie', label: 'Movies' },
+    { value: 'show', label: 'Shows' },
+  ];
   protected readonly statuses: readonly LibraryStatus[] = ['saved', 'in-progress', 'completed'];
   protected readonly statusLabels = statusLabels;
   private readonly routes = inject(AppRouter).routes;
@@ -230,7 +250,7 @@ export class LibraryPage {
   protected setPage(page: number) {
     this.edit({ page });
   }
-  protected toggleMedia(kind: MediaKind) {
+  protected toggleMedia(kind: LibraryKind) {
     this.edit({ media: toggled(this.binding.model().media, kind) });
   }
   protected toggleStatus(status: LibraryStatus) {

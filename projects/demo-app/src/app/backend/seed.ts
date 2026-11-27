@@ -425,17 +425,8 @@ const episodes: CatalogItem[] = shows.flatMap(({ item: show, seasonCount }, show
 
 const items = [...movies, ...shows.map(({ item }) => item), ...episodes];
 
-// Two of every three movies and shows are in the library, plus the first seasons of four shows.
-const tracked = [
-  ...movies,
-  ...shows.map(({ item }) => item),
-  ...episodes.filter(
-    (item) =>
-      item.kind === 'episode' &&
-      item.seasonNumber === 1 &&
-      shows.slice(0, 4).some(({ item: show }) => show.id === item.showId),
-  ),
-];
+// Two of every three movies and shows are in the library.
+const tracked = [...movies, ...shows.map(({ item }) => item)];
 const personalStates: PersonalState[] = tracked
   .filter((_, index) => index % 3 !== 2)
   .map((item, index) => ({
@@ -451,7 +442,7 @@ const personalStates: PersonalState[] = tracked
           : { kind: 'exact', value: 1 + (index % 4) },
   }));
 
-const events: JournalEvent[] = personalStates
+const titleEvents: JournalEvent[] = personalStates
   .filter((state) => state.status !== 'saved')
   .flatMap((state, index) => {
     const item = items.find((item) => item.id === state.itemId)!;
@@ -466,6 +457,30 @@ const events: JournalEvent[] = personalStates
       }),
     );
   });
+
+// The first four shows being watched have one to four first-season episodes logged.
+const watching = personalStates.filter(
+  (state) => state.status === 'in-progress' && state.itemId.startsWith('tv_'),
+);
+const episodeEvents: JournalEvent[] = watching.slice(0, 4).flatMap((state, showIndex) =>
+  episodes
+    .filter(
+      (episode) =>
+        episode.kind === 'episode' &&
+        episode.showId === state.itemId &&
+        episode.seasonNumber === 1 &&
+        episode.episodeNumber <= showIndex + 1,
+    )
+    .map((episode, index) => ({
+      id: `evt_${episode.id.slice(3)}` as const,
+      itemId: episode.id,
+      kind: 'episode' as const,
+      occurredAt: new Date(Date.UTC(2026, 7, 3 + showIndex * 5 + index, 20)).toISOString(),
+      rating: null,
+    })),
+);
+
+const events = [...titleEvents, ...episodeEvents];
 
 export const tasteTrackSeed: TasteTrackSeed = {
   items,

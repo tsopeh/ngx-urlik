@@ -120,9 +120,18 @@ export class TasteTrackRepository {
     await this.refresh();
   }
 
+  /**
+   * Logs a viewing on `date`. A movie or show becomes Watched, and its count goes up by one. An
+   * episode counts toward its show, which joins the Library as Watching unless it's already
+   * Watching or Watched.
+   */
   async logViewing(item: CatalogItem, date: string): Promise<void> {
     if (!isViewingDate(date)) {
       throw new RangeError(`Can't log a viewing on '${date}'. Use a date like 2026-11-11.`);
+    }
+    if (item.kind === 'episode') {
+      await this.logEpisode(item, date);
+      return;
     }
     await this.database.transaction(
       'rw',
@@ -150,6 +159,39 @@ export class TasteTrackRepository {
           status: 'completed',
           count: nextCount,
         });
+      },
+    );
+    await this.refresh();
+  }
+
+  private async logEpisode(
+    episode: Extract<CatalogItem, { kind: 'episode' }>,
+    date: string,
+  ): Promise<void> {
+    await this.database.transaction(
+      'rw',
+      this.database.events,
+      this.database.personalStates,
+      async () => {
+        await this.database.events.add({
+          id: `evt_${crypto.randomUUID()}`,
+          itemId: episode.id,
+          kind: 'episode',
+          occurredAt: `${date}T20:00:00.000Z`,
+          rating: null,
+        });
+        const show = await this.database.personalStates.get(episode.showId);
+        const started = show?.status === 'in-progress' || show?.status === 'completed';
+        if (!started) {
+          await this.database.personalStates.put({
+            itemId: episode.showId,
+            favorite: false,
+            rating: null,
+            count: { kind: 'exact', value: 0 },
+            ...show,
+            status: 'in-progress',
+          });
+        }
       },
     );
     await this.refresh();

@@ -1,7 +1,7 @@
 import { Component, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { UrlTree } from '@angular/router';
-import type { CatalogItem, PersonalState } from './backend';
+import type { CatalogItem, EpisodeProgress, PersonalState } from './backend';
 
 @Component({
   selector: 'app-media-card',
@@ -25,17 +25,23 @@ import type { CatalogItem, PersonalState } from './backend';
           <a [routerLink]="url()">{{ item().title }}</a>
         </h3>
         <p>{{ item().subtitle }}</p>
+        @if (episodes(); as progress) {
+          <p class="progress">{{ progress.logged }} of {{ progress.total }} episodes logged</p>
+        }
         <div class="card-actions">
           @if (state()?.rating; as rating) {
             <span class="rating">★ {{ rating }}/10</span>
           }
-          <button
-            type="button"
-            (click)="favorite.emit(item())"
-            [attr.aria-label]="state()?.favorite ? 'Remove favorite' : 'Add favorite'"
-          >
-            {{ state()?.favorite ? '♥' : '♡' }}
-          </button>
+          <!-- A favorite is a Library entry, and an episode counts toward its show instead. -->
+          @if (item().kind !== 'episode') {
+            <button
+              type="button"
+              (click)="favorite.emit(item())"
+              [attr.aria-label]="state()?.favorite ? 'Remove favorite' : 'Add favorite'"
+            >
+              {{ state()?.favorite ? '♥' : '♡' }}
+            </button>
+          }
         </div>
       </div>
     </article>
@@ -131,6 +137,10 @@ import type { CatalogItem, PersonalState } from './backend';
       letter-spacing: 0.08em;
       font-size: 0.65rem;
     }
+    .progress {
+      color: var(--accent-cool);
+      font-weight: 600;
+    }
     .card-actions {
       display: flex;
       justify-content: space-between;
@@ -154,6 +164,7 @@ import type { CatalogItem, PersonalState } from './backend';
 export class MediaCard {
   readonly item = input.required<CatalogItem>();
   readonly state = input<PersonalState>();
+  readonly episodes = input<EpisodeProgress>();
   readonly url = input.required<UrlTree | null>();
   readonly favorite = output<CatalogItem>();
   protected initials(): string {

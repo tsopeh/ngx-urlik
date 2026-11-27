@@ -8,7 +8,7 @@ import type {
   Contributor,
   ExperienceCount,
   JournalEvent,
-  MediaKind,
+  LibraryKind,
   PersonalState,
   Season,
 } from './domain';
@@ -65,7 +65,7 @@ export interface ItemDetail {
 
 export interface LibraryQuery {
   readonly search: string;
-  readonly media: readonly MediaKind[];
+  readonly media: readonly LibraryKind[];
   readonly statuses: readonly LibraryStatus[];
   readonly replayCount: ExperienceCount | null;
   readonly minRating: number | null;
@@ -74,10 +74,17 @@ export interface LibraryQuery {
   readonly sort: { readonly field: string; readonly direction: string };
 }
 
-/** A library title with the user's entry for it. */
+/** How many of a show's episodes have a logged viewing. */
+export interface EpisodeProgress {
+  readonly logged: number;
+  readonly total: number;
+}
+
+/** A library title with the user's entry for it, and a show's episode progress once one is logged. */
 export interface LibraryItemCard {
   readonly item: CatalogItem;
   readonly state: PersonalState;
+  readonly episodes?: EpisodeProgress;
 }
 
 /** One page of library titles, and how many match in total. */
@@ -285,7 +292,10 @@ export class BackendApi {
     );
   }
 
-  /** One page of library titles, filtered by search, kind, status, viewing count, and rating. */
+  /**
+   * One page of library movies and shows, filtered by search, kind, status, viewing count, and
+   * rating. Episodes aren't entries: each show counts its logged episodes instead.
+   */
   getLibrary(query: LibraryQuery): Observable<LibraryResponse> {
     return this.dataVersion$.pipe(
       this.respond('getLibrary'),
@@ -293,11 +303,12 @@ export class BackendApi {
         const stateMap = new Map(
           this.repository.personalStates().map((state) => [state.itemId, state]),
         );
+        const episodes = this.episodeProgress();
         const filtered = this.repository
           .items()
-          .filter((item) => {
+          .filter((item): item is Extract<CatalogItem, { kind: LibraryKind }> => {
             const state = stateMap.get(item.id);
-            if (!state) {
+            if (!state || item.kind === 'episode') {
               return false;
             }
             const matchesSearch =
@@ -322,13 +333,36 @@ export class BackendApi {
         const pageItems = filtered.slice(start, start + query.pageSize);
         return {
           total: filtered.length,
-          items: pageItems.map((item) => ({
-            item,
-            state: stateMap.get(item.id)!,
-          })),
+          items: pageItems.map((item) => {
+            const progress = episodes.get(item.id);
+            return {
+              item,
+              state: stateMap.get(item.id)!,
+              ...(progress?.logged ? { episodes: progress } : {}),
+            };
+          }),
         };
       }),
     );
+  }
+
+  /** Each show's episode count, and how many of its episodes have a logged viewing. */
+  private episodeProgress(): ReadonlyMap<string, EpisodeProgress> {
+    const loggedEpisodes = new Set(
+      this.repository
+        .events()
+        .filter((event) => event.kind === 'episode')
+        .map((event) => event.itemId),
+    );
+    const progress = new Map<string, EpisodeProgress>();
+    for (const item of this.repository.items()) {
+      if (item.kind === 'episode') {
+        const { logged, total } = progress.get(item.showId) ?? { logged: 0, total: 0 };
+        const isLogged = loggedEpisodes.has(item.id);
+        progress.set(item.showId, { logged: logged + (isLogged ? 1 : 0), total: total + 1 });
+      }
+    }
+    return progress;
   }
 
   /** One page of viewings, filtered by title and date range. */

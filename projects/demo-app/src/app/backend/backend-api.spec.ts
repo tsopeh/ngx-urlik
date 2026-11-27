@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { BACKEND_LATENCY, BackendApi } from './backend-api';
+import { BACKEND_LATENCY, BackendApi, type LibraryQuery } from './backend-api';
 import { TasteTrackRepository } from './database';
 import type { CatalogItem, PersonalState } from './domain';
 import { tasteTrackSeed } from './seed';
@@ -74,6 +74,20 @@ class MockTasteTrackRepository {
     ]);
     this.dataVersion.update((v) => v + 1);
   }
+}
+
+function libraryQuery(change: Partial<LibraryQuery> = {}): LibraryQuery {
+  return {
+    search: '',
+    media: [],
+    statuses: [],
+    replayCount: null,
+    minRating: null,
+    page: 1,
+    pageSize: 12,
+    sort: { field: 'title', direction: 'asc' },
+    ...change,
+  };
 }
 
 describe('BackendApi', () => {
@@ -219,6 +233,50 @@ describe('BackendApi', () => {
       expect(response.total).toBeGreaterThan(0);
       expect(response.items.every((card) => card.state.status === 'completed')).toBe(true);
       expect(response.items.every((card) => (card.state.rating ?? 0) >= 9)).toBe(true);
+    });
+
+    it('lists movies and shows, never an episode, even one with a journal entry', async () => {
+      const { api, repository } = setup();
+      const episode = tasteTrackSeed.items.find((item) => item.kind === 'episode')!;
+      await repository.updatePersonal(episode.id, { status: 'completed' });
+
+      const response = await firstValueFrom(api.getLibrary(libraryQuery({ pageSize: 48 })));
+      const kinds = new Set(response.items.map((card) => card.item.kind));
+
+      expect([...kinds].sort()).toEqual(['movie', 'show']);
+      const entries = tasteTrackSeed.personalStates.filter(
+        (state) => !state.itemId.startsWith('ep_'),
+      );
+      expect(response.total).toBe(entries.length);
+    });
+
+    it("counts a show's logged episodes on its card", async () => {
+      const { api } = setup();
+      const logged = tasteTrackSeed.items.find(
+        (item) =>
+          item.kind === 'episode' &&
+          tasteTrackSeed.events.some((event) => event.itemId === item.id),
+      );
+      const show = tasteTrackSeed.items.find(
+        (item) => logged?.kind === 'episode' && item.id === logged.showId,
+      )!;
+
+      const response = await firstValueFrom(
+        api.getLibrary(libraryQuery({ search: show.title, media: ['show'] })),
+      );
+      const card = response.items.find((candidate) => candidate.item.id === show.id);
+
+      const showEpisodes = tasteTrackSeed.items.filter(
+        (item) => item.kind === 'episode' && item.showId === show.id,
+      );
+      const loggedEpisodes = showEpisodes.filter((episode) =>
+        tasteTrackSeed.events.some((event) => event.itemId === episode.id),
+      );
+      expect(loggedEpisodes.length).toBeGreaterThan(0);
+      expect(card?.episodes).toEqual({
+        logged: loggedEpisodes.length,
+        total: showEpisodes.length,
+      });
     });
   });
 

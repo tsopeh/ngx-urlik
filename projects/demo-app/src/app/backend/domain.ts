@@ -1,4 +1,6 @@
 export type MediaKind = 'movie' | 'show' | 'episode';
+/** What the Library holds. An episode counts toward its show, so it's never an entry itself. */
+export type LibraryKind = Exclude<MediaKind, 'episode'>;
 export type CatalogId = `mov_${string}` | `tv_${string}` | `ep_${string}`;
 export type PersonId = `per_${string}`;
 export type StudioId = `st_${string}`;
